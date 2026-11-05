@@ -1,0 +1,37 @@
+#!/bin/sh
+# Read and select the active fcitx5 conversion engine.
+set -eu
+[ "$#" -le 1 ] || exit 2
+action=${1:-next}
+case $action in status | next | previous | menu) ;; *) exit 2 ;; esac
+config=${XDG_CONFIG_HOME:-$HOME/.config}/nostromo/languages
+choices=$(awk -F'|' '$1~/^[A-Z][A-Z]$/ && $2~/^[a-z][a-z0-9-]*$/ {print $1 "|" $2}' "$config")
+[ -n "$choices" ] || exit 1
+if ! command -v fcitx5-remote >/dev/null 2>&1 || ! current=$(fcitx5-remote --check -n 2>/dev/null); then
+    if [ "$action" = status ]; then
+        printf '%s\n' '--'
+        exit 0
+    fi
+    notify-send LANGUAGE 'Input methods are unavailable; check the native session log.' || :
+    exit 1
+fi
+if [ "$(fcitx5-remote --check 2>/dev/null)" = 1 ]; then current=keyboard-us; fi
+if [ "$action" = status ]; then
+    printf '%s\n' "$choices" | awk -F'|' -v current="$current" '$2==current {print $1; found=1; exit} END {if(!found) print "--"}'
+    exit
+fi
+if [ "$action" = menu ]; then
+    choice=$(printf '%s\n' "$choices" | nostromo-picker -p LANGUAGE) || exit 0
+else
+    choice=$(printf '%s\n' "$choices" | awk -F'|' -v current="$current" -v action="$action" '
+        {a[NR]=$0; if($2==current) i=NR}
+        END {if(!i)i=1; i=action=="previous"?(i+NR-2)%NR+1:i%NR+1; print a[i]}')
+fi
+printf '%s\n' "$choices" | grep -Fxq -e "$choice" || exit 2
+engine=${choice#*|}
+fcitx5-remote --check -s "$engine"
+fcitx5-remote --check -o
+[ "$(fcitx5-remote --check -n)" = "$engine" ] || {
+    notify-send LANGUAGE 'Engine change was not acknowledged; check the installed engine and focused application.' || :
+    exit 1
+}

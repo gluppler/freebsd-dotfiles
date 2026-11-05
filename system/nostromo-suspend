@@ -1,0 +1,26 @@
+#!/bin/sh
+# devd's ACPI Suspend handler. A failed lock must cancel the kernel request.
+set -eu
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export PATH
+[ "$(uname -s)" = FreeBSD ] && [ "$(id -u)" = 0 ] || exit 1
+cancel() {
+    /usr/sbin/acpiconf -k 1 || :
+    logger -t nostromo-suspend 'Suspend cancelled: no verified session lock.'
+}
+trap 'cancel' 0
+trap 'exit 1' HUP INT TERM
+[ "$#" = 1 ] || exit 2
+case $1 in 0x01 | 0x02 | 0x03 | 0x04) ;; *) exit 2 ;; esac
+policy=/usr/local/etc/nostromo/mdo-account
+[ -f "$policy" ] && [ ! -L "$policy" ] && [ "$(stat -f '%u %Lp' "$policy")" = '0 600' ] || exit 1
+IFS=' ' read -r uid account extra <"$policy"
+case $uid in '' | *[!0-9]* | 0) exit 1 ;; esac
+case $account in '' | root | *[!a-zA-Z0-9_-]*) exit 1 ;; esac
+[ -z "$extra" ] && [ "$(id -u "$account")" = "$uid" ] || exit 1
+# FreeBSD forces a pending request after ten seconds. Bound the lock attempt
+# below that deadline. The user-side helper locates the existing PAM runtime.
+/usr/bin/timeout -k 1 4 /usr/bin/env -i PATH="$PATH" \
+    /usr/bin/su -l "$account" -c 'exec /usr/local/libexec/nostromo-lock-session'
+/etc/rc.suspend acpi "$1"
+trap - 0 HUP INT TERM

@@ -1,0 +1,542 @@
+[
+  {
+    "name": "wayland",
+    "version": "1.26.0",
+    "path": "All/Hashed/wayland-1.26.0~2$z8x19pzg.pkg",
+    "sum": "2$z8x19pzgdefr44s76ctp1sgpibp8kw79atgjpuakndkuuuynt7d1qgwm6t4x8jncmzp7dpcu8h8cot95jossisreokx7xynims3k8hn",
+    "pkgsize": 150807
+  },
+  {
+    "name": "wlroots020",
+    "version": "0.20.2_1",
+    "path": "All/Hashed/wlroots020-0.20.2_1~2$zdoa6gm4.pkg",
+    "sum": "2$zdoa6gm4cjxrde3jcnyadoneb5f4te5kcbyrip7tt4rt4uyicazytgq1bbmgkx53dy9bft86d1pgs1cdpsuqdycuuzk5uwmawnhmnzy",
+    "pkgsize": 523609
+  },
+  {
+    "name": "libinput",
+    "version": "1.31.1",
+    "path": "All/Hashed/libinput-1.31.1~2$5cpr7x7z.pkg",
+    "sum": "2$5cpr7x7zm16eyap3gprn6xdfra5c11k45ayqsmmqhw7gp6bgxdt3g8iou7xau7e11reomgmi4bu9jhtbiza7c9te1p711o7nwd641bd",
+    "pkgsize": 348863
+  },
+  {
+    "name": "libxkbcommon",
+    "version": "1.13.2",
+    "path": "All/Hashed/libxkbcommon-1.13.2~2$rdgtjzpp.pkg",
+    "sum": "2$rdgtjzppk3qdkxnc7tr6izxtrwzx3138ggf5gnure67oh5phpjrq6myuk5zjyc4swrszz3d9xng99ithffxs7hqurf91q1w5yxjp18n",
+    "pkgsize": 313515
+  },
+  {
+    "name": "evdev-proto",
+    "version": "5.8",
+    "path": "All/Hashed/evdev-proto-5.8~2$gdpf7qt1.pkg",
+    "sum": "2$gdpf7qt1to6gk35p8ewtawp75to8gwfaouedzg885tomb1jsjhmgdximuuax6bdb7pwkaf93s1o33q995bz7bg7ka8is76eukna4w6n",
+    "pkgsize": 23973
+  },
+  {
+    "name": "wayland-protocols",
+    "version": "1.49",
+    "path": "All/Hashed/wayland-protocols-1.49~2$zinj8p3r.pkg",
+    "sum": "2$zinj8p3roqgn4okmxp4dd5f53ex9rqigm3nrtfaqcfj53q6rsyp7nki6ru1z9mzx4r5tyku3sc51jkaikd9g3yg73xkima4reqqihgy",
+    "pkgsize": 141682
+  },
+  {
+    "name": "cairo",
+    "version": "1.18.2,3",
+    "path": "All/Hashed/cairo-1.18.2,3~2$eus7wbya.pkg",
+    "sum": "2$eus7wbya9e6cbitrdedadtokh9qhb6yqjzoizh1974mpyz45jkek1k58osd744qmqhpid5jpstie71kwxn447b6143wqpd4jau96s4d",
+    "pkgsize": 807531
+  },
+  {
+    "name": "pango",
+    "version": "1.57.1",
+    "path": "All/Hashed/pango-1.57.1~2$8t63cgez.pkg",
+    "sum": "2$8t63cgezta489isqyoc35hdutg1ym8txufyedwxeubeyn7oeibhyczcux8a6usjdak3pem7bj1gppnsczx9psh5drogpfku8mif3aty",
+    "pkgsize": 2133758
+  },
+  {
+    "name": "glib",
+    "version": "2.88.3,2",
+    "path": "All/Hashed/glib-2.88.3,2~2$nay9ywxq.pkg",
+    "sum": "2$nay9ywxqqd7uumi5q9n9dpqq5hb5tce1ac5fggrrbo1r5nkkpwggnsfnx98j1u7xrcjpm1grqndfhxcz6x1dk9keumstuin5t4ze9qn",
+    "pkgsize": 11239841
+  },
+  {
+    "name": "harfbuzz",
+    "version": "14.2.1",
+    "path": "All/Hashed/harfbuzz-14.2.1~2$xcrg4ek6.pkg",
+    "sum": "2$xcrg4ek6wmeijyjp19et8b3jt8t84ju5f6wrprcr6okn4d1hf1j4gz7jkcbu8piybk8sgwy8sks81pjczxhfukknmd4qwmhsnqjjpcy",
+    "pkgsize": 1454751
+  },
+  {
+    "name": "freetype2",
+    "version": "2.14.3",
+    "path": "All/Hashed/freetype2-2.14.3~2$jrhe3zzp.pkg",
+    "sum": "2$jrhe3zzpf3zfzhui5kukj8z9cbp7mdxwx5ememcth48twgtyczceox73y4trkcrrj65cbfpj14h3u74ppbwgzb5iuht4r95ag9xwtfd",
+    "pkgsize": 1248348
+  },
+  {
+    "name": "fontconfig",
+    "version": "2.17.1,1",
+    "path": "All/Hashed/fontconfig-2.17.1,1~2$y53axq8z.pkg",
+    "sum": "2$y53axq8zobaut17j3h74negfaqurb95az4koxmmz5sf4jk466x61wu5sozui1acfoo8hk5a8ri88ou1buofg87ycw9wjgdx58zb5x8y",
+    "pkgsize": 524841
+  },
+  {
+    "name": "pixman",
+    "version": "0.46.4",
+    "path": "All/Hashed/pixman-0.46.4~2$ru6fjntr.pkg",
+    "sum": "2$ru6fjntry4iqdd1nk1bd7kqx4iz94p1s1jar3c8xe77qa4nj5ifqrdk4xfi5psax8bbyr7ds9zejzb6u6gfw9ww5bqmj5gzpxb3t4rn",
+    "pkgsize": 275715
+  },
+  {
+    "name": "libdrm",
+    "version": "2.4.134,1",
+    "path": "All/Hashed/libdrm-2.4.134,1~2$r6tw5hns.pkg",
+    "sum": "2$r6tw5hns5fnm5srg6ofkpxpewhzp1uuuytjiw1ywcgcjohmyx9dgkjfcg3zcn8s6yfpj8aqe1wy7bd9bppjta68ysr3115d5zhzexkd",
+    "pkgsize": 293560
+  },
+  {
+    "name": "fcft",
+    "version": "3.3.3",
+    "path": "All/Hashed/fcft-3.3.3~2$mo6nceyh.pkg",
+    "sum": "2$mo6nceyhj1f4z3ugf9ecm1mwey53uqde9en5dah891azn31rkcw58f1fmbdtitnkd8ad7ojgw6daj65rqu1rmnyoy7b6etwckkq6phb",
+    "pkgsize": 91761
+  },
+  {
+    "name": "gtk3",
+    "version": "3.24.52",
+    "path": "All/Hashed/gtk3-3.24.52~2$a1u97bg5.pkg",
+    "sum": "2$a1u97bg5iot7jhhwjo7iueuo6fodsjusn8p38o5p99r6n7rpazkpi4cwrw16md4peszr5e6n3juypd8bi6dqzrckkpf78qr91z1s41n",
+    "pkgsize": 13459517
+  },
+  {
+    "name": "gtk-session-lock",
+    "version": "0.2.0",
+    "path": "All/Hashed/gtk-session-lock-0.2.0~2$pizrq6a6.pkg",
+    "sum": "2$pizrq6a695ia73f61iq6j4w79nu8upu77josy3ukw6czkhu7h86h6qke6ek9jcfiikrx5jh7azmbq6agrushydzzfwwnnnn8hgr6h9b",
+    "pkgsize": 44217
+  },
+  {
+    "name": "gdk-pixbuf2",
+    "version": "2.44.1",
+    "path": "All/Hashed/gdk-pixbuf2-2.44.1~2$39cjm8x9.pkg",
+    "sum": "2$39cjm8x93by5b14ocxfab9c9zhkyam44rqrb34f4fst1cqs8gghfpktazoq4oum1s37tt6i7c73ed6aurw7ubnoim68yttubanox19d",
+    "pkgsize": 1795450
+  },
+  {
+    "name": "at-spi2-core",
+    "version": "2.60.4",
+    "path": "All/Hashed/at-spi2-core-2.60.4~2$jfikrbfy.pkg",
+    "sum": "2$jfikrbfy8btsi5jagem5fazorcc5f4pmmjqrnb1iwppwy46hxyxq8df8wygr3e1d4q4bmog8qaqudftie9tu346jfuq3juoadihnicd",
+    "pkgsize": 619172
+  },
+  {
+    "name": "librsvg2-rust",
+    "version": "2.62.3_2",
+    "path": "All/Hashed/librsvg2-rust-2.62.3_2~2$4hqz8wud.pkg",
+    "sum": "2$4hqz8wudhsztqdd3bm4n7h3u7n45zwm5gjz465yns1wjcpagmzs1cbztmm3bir8u6u85mbm1rjf8hhwgxp719ppfzed4ukww7h1ec4b",
+    "pkgsize": 3211542
+  },
+  {
+    "name": "libepoll-shim",
+    "version": "0.0.20240608",
+    "path": "All/Hashed/libepoll-shim-0.0.20240608~2$yxtwhnu6.pkg",
+    "sum": "2$yxtwhnu6heastrk1ahjrpuw63whqmn9afw183g88wtjndo8jmmc34hpk8pdc5dzd5eh8xjfzgskkx4kmnkub5kqze477qe6u3s6wieb",
+    "pkgsize": 22236
+  },
+  {
+    "name": "libffi",
+    "version": "3.8.0",
+    "path": "All/Hashed/libffi-3.8.0~2$csu1dbqk.pkg",
+    "sum": "2$csu1dbqkn7yzgt1ybk3gjqrbsb8gxyunaiipdw8dn37bezbzshmjxuanm5cj8bwxe38qqg5nfmka1iwxsme4yiu87zba4iskaizywod",
+    "pkgsize": 57680
+  },
+  {
+    "name": "fribidi",
+    "version": "1.0.17",
+    "path": "All/Hashed/fribidi-1.0.17~2$buut88m5.pkg",
+    "sum": "2$buut88m5scozgtckjrycxdz1xhdosci5i3bqa3gif1tghgfepixzax9o9rnyt3phk4gufwoakobw49r9wsfip6i6ou4nzcciaf1t46y",
+    "pkgsize": 88690
+  },
+  {
+    "name": "graphene",
+    "version": "1.10.8_1",
+    "path": "All/Hashed/graphene-1.10.8_1~2$q9cu1sue.pkg",
+    "sum": "2$q9cu1suesdba85ukicpbis6kozfskj4hsmsg6i5mqxxrc4q54kb7ipoxudkrxtezimci4yqhhb4o7qbfuj9766wadet7w74endjp6xy",
+    "pkgsize": 201834
+  },
+  {
+    "name": "libX11",
+    "version": "1.8.14,1",
+    "path": "All/Hashed/libX11-1.8.14,1~2$r6dgkuui.pkg",
+    "sum": "2$r6dgkuuirtw4c3kjm9wrgf5wmruezwympxwo3ha16bqzyothtkgx7gzw9to719bdwjkmy6xotrt1astk7hi8qs3aogkymtytyd3f3rb",
+    "pkgsize": 1770393
+  },
+  {
+    "name": "libXext",
+    "version": "1.3.7,1",
+    "path": "All/Hashed/libXext-1.3.7,1~2$rnbrgzcj.pkg",
+    "sum": "2$rnbrgzcjm1qtshb6mxcmmnkw5858y7gpyxkrj96t5tp36sicdjkp41xwnini7xom65iwcdjyqp18pq7mhyj8uyurpoprodwrzofd3bd",
+    "pkgsize": 102926
+  },
+  {
+    "name": "libXrender",
+    "version": "0.9.13",
+    "path": "All/Hashed/libXrender-0.9.13~2$3jgz85tb.pkg",
+    "sum": "2$3jgz85tb6u1js7neosmj1j6j1jsg5nzpuitf6tk65pn5wnft18kc45w63n97i6ysqt5m7acffkh4wn98jc1qq8i69q14rke5onnj5zy",
+    "pkgsize": 34660
+  },
+  {
+    "name": "libXrandr",
+    "version": "1.5.5",
+    "path": "All/Hashed/libXrandr-1.5.5~2$teenzy8e.pkg",
+    "sum": "2$teenzy8eq5wu6gcuabmrfqcwiwf5rygakn8o6bubfceb7ff4m9quwyh8dqtd3cu9bbcacb8ybhndeyyckirj8t5cuafspjxkmucf15b",
+    "pkgsize": 33136
+  },
+  {
+    "name": "libXi",
+    "version": "1.8.4,1",
+    "path": "All/Hashed/libXi-1.8.4,1~2$kk1be8gd.pkg",
+    "sum": "2$kk1be8gdrwrtppdhbn9477rz9gwpsenunckcopjod59ywokn9ae4w8n59p9g9bj7rzzokr9pd7kwoza3wbnb8arecog7i8q1cjjxaab",
+    "pkgsize": 134477
+  },
+  {
+    "name": "libXcursor",
+    "version": "1.2.3",
+    "path": "All/Hashed/libXcursor-1.2.3~2$dfezr6gk.pkg",
+    "sum": "2$dfezr6gkm73mzh5nk9xhmrdr31584iu3iotcnah9s9gfz44hb1m587p91pgp5nb5s789qmj43f81pdnpdkkstsj8r3ksowwdpcpo6sd",
+    "pkgsize": 45837
+  },
+  {
+    "name": "libXcomposite",
+    "version": "0.4.7,1",
+    "path": "All/Hashed/libXcomposite-0.4.7,1~2$f4sbxpwh.pkg",
+    "sum": "2$f4sbxpwh491jmqetgwumcx1upqka8tog7xqmbwcuwkrpchhq9s1kkh3ftedtuwt1j8hyijr7gmgokn496ymmkydbp8ws5k3g7sfg4ny",
+    "pkgsize": 12176
+  },
+  {
+    "name": "libXdamage",
+    "version": "1.1.7",
+    "path": "All/Hashed/libXdamage-1.1.7~2$bt8dmbrx.pkg",
+    "sum": "2$bt8dmbrxakupfnpwyiejebbi7ifrrca5tbfjw9sbapqxtqs914yygk1k3ojoh5p61z7k1uxab7zkxrndo38yxnrpidu3gayf9rdakpb",
+    "pkgsize": 7694
+  },
+  {
+    "name": "libXfixes",
+    "version": "6.0.2",
+    "path": "All/Hashed/libXfixes-6.0.2~2$chkd7kuy.pkg",
+    "sum": "2$chkd7kuy79h5fy1eusi7e6g7qfub93ib6agp95rurj9m3dg3qjawguwe51eb3ec7ufoxwejo9zemx19xuewmn6xocg9jpqw8if8da3y",
+    "pkgsize": 16069
+  },
+  {
+    "name": "libXinerama",
+    "version": "1.1.6,1",
+    "path": "All/Hashed/libXinerama-1.1.6,1~2$85wjchwg.pkg",
+    "sum": "2$85wjchwgj6gbochwqg8dsr18abgd5se637exof65386a5ibgbjdikzrce6zxoeru33rwr3dwqy31be6dqjm8a6puo38d868iz8i7u4b",
+    "pkgsize": 10735
+  },
+  {
+    "name": "libxcb",
+    "version": "1.17.0",
+    "path": "All/Hashed/libxcb-1.17.0~2$xzyyh6ao.pkg",
+    "sum": "2$xzyyh6aozxi1aojee4mhmiwekw8ci394jmxw89fzf3inwb7egzgbewhip4bmhiutqddqqxyffuk5zyhx53ebmj98rjca88gmzi7r4mb",
+    "pkgsize": 1188246
+  },
+  {
+    "name": "xorgproto",
+    "version": "2025.1",
+    "path": "All/Hashed/xorgproto-2025.1~2$zdhgrygd.pkg",
+    "sum": "2$zdhgrygdf1jabicy45cnpw59qn1e9jk41ncnpun5bapebkt9iaf7uoijwigbj33zh8jtb3r588mqirky45dmiswsjimcwahbgj8m1jy",
+    "pkgsize": 248003
+  },
+  {
+    "name": "libudev-devd",
+    "version": "0.7.0",
+    "path": "All/Hashed/libudev-devd-0.7.0~2$mbyyocos.pkg",
+    "sum": "2$mbyyocos7c1z9n7qcp5ysytx1ia9axkizdz5e49cndscfyjmytnuufcpozokczykon8z95aib8bfy6e6tpr7kj8od153jedtu6yn98n",
+    "pkgsize": 22959
+  },
+  {
+    "name": "libevdev",
+    "version": "1.13.2",
+    "path": "All/Hashed/libevdev-1.13.2~2$bzayrayx.pkg",
+    "sum": "2$bzayrayxgtij59kuc14g3tzi5f4w5n4dbwzco7jtgxt7dob91p6tmomsh5hu3jxg897a5m8tu6o9zz9uobuo6tujbwuqahf9r9z9hmd",
+    "pkgsize": 60115
+  },
+  {
+    "name": "libdisplay-info",
+    "version": "0.4.0",
+    "path": "All/Hashed/libdisplay-info-0.4.0~2$kzzgps1q.pkg",
+    "sum": "2$kzzgps1qy1bd6yriozegtcka5kyzujy4fcs3n6zasfgh59crocyzjmibrcfizfsky4qe844bjmd1zjwgg5becy9x7p99j9bfcd86spy",
+    "pkgsize": 123612
+  },
+  {
+    "name": "vulkan-headers",
+    "version": "1.4.360",
+    "path": "All/Hashed/vulkan-headers-1.4.360~2$8ii4j4xc.pkg",
+    "sum": "2$8ii4j4xc4dsa1dayytuyyyg67xnczuiimqthxh4gwhu88k6hcmxeg1rzoxoaxwy8s443hdy39bwffydrb176n86344qr9ci5eccrxmd",
+    "pkgsize": 1814742
+  },
+  {
+    "name": "seatd",
+    "version": "0.9.3_1",
+    "path": "All/Hashed/seatd-0.9.3_1~2$obgzxpge.pkg",
+    "sum": "2$obgzxpgeutzakqkh8x9u73rxuifrxe1fbc1pfi7wcqsr654qyowic9j5etr7xkuxn9t73g6sax5x9hifffsbrtozygjt81wgns5wtqn",
+    "pkgsize": 38676
+  },
+  {
+    "name": "tllist",
+    "origin": "devel/tllist",
+    "version": "1.1.0",
+    "comment": "C header file only implementation of a typed linked list",
+    "maintainer": "jbeich@FreeBSD.org",
+    "www": "https://codeberg.org/dnkl/tllist",
+    "abi": "FreeBSD:15:amd64",
+    "arch": "freebsd:15:x86:64",
+    "prefix": "/usr/local",
+    "sum": "2$u4tiqe9z8ts8dtziztq6bwk18iaoaok6dkmpg3s3ahm3bynfuu3ksjg6bsqz4s7y9hxc93ktbsjda3wowu9f55y1foeom8r6rm5ba9y",
+    "flatsize": 14649,
+    "path": "All/Hashed/tllist-1.1.0~2$u4tiqe9z.pkg",
+    "repopath": "All/Hashed/tllist-1.1.0~2$u4tiqe9z.pkg",
+    "licenselogic": "single",
+    "licenses": [
+      "MIT"
+    ],
+    "pkgsize": 4615,
+    "desc": "Most C implementations of linked list are untyped. That is, their data carriers\nare typically void *. This is error prone since your compiler will not be able\nto help you correct your mistakes (oh, was it a pointer-to-a-pointer... I\nthought it was just a pointer...).\n\ntllist addresses this by using pre-processor macros to implement dynamic types,\nwhere the data carrier is typed to whatever you want; both primitive data types\nare supported as well as aggregated ones such as structs, enums and unions.\n\nBeing a double-linked list, most operations are constant in time (including\npushing and popping both to/from front and back).\n\nThe memory overhead is fairly small; each item carries, besides its data, a\nprev and next pointer (i.e. a constant 16 byte overhead per item on 64-bit\narchitectures).\n\nThe list itself has two head and tail pointers, plus a length variable\n(typically 8 bytes on 64-bit architectures) to make list length lookup constant\nin time.\n\nThus, assuming 64-bit pointers (and a 64-bit size_t type), the total overhead\nis 3*8 + n*2*8 bytes.",
+    "categories": [
+      "devel"
+    ],
+    "annotations": {
+      "FreeBSD_version": "1501000",
+      "build_timestamp": "2026-10-24T01:27:21+0000",
+      "built_by": "poudriere-git-3.4.8-3-gd92fb7c0",
+      "port_checkout_unclean": "no",
+      "port_git_hash": "46cf3d9696491c61d91ecd22db11c7f7c1e62c24",
+      "ports_top_checkout_unclean": "no",
+      "ports_top_git_hash": "9b1792b1d9fdc91f491da6648a888173b85bab04"
+    }
+  },
+  {
+    "name": "libnotify",
+    "origin": "devel/libnotify",
+    "version": "0.8.8",
+    "comment": "Library for desktop notifications",
+    "maintainer": "desktop@FreeBSD.org",
+    "www": "https://gitlab.gnome.org/GNOME/libnotify",
+    "abi": "FreeBSD:15:amd64",
+    "arch": "freebsd:15:x86:64",
+    "prefix": "/usr/local",
+    "sum": "2$krjcdwirc91tyukyyqnd78kfm9h4db4as66xgso7ymtdjm56no38ot9ifjttq1wh5679a6uy7eo6r7gj6dsy9gcax51pmi6b4hinard",
+    "flatsize": 190588,
+    "path": "All/Hashed/libnotify-0.8.8~2$krjcdwir.pkg",
+    "repopath": "All/Hashed/libnotify-0.8.8~2$krjcdwir.pkg",
+    "licenselogic": "single",
+    "licenses": [
+      "LGPL21"
+    ],
+    "pkgsize": 47282,
+    "desc": "The Desktop Notifications framework provides a standard way of doing passive\npop-up notifications on the desktop. These are designed to notify the\nuser of something without interrupting their work with a dialog box that they\nmust close. Passive popups can automatically disappear after a short period\nof time.\n\nThis port contains the library and a small command line client.\nSee deskutils/notification-daemon for the daemon.",
+    "deps": {
+      "gdk-pixbuf2": {
+        "origin": "graphics/gdk-pixbuf2",
+        "version": "2.44.1"
+      },
+      "gettext-runtime": {
+        "origin": "devel/gettext-runtime",
+        "version": "1.0_1"
+      },
+      "glib": {
+        "origin": "devel/glib20",
+        "version": "2.88.3,2"
+      },
+      "libxml2": {
+        "origin": "textproc/libxml2",
+        "version": "2.15.4"
+      }
+    },
+    "categories": [
+      "devel",
+      "gnome"
+    ],
+    "shlibs_required": [
+      "libc.so.7",
+      "libgdk_pixbuf-2.0.so.0",
+      "libgio-2.0.so.0",
+      "libglib-2.0.so.0",
+      "libgobject-2.0.so.0"
+    ],
+    "shlibs_provided": [
+      "libnotify.so.4"
+    ],
+    "options": {
+      "MANPAGES": "on"
+    },
+    "annotations": {
+      "FreeBSD_version": "1501000",
+      "build_timestamp": "2026-10-24T02:39:27+0000",
+      "built_by": "poudriere-git-3.4.8-3-gd92fb7c0",
+      "port_checkout_unclean": "no",
+      "port_git_hash": "46cf3d9696491c61d91ecd22db11c7f7c1e62c24",
+      "ports_top_checkout_unclean": "no",
+      "ports_top_git_hash": "9b1792b1d9fdc91f491da6648a888173b85bab04"
+    }
+  },
+  {
+    "name": "gtk-layer-shell",
+    "origin": "x11-toolkits/gtk-layer-shell",
+    "version": "0.10.1",
+    "comment": "GTK3 library for the Wayland layer-shell protocol",
+    "maintainer": "jbeich@FreeBSD.org",
+    "www": "https://github.com/wmww/gtk-layer-shell",
+    "abi": "FreeBSD:15:amd64",
+    "arch": "freebsd:15:x86:64",
+    "prefix": "/usr/local",
+    "sum": "2$beqy6rbexpg141r6qeypgmwemzowebi6ue5wn57piwpj1tyjc91egrnd5i9399djmhpw6fseprzeeji36fqkxfbekx5kh7fg1eutd6b",
+    "flatsize": 444385,
+    "path": "All/Hashed/gtk-layer-shell-0.10.1~2$beqy6rbe.pkg",
+    "repopath": "All/Hashed/gtk-layer-shell-0.10.1~2$beqy6rbe.pkg",
+    "licenselogic": "and",
+    "licenses": [
+      "LGPL3+",
+      "MIT"
+    ],
+    "pkgsize": 85076,
+    "desc": "A library for using the Layer Shell Wayland protocol with GTK3. With\nthis library you can build desktop shell components such as panels,\nnotifications and wallpapers. You can use it to anchor your windows to\na corner or edge of the output, or stretch them across the entire\noutput. This Library is compatible with C, C++ and any language that\nsupports GObject introspection files (Python, Vala, etc).",
+    "deps": {
+      "at-spi2-core": {
+        "origin": "accessibility/at-spi2-core",
+        "version": "2.60.4"
+      },
+      "cairo": {
+        "origin": "graphics/cairo",
+        "version": "1.18.2,3"
+      },
+      "gdk-pixbuf2": {
+        "origin": "graphics/gdk-pixbuf2",
+        "version": "2.44.1"
+      },
+      "gettext-runtime": {
+        "origin": "devel/gettext-runtime",
+        "version": "1.0_1"
+      },
+      "glib": {
+        "origin": "devel/glib20",
+        "version": "2.88.3,2"
+      },
+      "gtk3": {
+        "origin": "x11-toolkits/gtk30",
+        "version": "3.24.52"
+      },
+      "harfbuzz": {
+        "origin": "print/harfbuzz",
+        "version": "14.2.1"
+      },
+      "pango": {
+        "origin": "x11-toolkits/pango",
+        "version": "1.57.1"
+      },
+      "wayland": {
+        "origin": "graphics/wayland",
+        "version": "1.26.0"
+      }
+    },
+    "categories": [
+      "x11-toolkits"
+    ],
+    "shlibs_required": [
+      "libc.so.7",
+      "libgdk-3.so.0",
+      "libglib-2.0.so.0",
+      "libgobject-2.0.so.0",
+      "libgtk-3.so.0",
+      "libwayland-client.so.0"
+    ],
+    "shlibs_provided": [
+      "libgtk-layer-shell.so.0"
+    ],
+    "options": {
+      "DOCS": "on",
+      "EXAMPLES": "on"
+    },
+    "annotations": {
+      "FreeBSD_version": "1501000",
+      "build_timestamp": "2026-10-24T17:37:57+0000",
+      "built_by": "poudriere-git-3.4.8-3-gd92fb7c0",
+      "port_checkout_unclean": "no",
+      "port_git_hash": "46cf3d9696491c61d91ecd22db11c7f7c1e62c24",
+      "ports_top_checkout_unclean": "no",
+      "ports_top_git_hash": "9b1792b1d9fdc91f491da6648a888173b85bab04"
+    }
+  },
+  {
+    "name": "libglvnd",
+    "origin": "graphics/libglvnd",
+    "version": "1.7.0",
+    "comment": "GL Vendor-Neutral Dispatch library",
+    "maintainer": "x11@FreeBSD.org",
+    "www": "https://gitlab.freedesktop.org/glvnd/libglvnd",
+    "abi": "FreeBSD:15:amd64",
+    "arch": "freebsd:15:x86:64",
+    "prefix": "/usr/local",
+    "sum": "2$xtygam3wt3ip9wq6y315s8gjyzn5c3qnatxiyr83un8fu85xgdrxe7pspiy5fju4ygobzyhpdnkwgbea84f5ro5161diqhmbm7y9z5b",
+    "flatsize": 4025238,
+    "path": "All/Hashed/libglvnd-1.7.0~2$xtygam3w.pkg",
+    "repopath": "All/Hashed/libglvnd-1.7.0~2$xtygam3w.pkg",
+    "licenselogic": "and",
+    "licenses": [
+      "APACHE20",
+      "MIT"
+    ],
+    "pkgsize": 396302,
+    "desc": "libglvnd is a vendor-neutral dispatch layer for arbitrating OpenGL API calls\nbetween multiple vendors. It allows multiple drivers from different vendors to\ncoexist on the same filesystem, and determines which vendor to dispatch each\nAPI call to at runtime.\n\nBoth GLX and EGL are supported, in any combination with OpenGL and OpenGL ES.",
+    "deps": {
+      "libX11": {
+        "origin": "x11/libX11",
+        "version": "1.8.14,1"
+      },
+      "libXext": {
+        "origin": "x11/libXext",
+        "version": "1.3.7,1"
+      }
+    },
+    "categories": [
+      "graphics"
+    ],
+    "shlibs_required": [
+      "libX11.so.6",
+      "libc.so.7",
+      "libdl.so.1",
+      "libthr.so.3"
+    ],
+    "shlibs_provided": [
+      "libEGL.so.1",
+      "libGL.so.1",
+      "libGLESv1_CM.so.1",
+      "libGLESv2.so.2",
+      "libGLX.so.0",
+      "libGLdispatch.so.0",
+      "libOpenGL.so.0"
+    ],
+    "options": {
+      "X11": "on"
+    },
+    "annotations": {
+      "FreeBSD_version": "1501000",
+      "build_timestamp": "2026-10-24T01:24:37+0000",
+      "built_by": "poudriere-git-3.4.8-3-gd92fb7c0",
+      "port_checkout_unclean": "no",
+      "port_git_hash": "46cf3d9696491c61d91ecd22db11c7f7c1e62c24",
+      "ports_top_checkout_unclean": "no",
+      "ports_top_git_hash": "9b1792b1d9fdc91f491da6648a888173b85bab04"
+    }
+  },
+  {
+    "name": "utf8proc",
+    "version": "2.12.0",
+    "path": "All/Hashed/utf8proc-2.12.0~2$ktws3su9.pkg",
+    "sum": "2$ktws3su9am6k9idcg6kwb1qgte9p63teut4311xwxq4n6ntw9gci4otm7x93f6scpofcr51558e4okd4qjtqktcw963xzjpnc9ack6b"
+  }
+]

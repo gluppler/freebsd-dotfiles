@@ -1,0 +1,6 @@
+#!/bin/sh
+# OSC 7 for foot spawning, plus bounded display-only title data for the dwl rail.
+set -eu
+directory=$(pwd -P)
+encoded=$(printf '%s' "$directory" | LC_ALL=C od -An -v -tx1 | awk '{for(i=1;i<=NF;i++) if ($i=="2f") printf "/"; else printf "%%%s",$i}')
+printf '\033]2;NOSTROMO_CWD:file://%s\007\033]7;file://%s\007' "$encoded" "$encoded"

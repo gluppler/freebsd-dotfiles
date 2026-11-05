@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="nostromo_control_v1">
+  <copyright>Copyright 2026 Nostromo contributors. Permission to use, copy, modify and distribute this protocol for any purpose with or without fee is granted. THE SOFTWARE IS PROVIDED AS IS WITHOUT WARRANTY.</copyright>
+  <interface name="nostromo_control_v1" version="1">
+    <description summary="Small session controls over the authenticated Wayland connection">
+      Effect modes: 0 off, 1 static, 2 animated. Lock states: 0 unlocked,
+      1 compositor-enforced lock with a live lock client, 2 locked after client loss.
+      This interface cannot unlock the session or execute a command.
+    </description>
+    <request name="destroy" type="destructor"/>
+    <request name="get_state"/>
+    <request name="set_effect"><arg name="mode" type="uint"/></request>
+    <event name="state">
+      <arg name="mode" type="uint"/><arg name="lock" type="uint"/>
+    </event>
+  </interface>
+</protocol>

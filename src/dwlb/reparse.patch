@@ -1,0 +1,50 @@
+--- a/dwlb.c
++++ b/dwlb.c
+@@ -135,11 +135,13 @@
+ 
+ typedef struct {
+ 	char text[TEXT_MAX];
++	char raw[TEXT_MAX];
+ 	Color *colors;
+ 	uint32_t colors_l, colors_c;
+ 	Button *buttons;
+ 	uint32_t buttons_l, buttons_c;
+ } CustomText;
++static void parse_into_customtext(CustomText *, char *, struct fcft_font *);
+ 
+ typedef struct {
+ 	struct wl_output *wl_output;
+@@ -1014,6 +1016,11 @@
+     bar->font = replacement;
+     bar->textpadding = replacement->height / 2;
+     bar->height = replacement->height + 2 * vertical_padding * bar->scale;
++    char text[TEXT_MAX];
++    snprintf(text, sizeof text, "%s", bar->status.raw);
++    parse_into_customtext(&bar->status, text, replacement);
++    snprintf(text, sizeof text, "%s", bar->title.raw);
++    parse_into_customtext(&bar->title, text, replacement);
+ }
+ 
+ static void
+@@ -1334,7 +1341,13 @@
+ static void
+ parse_into_customtext(CustomText *ct, char *text, struct fcft_font *font)
+ {
++	snprintf(ct->raw, sizeof ct->raw, "%s", text);
+ 	ct->colors_l = ct->buttons_l = 0;
++    /* Keep pending button pointers valid while ARRAY_APPEND grows the list. */
++    size_t markers = 0;
++    for (const char *p = text; *p; p++) if (*p == '^') markers++;
++    ARRAY_EXPAND(ct->buttons, ct->buttons_l, ct->buttons_c, markers);
++    ct->buttons_l = 0;
+ 
+ 	if (status_commands) {
+ 		uint32_t codepoint;
+@@ -1352,6 +1365,7 @@
+ 		for (char *p = text; *p && str_pos < sizeof(ct->text) - 1; p++) {
+ 			if (state == UTF8_ACCEPT && *p == '^') {
+ 				p++;
++                if (!*p) break;
+ 				if (*p != '^') {
+ 					char *arg, *end;
+ 					if (!(arg = strchr(p, '(')) || !(end = strchr(arg + 1, ')')))

@@ -1,0 +1,53 @@
+--- a/src/nnn.c
++++ b/src/nnn.c
+@@ -232,7 +232,7 @@
+ #ifndef SED
+ /* BSDs or Solaris or SunOS */
+ #if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__APPLE__) || defined(sun) || defined(__sun) || defined(__DragonFly__)
+-#define SED "gsed"
++#define SED "sed"
+ #else
+ #define SED "sed"
+ #endif
+@@ -620,7 +620,7 @@
+ 	"xdg-open",
+ #endif
+ 	"atool",
+-	"bsdtar",
++	"/usr/bin/tar",
+ 	"unzip",
+ 	"tar",
+ #ifdef __APPLE__
+@@ -814,7 +814,7 @@
+ static char mv[sizeof PROGRESS_MV] = "mv -i --";
+ 
+ /* Archive commands */
+-static char * const archive_cmd[] = {"atool -a", "bsdtar -acvf", "zip -r", "tar -acvf"};
++static char * const archive_cmd[] = {"atool -a", "/usr/bin/tar -acvf", "zip -r", "tar -acvf"};
+ 
+ /* Tokens used for path creation */
+ #define TOK_BM  0
+@@ -837,11 +837,11 @@
+ #define P_ARCHIVE_CMD 4
+ 
+ static const char * const patterns[] = {
+-	SED" -i 's|^\\(\\(.*/\\)\\(.*\\)$\\)|#\\1\\n\\3|' '%s'",
+-	SED" 's|^\\([^#/][^/]\\?.*\\)$|%s/\\1|;s|^#\\(/.*\\)$|\\1|' "
++	SED" -i '' 's|^\\(\\(.*/\\)\\(.*\\)$\\)|#\\1\\\n\\3|' '%s'",
++	SED" 's|^\\([^#/][^/]\\{0,1\\}.*\\)$|%s/\\1|;s|^#\\(/.*\\)$|\\1|' "
+ 		"'%s' | tr '\\n' '\\0' | xargs -0 -n2 sh -c '%s \"$0\" \"$@\" < /dev/tty'",
+ 	"\\.(bz|bz2|gz|tar|taz|tbz|tbz2|tgz|z|zip)$", /* Basic formats that don't need external tools */
+-	SED" -i 's|^%s\\(.*\\)$|%s\\1|' '%s'",
++	SED" -i '' 's|^%s\\(.*\\)$|%s\\1|' '%s'",
+ 	"xargs -0 %s %s < %s",
+ };
+ 
+@@ -2923,7 +2923,7 @@
+ 	uint_t count = 0, lines = 0;
+ 	bool dir = FALSE, ret = FALSE;
+ 	char foriginal[TMP_LEN_MAX] = {0};
+-	static const char batchrenamecmd[] = "paste -d'\n' '%s' '%s' | "SED" 'N; /^\\(.*\\)\\n\\1$/!p;d' | "
++	static const char batchrenamecmd[] = "paste -d'\n' '%s' '%s' | awk 'NR %% 2 { old=$0; next } old != $0 { print old; print }' | "
+ 					     "tr '\n' '\\0' | xargs -0 -n2 sh -c 'mv -i -- \"$0\" \"$@\" <"
+ 					     " /dev/tty'";
+ 	char buf[sizeof(batchrenamecmd) + (PATH_MAX << 1)];

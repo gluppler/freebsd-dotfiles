@@ -1,0 +1,89 @@
+#!/bin/sh
+# Explicit, temporary device access. No automount daemon or disk formatting.
+set -eu
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
+LC_ALL=C
+export PATH LC_ALL
+[ "$(uname -s)" = FreeBSD ] && [ "$(id -u)" = 0 ] || exit 1
+IFS=' ' read -r uid account </usr/local/etc/nostromo/mdo-account
+[ "$(id -u "$account")" = "$uid" ] && [ "$uid" -ge 1000 ] || exit 1
+case ${1:-} in
+probe)
+    [ "$#" = 2 ] || exit 2
+    device=$2
+    printf '%s\n' "$device" | grep -Eq '^ugen[0-9]+\.[0-9]+$' || exit 2
+    usbconfig -d "$device" dump_device_desc
+    # Only this currently attached device's endpoints. Replugging resets grants.
+    address=${device#ugen}
+    found=no
+    for node in /dev/usb/"$address".*; do
+        [ -c "$node" ] && [ ! -L "$node" ] || continue
+        chown "$account":dialer "$node"
+        chmod 660 "$node"
+        found=yes
+    done
+    [ "$found" = yes ]
+    ;;
+list)
+    [ "$#" = 1 ] || exit 2
+    # USB mass-storage only. Never list NVMe/SATA system disks as mount choices.
+    camcontrol devlist -v | awk '
+    /^scbus[0-9]+ / {usb=($0 ~ / on umass-sim[0-9]+ /);next}
+    usb && /\(/ {
+        text=$0; sub(/^.*\(/,"",text); sub(/\).*$/,"",text)
+        n=split(text,a,",");for(i=1;i<=n;i++)if(a[i]~/^da[0-9]+$/)print a[i]
+    }' | while IFS= read -r disk; do
+        for node in /dev/"$disk" /dev/"$disk"s* /dev/"$disk"p* /dev/"$disk"[a-h]; do
+            [ -c "$node" ] && [ ! -L "$node" ] || continue
+            printf '%s\n' "${node#/dev/}" | grep -Eq '^da[0-9]+([sp][0-9]+)?[a-h]?$' || continue
+            type=$(fstyp "$node" 2>/dev/null) || continue
+            case $type in msdosfs | ufs) printf '%s %s\n' "${node#/dev/}" "$type" ;; esac
+        done
+    done
+    ;;
+mount)
+    [ "$#" = 3 ] || exit 2
+    device=$2 mode=$3
+    printf '%s\n' "$device" | grep -Eq '^da[0-9]+([sp][0-9]+)?[a-h]?$' || exit 2
+    case $mode in ro | rw) ;; *) exit 2 ;; esac
+    record=$("$0" list | awk -v dev="$device" '$1==dev{print;n++}END{exit n!=1}')
+    type=${record#* }
+    mount -p | awk -v dev="/dev/$device" '$1==dev{found=1}END{exit found}' || {
+        echo 'Device is already mounted; preserve the current mount.' >&2
+        exit 1
+    }
+    point=/media/nostromo-$device
+    [ ! -L /media ] && [ ! -L "$point" ] || exit 1
+    for directory in /media "$point"; do
+        if [ -e "$directory" ]; then
+            [ -d "$directory" ] && [ "$(stat -f '%u %Lp' "$directory")" = '0 755' ] || {
+                echo "Preserve existing directory with unexpected ownership/mode: $directory" >&2
+                exit 1
+            }
+        else
+            install -d -o root -g wheel -m 755 "$directory"
+        fi
+    done
+    [ -z "$(ls -A "$point")" ] || {
+        echo 'Mount directory is not empty.' >&2
+        exit 1
+    }
+    case $type in
+    msdosfs) mount_msdosfs -o "$mode,nosuid,noexec" -u "$uid" -g "$(id -g "$account")" -m 700 "/dev/$device" "$point" ;;
+    ufs) mount -t ufs -o "$mode,nosuid,noexec" "/dev/$device" "$point" ;;
+    *) exit 2 ;;
+    esac
+    printf 'Mounted %s at %s (%s).\n' "$device" "$point" "$mode"
+    ;;
+unmount)
+    [ "$#" = 2 ] || exit 2
+    device=$2
+    printf '%s\n' "$device" | grep -Eq '^da[0-9]+([sp][0-9]+)?[a-h]?$' || exit 2
+    point=/media/nostromo-$device
+    mount -p | awk -v dev="/dev/$device" -v point="$point" '$1==dev && $2==point{found=1}END{exit !found}'
+    umount "$point"
+    rmdir "$point"
+    printf 'Unmounted %s; it is safe to unplug.\n' "$device"
+    ;;
+*) exit 2 ;;
+esac

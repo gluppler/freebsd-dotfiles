@@ -1,0 +1,17 @@
+* { font-family: Michroma; font-size: 14px; color: #ffffff; }
+window { background-color: #000000; }
+#window-box { margin: 28px; }
+#input-field {
+    color: #ffffff;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 10px 20px;
+    min-height: 28px;
+    caret-color: #ffffff;
+}
+#input-field:focus { border: none; box-shadow: none; }
+#input-label { margin-bottom: 20px; }
+#error-label, #warning-label { font-size: 10px; margin-top: 20px; }
+#clock-label, #date-label, #unlock-button { opacity: 0; }

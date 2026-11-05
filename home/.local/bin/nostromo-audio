@@ -1,0 +1,45 @@
+#!/bin/sh
+# Control detected FreeBSD 15 mixer devices.
+set -eu
+[ "$#" -le 1 ] || exit 2
+action=${1:-menu}
+case $action in
+up) exec mixer vol.volume=+5% ;;
+down) exec mixer vol.volume=-5% ;;
+mute) exec mixer vol.mute=toggle ;;
+mic) exec mixer mic.mute=toggle ;;
+status) exec mixer -o vol.volume vol.mute mic.mute ;;
+menu) ;;
+*)
+    echo 'Usage: nostromo-audio menu|up|down|mute|mic|status' >&2
+    exit 2
+    ;;
+esac
+choice=$(printf '%s\n' 'VOLUME UP' 'VOLUME DOWN' MUTE 'MIC MUTE' 'OUTPUT DEVICE' 'RECORDING SOURCE' STATUS |
+    nostromo-picker -p AUDIO -l 7) || exit 0
+case $choice in
+'VOLUME UP') exec mixer vol.volume=+5% ;;
+'VOLUME DOWN') exec mixer vol.volume=-5% ;;
+MUTE) exec mixer vol.mute=toggle ;;
+'MIC MUTE') exec mixer mic.mute=toggle ;;
+'OUTPUT DEVICE')
+    choices=$(mixer -a | awk '/^pcm[0-9]+:/ {print}')
+    [ -n "$choices" ] || exit 1
+    selected=$(printf '%s\n' "$choices" | nostromo-picker -p OUTPUT) || exit 0
+    printf '%s\n' "$choices" | grep -Fxq -e "$selected" || exit 2
+    device=${selected%%:*}
+    # Changing the default card is a privileged sysctl; no guessed device ID.
+    exec nostromo-admin mixer -d "$device"
+    ;;
+'RECORDING SOURCE')
+    choices=$(mixer | awk '$1 ~ /^[a-z0-9]+$/ && /rec/ {print $1}')
+    [ -n "$choices" ] || {
+        notify-send AUDIO 'This device exposes no selectable recording sources.'
+        exit 1
+    }
+    selected=$(printf '%s\n' "$choices" | nostromo-picker -p INPUT) || exit 0
+    printf '%s\n' "$choices" | grep -Fxq -e "$selected" || exit 2
+    exec mixer "$selected.recsrc=set"
+    ;;
+STATUS) exec foot -e /bin/sh -c 'mixer -a; printf "\nEnter to close "; read -r reply' ;;
+esac

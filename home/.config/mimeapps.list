@@ -1,0 +1,15 @@
+[Default Applications]
+text/html=nostromo-browser.desktop
+application/xhtml+xml=nostromo-browser.desktop
+x-scheme-handler/http=nostromo-browser.desktop
+x-scheme-handler/https=nostromo-browser.desktop
+application/pdf=org.pwmt.zathura.desktop
+image/png=swayimg.desktop
+image/jpeg=swayimg.desktop
+image/gif=swayimg.desktop
+image/webp=swayimg.desktop
+image/tiff=swayimg.desktop
+image/bmp=swayimg.desktop
+image/avif=swayimg.desktop
+image/heic=swayimg.desktop
+image/svg+xml=swayimg.desktop

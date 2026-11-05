@@ -1,0 +1,185 @@
+--- a/render.c
++++ b/render.c
+@@ -58,6 +58,7 @@
+ };
+ 
+ struct render {
++    struct application_list *applications;
+     const struct config *conf;
+     struct fcft_font *font;
+     struct fcft_font *font_bold;
+@@ -270,6 +271,8 @@
+     }
+ }
+ 
++#include "panel.h"
++
+ void
+ render_background(const struct render *render, struct buffer *buf)
+ {
+@@ -283,15 +286,8 @@
+         return;
+     }
+ 
+-    /* Limit radius if the margins are very small, to prevent e.g. the
+-       selection "box" from overlapping the corners */
+-    const unsigned int radius =
+-        min(render->border_radius,
+-            max(render->x_margin,
+-                render->y_margin));
+-
+-    render_rounded_rectangle(buf->pix[0], &bg, &border_color, radius, bw,
+-                             0, 0, buf->width, buf->height);
++    nostromo_panel(buf->pix[0], &bg, &border_color,
++                   buf->width, buf->height, bw, render->scale, render->x_margin);
+ }
+ 
+ static void
+@@ -2177,6 +2173,73 @@
+     }
+ }
+ 
++/* Measure the same shaped glyph advances as render_text(), once per resize/load.
++ * Large catalogs stop at the width cap; input text/passwords never drive sizing. */
++static int
++nostromo_text_width(struct render *render, const char32_t *text, int ceiling)
++{
++    if (!text) return 0;
++    size_t len = 0;
++    while (text[len] && len < 1024) len++;
++    if (!len) return 0;
++    struct fcft_text_run *run = NULL;
++    if (fcft_capabilities() & FCFT_CAPABILITY_TEXT_RUN_SHAPING)
++        run = fcft_rasterize_text_run_utf32(render->font, len, text, render->subpixel);
++    int width = 0, spacing = pt_or_px_as_pixels(render, &render->conf->letter_spacing);
++    const struct fcft_glyph *space = fcft_rasterize_char_utf32(render->font, U' ', render->subpixel);
++    size_t count = run ? run->count : len;
++    for (size_t i = 0; i < count && width < ceiling; i++) {
++        size_t cluster = run ? (size_t)run->cluster[i] : i;
++        const struct fcft_glyph *glyph = run ? run->glyphs[i] :
++            fcft_rasterize_char_utf32(render->font, text[i], render->subpixel);
++        if (text[cluster] == U'\t') {
++            int tabs = render->conf->tabs;
++            if (tabs && space) width += (tabs - cluster % tabs) * space->advance.x;
++        } else if (glyph) {
++            long kern = 0;
++            if (!run && i) fcft_kerning(render->font, text[i-1], text[i], &kern, NULL);
++            width += max(0, glyph->advance.x + spacing + kern);
++        }
++    }
++    fcft_text_run_destroy(run);
++    return min(width, ceiling);
++}
++
++void
++render_set_applications(struct render *render, struct application_list *apps)
++{
++    render->applications = apps;
++}
++
++size_t
++render_fit_panel(struct render *render, int available_width, int available_height,
++                 int *width, int *height)
++{
++    int ceiling = max(1, min(720 * render->scale, available_width));
++    const struct fcft_glyph *cell = fcft_rasterize_char_utf32(render->font, U'o', render->subpixel);
++    int reserve = (render->conf->prompt_only ? 16 : 6) * (cell ? cell->advance.x : 10 * render->scale);
++    int measured = render->conf->hide_prompt ? 0 :
++        nostromo_text_width(render, render->conf->prompt, ceiling) + reserve;
++    struct application_list *apps = render->applications;
++    if (apps) {
++        mtx_lock(&apps->lock);
++        for (size_t i = 0; i < apps->count && measured < ceiling; i++) {
++            if (!apps->v[i]->visible) continue;
++            int label = nostromo_text_width(render, apps->v[i]->title, ceiling);
++            if (render->conf->icons_enabled) label += render->row_height + reserve / 6;
++            measured = max(measured, label);
++        }
++        mtx_unlock(&apps->lock);
++    }
++    int fixed = render->border_size * 2 + render->y_margin * 2 + render->message_height;
++    if (!render->conf->hide_prompt) fixed += render->row_height + render->inner_pad;
++    struct nostromo_panel_size size = nostromo_panel_dimensions(measured,
++        render->x_margin + render->border_size, fixed, render->row_height,
++        render->conf->lines, available_width, available_height, render->scale);
++    *width = size.width; *height = size.height;
++    return size.rows;
++}
++
+ bool
+ render_set_font_and_update_sizes(struct render *render, struct fcft_font *font,
+                                  struct fcft_font *font_bold,
+--- a/render.h
++++ b/render.h
+@@ -22,6 +22,9 @@
+     struct render *render, struct fcft_font *font, struct fcft_font *font_bold,
+     float scale, float dpi, bool size_font_by_dpi,
+     int *new_width, int *new_height);
++void render_set_applications(struct render *render, struct application_list *apps);
++size_t render_fit_panel(struct render *render, int available_width, int available_height,
++                        int *width, int *height);
+ void render_resized(struct render *render, int *new_width, int *new_height);
+ void render_flush_text_run_cache(struct render *render);
+ 
+--- a/main.c
++++ b/main.c
+@@ -688,8 +688,8 @@
+                 const size_t effective_lines = min(apps->count, conf->lines);
+                 matches_max_matches_per_page_set(matches, effective_lines);
+                 ctx->conf->lines = effective_lines;
+-                wayl_resized(wayl);
+-            }
++            }
++            wayl_resized(wayl);
+ 
+             wayl_ready_to_display(wayl);
+         }
+@@ -2317,6 +2317,7 @@
+ 
+     if ((apps = applications_init()) == NULL)
+         goto out;
++    render_set_applications(render, apps);
+ 
+     matches_set_applications(matches, apps);
+ 
+--- a/wayland.c
++++ b/wayland.c
+@@ -2045,8 +2045,10 @@
+                 : guess_scale(wayl);
+     const float dpi = wayl_ppi(wayl);
+ 
+-    if (scale == wayl->scale && dpi == wayl->dpi)
+-        return;
++    if (scale == wayl->scale && dpi == wayl->dpi) {
++        if (wayl->layer_surface != NULL) wayl_resized(wayl);
++        return;
++    }
+ 
+     reload_font(wayl, dpi, scale);
+ 
+@@ -2062,6 +2064,14 @@
+     render_resized(wayl->render, &wayl->width, &wayl->height);
+ 
+     const float scale = wayl->scale;
++    /* Measure content using the active font; fit whole rows to logical output bounds. */
++    const struct monitor *mon = wayl->monitor;
++    int logical_width = mon && mon->dim.px_scaled.width > 0 ? mon->dim.px_scaled.width : 760;
++    int logical_height = mon && mon->dim.px_scaled.height > 0 ? mon->dim.px_scaled.height : 1080;
++    size_t rows = render_fit_panel(wayl->render,
++        fmax(1, logical_width - 40) * scale, fmax(1, logical_height - 40) * scale,
++        &wayl->width, &wayl->height);
++    matches_max_matches_per_page_set(wayl->matches, rows);
+ 
+     wayl->width = roundf(roundf(wayl->width / scale) * scale);
+     wayl->height = roundf(roundf(wayl->height / scale) * scale);
+@@ -2202,6 +2212,10 @@
+     mon->dim.px_scaled.width = width;
+     mon->dim.px_scaled.height = height;
+     output_update_ppi(mon);
++    if (mon->wayl->monitor == mon && mon->wayl->layer_surface != NULL && mon->wayl->scale > 0) {
++        wayl_resized(mon->wayl);
++        wayl_refresh(mon->wayl);
++    }
+ }
+ 
+ static void

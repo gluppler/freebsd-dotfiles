@@ -1,0 +1,3 @@
+# FreeBSD: login's pam_self rule must never authenticate a screen unlock.
+auth    include unix-selfauth
+account include system

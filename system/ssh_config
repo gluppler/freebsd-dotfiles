@@ -1,0 +1,15 @@
+# BEGIN NOSTROMO SSH
+Host *
+    StrictHostKeyChecking ask
+    HashKnownHosts yes
+    VerifyHostKeyDNS no
+    ForwardAgent no
+    ForwardX11 no
+    ForwardX11Trusted no
+    PubkeyAuthentication yes
+    HostbasedAuthentication no
+    IdentitiesOnly yes
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+# No global destination port: the laptop listener is 2222, remote hosts are independent.
+# END NOSTROMO SSH

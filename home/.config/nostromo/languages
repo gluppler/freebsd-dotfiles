@@ -1,0 +1,4 @@
+# Label|fcitx5 engine; add installed conversion engines here and in fcitx5/profile.
+US|keyboard-us
+JP|anthy
+KR|hangul

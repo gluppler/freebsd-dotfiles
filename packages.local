@@ -1,0 +1,22 @@
+# Build order: name|origin|version. These may never be replaced by stock packages.
+python312|lang/python312|3.12.15
+cmake-core|devel/cmake-core|3.31.12_3
+libxml2|textproc/libxml2|2.15.4
+libxslt|textproc/libxslt|1.1.45
+libpsl|dns/libpsl|0.23.3
+curl|ftp/curl|8.23.0
+cups|print/cups|2.4.20
+Imath|math/Imath|3.2.3_1
+ffmpeg|multimedia/ffmpeg|9.0.2,1
+wlroots020|x11-toolkits/wlroots020|0.20.2_1
+hunspell|textproc/hunspell|1.7.2_1
+fcitx5|textproc/fcitx5|5.1.21_1
+pipewire|multimedia/pipewire|1.6.9
+py312-qt6-pyqt|devel/py-qt6-pyqt|6.11.0
+py312-ecdsa|security/py-ecdsa|0.19.2
+ngspice_rework-shlib|cad/ngspice_rework|44.2
+wx32-gtk3|x11-toolkits/wxgtk32|3.2.8.1_1
+opencascade|cad/opencascade|8.0.1_1
+poppler|graphics/poppler|26.04.0_1
+poppler-glib|graphics/poppler-glib|26.04.0_1
+kicad|cad/kicad|10.0.6_1,2

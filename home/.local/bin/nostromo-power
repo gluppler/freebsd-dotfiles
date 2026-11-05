@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+[ "$#" -le 1 ] || exit 2
+case ${1:-menu} in
+menu) choice=$(printf '%s\n' LOCK SUSPEND LOGOUT REBOOT 'POWER OFF' |
+    nostromo-picker -l 5 -p POWER) || exit 0 ;;
+logout) choice=LOGOUT ;;
+*) exit 2 ;;
+esac
+case $choice in
+LOCK) exec nostromo-lock ;;
+SUSPEND) exec nostromo-lock suspend ;;
+LOGOUT | REBOOT | 'POWER OFF')
+    confirm=$(printf '%s\n' CANCEL "$choice" | nostromo-picker -l 2 -p 'Save work first') || exit 0
+    [ "$confirm" = "$choice" ] || exit 0
+    case $choice in
+    LOGOUT)
+        case ${NOSTROMO_DWL_PID:-} in '' | *[!0-9]*) exit 1 ;; esac
+        [ "$(ps -p "$NOSTROMO_DWL_PID" -o uid= | tr -d ' ')" = "$(id -u)" ] || exit 1
+        command_name=$(ps -p "$NOSTROMO_DWL_PID" -o comm=)
+        [ "${command_name##*/}" = dwl ] || exit 1
+        kill -TERM "$NOSTROMO_DWL_PID"
+        ;;
+    REBOOT) exec nostromo-admin shutdown -r now ;;
+    'POWER OFF') exec nostromo-admin shutdown -p now ;;
+    esac
+    ;;
+esac

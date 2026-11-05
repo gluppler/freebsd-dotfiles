@@ -1,0 +1,74 @@
+#!/bin/sh
+# KiCad supplies the design/export tools; iBOM adds the assembly checklist.
+set -eu
+umask 077
+export GDK_BACKEND=wayland
+action=${1:-menu}
+[ "$#" = 0 ] || shift
+if [ "$action" = menu ]; then
+    [ "$#" = 0 ] || exit 2
+    action=$(printf '%s\n' gui check manufacture ibom step docs | fzf --prompt='PCB > ') || exit 0
+fi
+case $action in
+gui) exec kicad "$@" ;;
+docs)
+    [ "$#" = 0 ] || exit 2
+    exec nostromo-docs kicad
+    ;;
+check | manufacture | ibom | step) ;;
+*)
+    echo 'Usage: nostromo-eda [menu|gui|docs|check|manufacture|ibom|step] [project.kicad_pro]' >&2
+    exit 2
+    ;;
+esac
+if [ "$#" = 0 ]; then
+    printf 'Path to the saved .kicad_pro project: ' >&2
+    IFS= read -r project || exit 1
+else
+    [ "$#" = 1 ] || exit 2
+    project=$1
+fi
+case $project in *.kicad_pro) ;; *)
+    echo 'Select a saved KiCad project.' >&2
+    exit 2
+    ;;
+esac
+[ -f "$project" ] || exit 1
+project=$(realpath -- "$project")
+stem=${project%.kicad_pro}
+board=$stem.kicad_pcb
+schematic=$stem.kicad_sch
+[ -f "$board" ] || {
+    echo 'Save the board beside its project first.' >&2
+    exit 1
+}
+case $action in check | manufacture)
+    [ -f "$schematic" ] || {
+        echo 'Save the root schematic beside its project first.' >&2
+        exit 1
+    }
+    ;;
+esac
+output=$(mktemp -d "${project%/*}/pcb-output.XXXXXXXX")
+printf 'Reports and exports: %s\n' "$output"
+if [ "$action" = check ] || [ "$action" = manufacture ]; then
+    kicad-cli sch erc --exit-code-violations --output "$output/erc.rpt" "$schematic"
+    kicad-cli pcb drc --schematic-parity --exit-code-violations --output "$output/drc.rpt" "$board"
+    [ "$action" != check ] || exit 0
+fi
+if [ "$action" = manufacture ]; then
+    kicad-cli pcb export gerbers --check-zones \
+        --layers '*.Cu,F.Mask,B.Mask,F.Paste,B.Paste,F.Silkscreen,B.Silkscreen,Edge.Cuts' \
+        --output "$output/gerbers/" "$board"
+    kicad-cli pcb export drill --format excellon --output "$output/drill/" "$board"
+    kicad-cli sch export bom --exclude-dnp --fields '*' --output "$output/bom.csv" "$schematic"
+    kicad-cli pcb export pos --format csv --units mm --exclude-dnp --output "$output/positions.csv" "$board"
+    kicad-cli sch export pdf --black-and-white --output "$output/schematic.pdf" "$schematic"
+fi
+if [ "$action" = step ]; then
+    exec kicad-cli pcb export step --output "$output/board.step" "$board"
+fi
+plugin=${NOSTROMO_IBOM_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/nostromo/ibom}
+INTERACTIVE_HTML_BOM_NO_DISPLAY=1 python3.12 "$plugin/InteractiveHtmlBom/generate_interactive_bom.py" \
+    --no-browser --dark-mode --name-format ibom --dest-dir "$output" "$board"
+printf 'Open %s/ibom.html in qutebrowser; review fabrication files in GerbView before sending them.\n' "$output"

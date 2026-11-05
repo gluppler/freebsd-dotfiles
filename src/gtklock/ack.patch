@@ -1,0 +1,48 @@
+--- a/src/source.c
++++ b/src/source.c
+@@ -238,6 +238,12 @@
+ }
+ 
+ static void daemonize(void) {
++	/* Block acknowledgement before either child can send it. */
++	sigset_t set, previous;
++	sigemptyset(&set);
++	sigaddset(&set, SIGUSR2);
++	if (sigprocmask(SIG_BLOCK, &set, &previous) == -1)
++		report_error_and_exit("Cannot block lock acknowledgement\n");
+ 	parent = getpid();
+ 	pid_t pid = fork();
+ 	if(pid == -1) report_error_and_exit("Failed to daemonize!\n");
+@@ -245,11 +251,7 @@
+ 		int status;
+ 		waitpid(pid, &status, 0);
+ 		if(WIFEXITED(status) && WEXITSTATUS(status) == EXIT_SUCCESS) {
+-			sigset_t set;
+-			sigemptyset(&set);
+-			sigaddset(&set, SIGUSR2);
+-			sigprocmask(SIG_BLOCK, &set, NULL);
+-			int ret = sigtimedwait(&set, NULL, &(struct timespec){ 1, 0 });
++			int ret = sigtimedwait(&set, NULL, &(struct timespec){ 10, 0 });
+ 			if(ret == SIGUSR2)
+ 				exit(EXIT_SUCCESS);
+ 			exit(EXIT_FAILURE);
+@@ -257,6 +259,7 @@
+ 		report_error_and_exit("Failed to daemonize!\n");
+ 	}
+ 
++	if (sigprocmask(SIG_SETMASK, &previous, NULL) == -1) exit(EXIT_FAILURE);
+ 	if(setsid() == -1) exit(EXIT_FAILURE);
+ 	pid = fork();
+ 	if(pid == -1) exit(EXIT_FAILURE);
+--- a/src/window.c
++++ b/src/window.c
+@@ -153,6 +153,9 @@
+     } else {
+         if (!ctx) ctx = gtklock->focused_window;
+         if (ctx) {
++			GdkCursor *cursor = gdk_cursor_new_from_name(gtk_widget_get_display(ctx->window), "default");
++			gdk_window_set_cursor(gtk_widget_get_window(ctx->window), cursor);
++			if (cursor) g_object_unref(cursor);
+             gtk_widget_set_sensitive(ctx->input_field, TRUE);
+             gtk_widget_set_sensitive(ctx->unlock_button, TRUE);
+             gtk_label_set_text(GTK_LABEL(ctx->error_label), "Authentication failed");

@@ -1,0 +1,2 @@
+# west dependencies come from the reviewed native packages.
+west @ https://files.pythonhosted.org/packages/c5/1d/e50fb71de492abb549917fdbf13c4a8a8459af9d78a2fa47905804905c36/west-1.5.0-py3-none-any.whl --hash=sha256:f71411d11ed9ed00847405c6a83600374c2e0cf8676ed5af5d8b572f92c4765a

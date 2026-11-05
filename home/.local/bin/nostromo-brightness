@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+[ "$#" -le 1 ] || exit 2
+case ${1:-status} in
+status) exec backlight -q ;;
+up) exec backlight + 5 ;;
+down) exec backlight - 5 ;;
+menu)
+    choice=$(printf '%s\n' UP DOWN | nostromo-picker -p BRIGHTNESS -l 2) || exit 0
+    case $choice in UP) exec backlight + 5 ;; DOWN) exec backlight - 5 ;; *) exit 2 ;; esac
+    ;;
+*)
+    echo 'Usage: nostromo-brightness status|up|down|menu' >&2
+    exit 2
+    ;;
+esac

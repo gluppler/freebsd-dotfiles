@@ -1,0 +1,74 @@
+#!/bin/sh
+# Project-scoped embedded Rust; ordinary projects keep FreeBSD's packaged tools.
+set -eu
+action=${1:-help}
+[ "$#" = 0 ] || shift
+version=1.98.1
+rust_environment() {
+    export RUSTUP_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/nostromo/rustup"
+    export CARGO_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/nostromo/cargo"
+    export RUSTUP_DIST_SERVER=https://static.rust-lang.org
+}
+if [ "$action" = tool ]; then
+    tool=${1:?Missing Rust tool}
+    shift
+    case $tool in cargo | rustc | rustfmt | cargo-clippy | rust-analyzer) ;; *) exit 2 ;; esac
+    directory=$(pwd -P)
+    while [ ! -f "$directory/.nostromo-rust" ] && [ "$directory" != / ]; do
+        directory=${directory%/*}
+        [ -n "$directory" ] || directory=/
+    done
+    if [ ! -f "$directory/.nostromo-rust" ]; then exec "/usr/local/bin/$tool" "$@"; fi
+    IFS= read -r channel <"$directory/.nostromo-rust"
+    [ "$channel" = "$version" ] || {
+        echo 'Review the project Rust toolchain version.' >&2
+        exit 1
+    }
+    rust_environment
+    exec rustup run "$channel" "$tool" "$@"
+fi
+case $action in
+targets)
+    printf '%s\n' thumbv6m-none-eabi thumbv7m-none-eabi thumbv7em-none-eabi thumbv7em-none-eabihf \
+        thumbv8m.base-none-eabi thumbv8m.main-none-eabi thumbv8m.main-none-eabihf \
+        riscv32imc-unknown-none-elf riscv32imac-unknown-none-elf riscv64imac-unknown-none-elf \
+        riscv64gc-unknown-none-elf aarch64-unknown-none x86_64-unknown-none
+    ;;
+init)
+    [ "$(uname -s)" = FreeBSD ] && [ "$(id -u)" != 0 ] && [ "$#" = 2 ] || exit 2
+    target=$1 destination=$2
+    "$0" targets | grep -Fxq -e "$target" || {
+        echo 'Select a listed bare-metal target.' >&2
+        exit 2
+    }
+    [ ! -e "$destination" ] && [ ! -L "$destination" ] || {
+        echo 'Destination already exists.' >&2
+        exit 1
+    }
+    rust_environment
+    rustup toolchain install "$version" --profile minimal --component rust-src,rust-docs,rustfmt,clippy,rust-analyzer --target "$target" --no-self-update
+    # A library intentionally needs no guessed board flash/RAM address or startup.
+    rustup run "$version" cargo new --lib --name nostromo_embedded --vcs none "$destination"
+    mkdir "$destination/.cargo"
+    printf '[build]\ntarget = "%s"\n' "$target" >"$destination/.cargo/config.toml"
+    printf '[toolchain]\nchannel = "%s"\nprofile = "minimal"\ntargets = ["%s"]\n' "$version" "$target" >"$destination/rust-toolchain.toml"
+    printf '%s\n' "$version" >"$destination/.nostromo-rust"
+    cat >"$destination/src/lib.rs" <<'EOF'
+#![no_std]
+
+/// Pure logic can be shared with the exact board's HAL/startup application.
+pub fn next_counter(value: u32) -> u32 {
+    value.wrapping_add(1)
+}
+EOF
+    (
+        cd "$destination"
+        rustup run "$version" cargo check --target "$target"
+    )
+    printf 'Created %s for %s. Add your exact board HAL, memory map and probe before flashing.\n' "$destination" "$target"
+    ;;
+*)
+    printf '%s\n' 'nostromo-rust targets' 'nostromo-rust init TARGET NEW-DIRECTORY' \
+        'Then use cargo build/check/clippy and vis inside that project; see EMBEDDED.md.'
+    ;;
+esac

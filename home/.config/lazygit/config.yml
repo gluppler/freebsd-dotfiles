@@ -1,0 +1,12 @@
+gui:
+  theme:
+    activeBorderColor: [white, bold]
+    inactiveBorderColor: ['#555555']
+    optionsTextColor: [white]
+    selectedLineBgColor: [white]
+    selectedLineFgColor: [black]
+    unstagedChangesColor: [white, bold]
+git:
+  paging:
+    colorArg: always
+

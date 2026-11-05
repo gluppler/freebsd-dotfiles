@@ -1,0 +1,108 @@
+--- a/dwlb.c
++++ b/dwlb.c
+@@ -204,7 +204,7 @@
+ static uint32_t layouts_l, layouts_c;
+ 
+ static struct fcft_font *font;
+-static uint32_t height, textpadding, buffer_scale;
++static uint32_t height, textpadding;
+ 
+ static bool run_display;
+ 
+@@ -225,7 +225,7 @@
+ static int
+ allocate_shm_file(size_t size)
+ {
+-	int fd = memfd_create("surface", MFD_CLOEXEC);
++	int fd = shm_open(SHM_ANON, O_RDWR | O_CLOEXEC, 0600);
+ 	if (fd == -1)
+ 		return -1;
+ 	int ret;
+@@ -366,6 +366,28 @@
+ #define TEXT_WIDTH(text, maxwidth, padding)				\
+ 	draw_text(text, 0, 0, NULL, NULL, NULL, NULL, NULL, maxwidth, 0, padding, NULL, 0)
+ 
++/* A single bottom-left cut; status strings never pass through this painter. */
++static void
++nostromo_tag(pixman_image_t *image, uint32_t from, uint32_t to,
++    uint32_t height, bool active, uint32_t scale)
++{
++    int margin = (int)(2 * scale), thickness = (int)scale;
++    int left = (int)from + margin, right = (int)to - margin;
++    int top = margin, bottom = (int)height - margin;
++    int cut = MAX(1, (bottom - top) / 3);
++    pixman_color_t white = HEX_COLOR(0xffffffff), black = HEX_COLOR(0x000000ff);
++    for (int row = top; row < bottom; row++) {
++        int edge = left + MAX(0, row - (bottom - cut));
++        if (right <= edge) continue;
++        pixman_box32_t outer = {edge, row, right, row + 1};
++        pixman_image_fill_boxes(PIXMAN_OP_SRC, image, &white, 1, &outer);
++        if (!active && row >= top + thickness && row < bottom - thickness && right - edge > 2 * thickness) {
++            pixman_box32_t inner = {edge + thickness, row, right - thickness, row + 1};
++            pixman_image_fill_boxes(PIXMAN_OP_SRC, image, &black, 1, &inner);
++        }
++    }
++}
++
+ static int
+ draw_frame(Bar *bar)
+ {
+@@ -397,8 +419,6 @@
+ 	/* Draw on images */
+ 	uint32_t x = 0;
+ 	uint32_t y = (bar->height + font->ascent - font->descent) / 2;
+-	uint32_t boxs = font->height / 9;
+-	uint32_t boxw = font->height / 6 + 2;
+ 
+ 	for (uint32_t i = 0; i < tags_l; i++) {
+ 		const bool active = bar->mtags & 1 << i;
+@@ -411,37 +431,11 @@
+ 		pixman_color_t *fg_color = urgent ? &urgent_fg_color : (active ? &active_fg_color : (occupied ? &occupied_fg_color : &inactive_fg_color));
+ 		pixman_color_t *bg_color = urgent ? &urgent_bg_color : (active ? &active_bg_color : (occupied ? &occupied_bg_color : &inactive_bg_color));
+ 		
+-		if (!hide_vacant && occupied) {
+-			pixman_image_fill_boxes(PIXMAN_OP_SRC, foreground,
+-						fg_color, 1, &(pixman_box32_t){
+-							.x1 = x + boxs, .x2 = x + boxs + boxw,
+-							.y1 = boxs, .y2 = boxs + boxw
+-						});
+-			pixman_image_fill_boxes(PIXMAN_OP_SRC, foreground_mask,
+-						&(pixman_color_t){0xFFFF,0xFFFF,0xFFFF,0xFFFF},
+-						1, &(pixman_box32_t){
+-							.x1 = x + boxs, .x2 = x + boxs + boxw,
+-							.y1 = boxs, .y2 = boxs + boxw
+-						});
+-			if ((!bar->sel || !active) && boxw >= 3) {
+-				/* Make box hollow */
+-				pixman_image_fill_boxes(PIXMAN_OP_SRC, foreground,
+-							&(pixman_color_t){ 0 },
+-							1, &(pixman_box32_t){
+-								.x1 = x + boxs + 1, .x2 = x + boxs + boxw - 1,
+-								.y1 = boxs + 1, .y2 = boxs + boxw - 1
+-							});
+-				pixman_image_fill_boxes(PIXMAN_OP_SRC, foreground_mask,
+-							&(pixman_color_t){ 0 },
+-							1, &(pixman_box32_t){
+-								.x1 = x + boxs + 1, .x2 = x + boxs + boxw - 1,
+-								.y1 = boxs + 1, .y2 = boxs + boxw - 1
+-							});
+-			}
+-		}
+-		
++		uint32_t begin = x;
++
+ 		x = draw_text(tags[i], x, y, foreground, foreground_mask, background, fg_color, bg_color,
+ 			      bar->width, bar->height, bar->textpadding, NULL, 0);
++		nostromo_tag(background, begin, x, bar->height, active, buffer_scale);
+ 	}
+ 	
+ 	x = draw_text(bar->layout, x, y, foreground, foreground_mask, background,
+@@ -1897,7 +1891,7 @@
+ 
+ 	/* Load selected font */
+ 	fcft_init(FCFT_LOG_COLORIZE_AUTO, 0, FCFT_LOG_CLASS_ERROR);
+-	fcft_set_scaling_filter(FCFT_SCALING_FILTER_LANCZOS3);
++	/* fcft >= 3.3 selects its filter internally; the old setter is deprecated. */
+ 
+ 	unsigned int dpi = 96 * buffer_scale;
+ 	char buf[10];

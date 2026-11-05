@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' file:; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline' file:; base-uri 'none'; form-action 'none'">
+<title>Start · nostromo</title>
+<style>
+    :root { color-scheme: dark; font-family: Michroma, sans-serif; background: #000; color: #fff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; }
+    main { width: min(1040px, 88vw); padding: 48px 0 24px; }
+    .orb { display: block; width: clamp(100px, 12vw, 164px); height: auto; margin: 0 auto 46px; image-rendering: pixelated; animation: resolve .8s steps(1) both; }
+    .filter { display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #666; margin-bottom: 24px; padding: 12px 0; }
+    .filter:focus-within { border-color: #fff; }
+    .filter svg { width: 18px; height: 18px; flex-shrink: 0; }
+    input { width: 100%; min-width: 0; background: transparent; border: 0; color: #fff; outline: 0; font: 13px Michroma, sans-serif; }
+    input::placeholder { color: #aaa; opacity: 1; }
+    kbd, small, .hint, #message { font-family: "Azeret Mono", monospace; font-weight: 400; }
+    kbd { font-size: 12px; white-space: nowrap; }
+    nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+    .tile { --cut: 13px; position: relative; display: flex; min-height: 150px; padding: 24px; flex-direction: column; align-items: flex-start; gap: 12px; color: #fff; text-decoration: none; background: #686868; outline: 0; clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut))); }
+    .tile::before { content: ""; position: absolute; inset: 1px; background: #050505; clip-path: polygon(0 0, calc(100% - var(--cut) + 1px) 0, 100% calc(var(--cut) - 1px), 100% 100%, calc(var(--cut) - 1px) 100%, 0 calc(100% - var(--cut) + 1px)); }
+    .tile > * { position: relative; }
+    .tile:focus, .tile:hover { background: #fff; }
+    .tile:focus::before, .tile:hover::before { background: #151515; }
+    .tile:focus .key, .tile:hover .key { background: #fff; color: #000; }
+    .tile svg { width: 26px; height: 26px; margin-bottom: 4px; }
+    .tile .key { position: absolute; top: 16px; right: 18px; padding: 3px 7px; color: #bbb; transition: background-color .12s; }
+    .tile .name { font-size: 14px; letter-spacing: .04em; }
+    .tile small { font-size: 11px; color: #aaa; overflow-wrap: anywhere; }
+    .tile[hidden] { display: none; }
+    footer { display: flex; justify-content: space-between; gap: 16px; margin-top: 24px; font-size: 11px; color: #aaa; flex-wrap: wrap; }
+    footer .hint { display: flex; gap: 16px; flex-wrap: wrap; }
+    #message { margin: 18px 0 0; min-height: 3em; color: #ccc; font-size: 12px; line-height: 1.65; }
+    #message code { color: #fff; }
+    .crt { position: fixed; inset: 0; pointer-events: none; z-index: 2; background: repeating-linear-gradient(transparent 0 3px, #0003 3px 4px); }
+    .crt::after { content: ""; position: absolute; left: 0; right: 0; height: 15vh; background: linear-gradient(transparent, #ffffff05, transparent); animation: scan 8s linear infinite; }
+    svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: square; stroke-linejoin: miter; }
+    @keyframes scan { from { transform: translateY(-20vh); } to { transform: translateY(110vh); } }
+    @keyframes resolve { 0%, 18% { opacity: 0; transform: translateX(-3px); } 12%, 26% { opacity: .6; transform: translateX(3px); } 34%, 100% { opacity: 1; transform: none; } }
+    @media (max-width: 720px) { nav { grid-template-columns: repeat(2, minmax(0, 1fr)); } main { padding-top: 32px; } .orb { margin-bottom: 28px; } }
+    @media (max-width: 400px) { nav { grid-template-columns: 1fr; } .tile { min-height: 125px; } }
+    @media (prefers-reduced-motion: reduce) { *, *::after { animation: none !important; transition: none !important; } }
+</style>
+<main>
+    <img class="orb" src="../nostromo-orb.png" width="168" height="144" alt="Nostromo orb">
+    <div class="filter">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg>
+        <input id="filter" type="search" aria-label="Filter services" placeholder="Filter services" autocomplete="off" spellcheck="false">
+        <kbd>/</kbd>
+    </div>
+    <nav aria-label="Services">
+        <a class="tile" data-service="containers" href="#message" aria-disabled="true">
+            <kbd class="key">1</kbd><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 9 5v10l-9 5-9-5V7Zm-9 5 9 5 9-5M12 12v10M7 4.8l9 5"/></svg>
+            <span class="name">Containers</span><small>Not configured</small>
+        </a>
+        <a class="tile" data-service="pods" href="#message" aria-disabled="true">
+            <kbd class="key">2</kbd><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 2h6v6H9ZM2 16h6v6H2Zm14 0h6v6h-6ZM12 8v4H5v4m7-4h7v4"/></svg>
+            <span class="name">Pods</span><small>Not configured</small>
+        </a>
+        <a class="tile" data-service="files" href="#message" aria-disabled="true">
+            <kbd class="key">3</kbd><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6h8l2 3h10v12H2Zm0 0V3h8l2 3h8v3"/></svg>
+            <span class="name">Files</span><small>Not configured</small>
+        </a>
+        <a class="tile" data-service="ai" href="#message" aria-disabled="true">
+            <kbd class="key">4</kbd><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z"/></svg>
+            <span class="name">AI</span><small>Not configured</small>
+        </a>
+        <a class="tile" data-service="discord" href="#message" aria-disabled="true">
+            <kbd class="key">5</kbd><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h18v14H9l-6 5Zm4 5h10M7 12h7"/></svg>
+            <span class="name">Discord</span><small>Not configured</small>
+        </a>
+        <a class="tile" data-service="services" href="#message" aria-disabled="true">
+            <kbd class="key">6</kbd><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h18v7H3Zm0 11h18v7H3ZM6 6h1m-1 11h1m8-11h3m-3 11h3"/></svg>
+            <span class="name">Services</span><small>Not configured</small>
+        </a>
+    </nav>
+    <footer><span class="hint"><span><kbd>1–6</kbd> open</span><span><kbd>j / k</kbd> move</span><span><kbd>Tab / Enter</kbd> select</span></span><span class="hint">Local bookmarks</span></footer>
+    <p id="message" role="status" aria-live="polite">Set your service addresses in <code>~/.local/share/nostromo/start/links.js</code>.</p>
+    <noscript><p>Enable JavaScript for configured links and keyboard shortcuts. All services are placeholders until configured.</p></noscript>
+</main>
+<div class="crt" aria-hidden="true"></div>
+<script src="links.js"></script>
+<script>
+    "use strict";
+    const tiles = Array.from(document.querySelectorAll(".tile"));
+    const filter = document.getElementById("filter");
+    const message = document.getElementById("message");
+    for (const tile of tiles) {
+        const address = (window.nostromoLinks || {})[tile.dataset.service];
+        if (address) {
+            try {
+                const url = new URL(address);
+                if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) throw new Error("URL");
+                tile.href = url.href;
+                tile.removeAttribute("aria-disabled");
+                tile.querySelector("small").textContent = url.host;
+            } catch (_) { tile.querySelector("small").textContent = "Invalid HTTP(S) address"; }
+        }
+        tile.addEventListener("click", event => {
+            if (!tile.hasAttribute("aria-disabled")) return;
+            event.preventDefault();
+            message.textContent = tile.querySelector(".name").textContent + ": set its HTTP(S) address in links.js.";
+        });
+    }
+    filter.addEventListener("input", () => {
+        const query = filter.value.trim().toLowerCase();
+        for (const tile of tiles) tile.hidden = !tile.querySelector(".name").textContent.toLowerCase().includes(query);
+        message.textContent = tiles.every(tile => tile.hidden) ? "No matching services. Escape clears the filter." : "";
+    });
+    document.addEventListener("keydown", event => {
+        if (event.ctrlKey || event.altKey || event.metaKey || event.isComposing || event.keyCode === 229) return;
+        if (event.key === "Escape") {
+            filter.value = ""; filter.dispatchEvent(new Event("input")); filter.blur();
+        }
+        if (event.target === filter) {
+            if (event.key === "Enter" || event.key === "ArrowDown") {
+                event.preventDefault(); tiles.find(tile => !tile.hidden)?.focus();
+            }
+            return;
+        }
+        if (event.key === "/") { event.preventDefault(); filter.focus(); return; }
+        const visible = tiles.filter(tile => !tile.hidden);
+        if (["j", "k", "ArrowDown", "ArrowUp"].includes(event.key) && visible.length) {
+            event.preventDefault();
+            const current = visible.indexOf(document.activeElement);
+            const step = ["j", "ArrowDown"].includes(event.key) ? 1 : -1;
+            visible[current < 0 ? (step === 1 ? 0 : visible.length - 1) : (current + step + visible.length) % visible.length].focus();
+        } else if (/^[1-6]$/.test(event.key)) {
+            const tile = tiles[Number(event.key) - 1];
+            if (!tile.hidden) { event.preventDefault(); tile.focus(); tile.click(); }
+        }
+    });
+</script>
+</html>

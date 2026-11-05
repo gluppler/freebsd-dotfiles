@@ -1,0 +1,81 @@
+.Dd November 5, 2026
+.Dt NOSTROMO-DOCS 1
+.Os
+.Sh NAME
+.Nm nostromo-docs
+.Nd read local programming manuals and examples
+.Sh SYNOPSIS
+.Nm
+.Op Cm menu
+.Nm
+.Cm c | cpp | man | go | go-examples | python | examples | guide
+.Ar topic
+.Nm
+.Cm rust
+.Ar book | std | reference | rust-by-example | embedded-book
+.Nm
+.Cm llvm | freebsd | --check
+.Nm
+.Cm language
+.Ar c | cpp
+.Nm
+.Cm python-book
+.Ar tutorial | reference | library | c-api | extending | howto | using | whatsnew
+.Nm
+.Cm go-language | kicad-cli | versions
+.Nm
+.Cm kicad
+.Op Ar kicad | eeschema | pcbnew | gerbview | pcb_calculator | pl_editor | getting_started_in_kicad
+.Sh DESCRIPTION
+With no arguments,
+.Nm
+opens a terminal topic picker.
+.Cm menu
+opens the graphical picker and launches a separate documentation window.
+Manuals and Markdown examples use the terminal pager.
+Rust books and the
+.Fx
+Handbook open local HTML in qutebrowser.
+The C/C++ archive, Go specification, Python books and KiCad manuals also use
+local HTML. The versions action reports installed toolchains and the dated
+cppreference snapshot. The Rust picker includes the books actually present in
+the selected compiler's sysroot, including Cargo, rustc, rustdoc and Clippy.
+.Pp
+The
+.Cm examples
+topics are c, cpp, rust, go, python, shell, assembly, vis and zephyr.
+Code blocks keep their indentation.
+No example is executed by the reader.
+.Pp
+Go queries disable module and toolchain downloads.
+Python library queries read the installed text manual without importing modules.
+Install the documentation packages while online before using this command
+offline.
+.Ss Keys
+Use j and k to scroll, / to search, n for the next result and q to close
+the pager.
+Left and right scroll long example lines.
+In vis, Space od opens the documentation menu.
+In dvtm, Ctrl+B d opens a documentation pane.
+.Sh FILES
+.Bl -tag -width Ds
+.It Pa ~/.local/share/nostromo/reference
+Markdown examples shipped with the dotfiles.
+.It Pa ~/.local/share/nostromo/OFFLINE-DOCS.md
+Installed references, commands and update instructions.
+.It Pa ~/.local/share/man
+Manual pages for the locally built desktop programs.
+.El
+.Sh EXAMPLES
+.Bd -literal -offset indent
+nostromo-docs c malloc
+nostromo-docs cpp std::vector
+nostromo-docs go fmt.Printf
+nostromo-docs go-examples fmt
+nostromo-docs python pathlib
+nostromo-docs examples assembly
+.Ed
+.Sh SEE ALSO
+.Xr apropos 1 ,
+.Xr man 1 ,
+.Xr mandoc 1

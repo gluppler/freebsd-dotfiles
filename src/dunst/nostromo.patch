@@ -1,0 +1,163 @@
+--- a/src/draw.c
++++ b/src/draw.c
+@@ -17,6 +17,7 @@
+ #include <glib.h>
+ 
+ #include "draw.h"
++#include "nostromo.h"
+ #include "dunst.h"
+ #include "icon.h"
+ #include "log.h"
+@@ -30,6 +31,7 @@
+ 
+ struct colored_layout {
+         PangoLayout *l;
++        PangoLayout *source;
+         char *text;
+         PangoAttrList *attr;
+         cairo_surface_t *icon;
+@@ -281,7 +283,7 @@
+         int icon_width = cl->icon ? get_icon_width(cl->icon, scale) + horizontal_padding : 0;
+         int text_width = width - 2 * settings.h_padding - (cl->n->icon_position == ICON_TOP ? 0 : icon_width);
+         int progress_bar_height = have_progress_bar(cl) ? settings.progress_bar_height + settings.padding : 0;
+-        int max_text_height = MAX(0, settings.height.max - progress_bar_height - 2 * settings.padding);
++        int max_text_height = MAX(0, settings.height.max - progress_bar_height - 2 * settings.padding - nostromo_source_height(cl->source, scale));
+         layout_setup_pango(cl->l, text_width, max_text_height, cl->n->word_wrap, cl->n->ellipsize, cl->n->alignment);
+ }
+ 
+@@ -289,6 +291,7 @@
+ {
+         struct colored_layout *cl = data;
+         g_object_unref(cl->l);
++        g_object_unref(cl->source);
+         pango_attr_list_unref(cl->attr);
+         g_free(cl->text);
+         g_free(cl);
+@@ -321,7 +324,7 @@
+                 dim.h = MAX(icon_height, dim.text_height);
+         }
+ 
+-        dim.h += progress_bar_height + settings.padding * 2;
++        dim.h += progress_bar_height + settings.padding * 2 + nostromo_source_height(cl->source, scale);
+         dim.w = dim.text_width + icon_width + 2 * settings.h_padding;
+ 
+         if (have_progress_bar(cl))
+@@ -394,6 +397,7 @@
+ {
+         struct colored_layout *cl = g_malloc(sizeof(struct colored_layout));
+         cl->l = layout_create(c);
++        cl->source = nostromo_source(pango_layout_get_context(cl->l), pango_fdesc, n->appname);
+         cl->is_xmore = false;
+         cl->n = n;
+ 
+@@ -506,35 +510,10 @@
+                 h_progress_bar = settings.progress_bar_height + settings.padding;
+         }
+ 
+-        return (cl->n->icon_position == ICON_TOP && cl->n->icon)
++        return nostromo_source_height(cl->source, scale) +
++                ((cl->n->icon_position == ICON_TOP && cl->n->icon)
+                 ? h_icon + h_text + h_progress_bar + vertical_padding
+-                : MAX(h_text, h_icon) + h_progress_bar;
+-}
+-
+-/* Attempt to make internal radius more organic.
+- * Simple r-w is not enough for too small r/w ratio.
+- * simplifications: r/2 == r - w + w*w / (r * 2) with (w == r)
+- * r, w - corner radius & frame width,
+- * h  - box height
+- */
+-static int frame_internal_radius (int r, int w, int h)
+-{
+-        if (r == 0 || h + (w - r) * 2 == 0)
+-                return 0;
+-
+-        // Integer precision scaler, using 1/4 of int size
+-        const int s = 2 << (8 * sizeof(int) / 4);
+-
+-        int r1, r2, ret;
+-        h *= s;
+-        r *= s;
+-        w *= s;
+-        r1 = r - w + w * w / (r * 2);    // w  <  r
+-        r2 = r * h / (h + (w - r) * 2);  // w  >= r
+-
+-        ret = (r > w) ? r1 : (r / 2 < r2) ? r / 2 : r2;
+-
+-        return ret / s;
++                : MAX(h_text, h_icon) + h_progress_bar);
+ }
+ 
+ /**
+@@ -717,7 +696,7 @@
+                                           double scale)
+ {
+         int x = 0;
+-        int radius_int = corner_radius;
++        double radius_int = corner_radius;
+ 
+         cairo_t *c = cairo_create(srf);
+ 
+@@ -734,7 +713,7 @@
+         else
+                 height += settings.separator_height;
+ 
+-        draw_rounded_rect(c, x, y, width, height, corner_radius, scale, corners);
++        nostromo_frame(c, x, y, width, height, corner_radius, scale, corners);
+ 
+         /* adding frame */
+         x += settings.frame_width;
+@@ -750,13 +729,13 @@
+         else
+                 height -= settings.separator_height;
+ 
+-        radius_int = frame_internal_radius(corner_radius, settings.frame_width, height);
+-
+-        draw_rounded_rect(c, x, y, width, height, radius_int, scale, corners);
++        radius_int = MAX(0, corner_radius - (2 - sqrt(2)) * settings.frame_width);
++
++        nostromo_frame(c, x, y, width, height, radius_int, scale, corners);
+         cairo_set_source_rgba(c, COLOR(cl, frame.r), COLOR(cl, frame.g), COLOR(cl, frame.b), COLOR(cl, frame.a));
+         cairo_fill(c);
+ 
+-        draw_rounded_rect(c, x, y, width, height, radius_int, scale, corners);
++        nostromo_frame(c, x, y, width, height, radius_int, scale, corners);
+         cairo_set_source_rgba(c, COLOR(cl, bg.r), COLOR(cl, bg.g), COLOR(cl, bg.b), COLOR(cl, bg.a));
+         cairo_fill(c);
+ 
+@@ -939,15 +918,33 @@
+ {
+         double scale = output->get_scale();
+         const int cl_h = layout_get_height(cl, scale);
++        const int source_height = nostromo_source_height(cl->source, scale);
++        const int overlap = (source_height + 1) / 2;
++
++        /* Frame edges exist even when their corners are square. */
++        if (settings.gap_size)
++                corners |= _C_FIRST | _C_LAST;
+ 
+         int bg_width = 0;
+         int bg_height = MAX(settings.height.min, 2 * settings.padding + cl_h);
+         bg_height = MIN(settings.height.max, bg_height);
+ 
+-        cairo_surface_t *content = render_background(srf, cl, cl_next, dim.y, dim.w, bg_height, dim.corner_radius, corners, &bg_width, scale);
++        cairo_surface_t *content = render_background(srf, cl, cl_next,
++                dim.y + overlap, dim.w, bg_height - overlap,
++                dim.corner_radius, corners, &bg_width, scale);
+         cairo_t *c = cairo_create(content);
+ 
+-        render_content(c, cl, bg_width, bg_height, scale);
++        nostromo_frame(c, 0, 0, bg_width, bg_height - overlap,
++                MAX(0, dim.corner_radius - (2 - sqrt(2)) * settings.frame_width), scale, corners);
++        cairo_clip(c);
++        cairo_translate(c, 0, (source_height - overlap) * scale);
++        render_content(c, cl, bg_width, MAX(0, bg_height - source_height), scale);
++
++        /* Paint the source tab last, straddling the top frame, 3.5% inset. */
++        cairo_t *label = cairo_create(srf);
++        cairo_translate(label, 0, dim.y * scale);
++        nostromo_source_draw(label, cl->source, dim.w, scale);
++        cairo_destroy(label);
+ 
+         /* adding frame */
+         if (corners & (C_TOP | _C_FIRST))

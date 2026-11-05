@@ -1,0 +1,306 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fastfetch-cli/fastfetch/2.69.0/doc/json_schema.json",
+  "logo": {
+    "type": "file-raw",
+    "source": "~/.local/share/nostromo/nostromo-orb-small.txt",
+    "padding": {
+      "right": 3
+    },
+    "printRemaining": true
+  },
+  "display": {
+    "separator": "  ",
+    "color": {
+      "keys": "white",
+      "title": "white",
+      "output": "white"
+    },
+    "key": {
+      "width": 18,
+      "type": "string"
+    },
+    "percent": {
+      "type": 1
+    }
+  },
+  "modules": [
+    "title",
+    "separator",
+    {
+      "type": "os",
+      "key": "◈ OS"
+    },
+    {
+      "type": "host",
+      "key": "◈ LAPTOP"
+    },
+    {
+      "type": "board",
+      "key": "BOARD"
+    },
+    {
+      "type": "chassis",
+      "key": "CHASSIS"
+    },
+    {
+      "type": "bios",
+      "key": "FIRMWARE",
+      "format": "{vendor} {version} ({date}) [{type}]"
+    },
+    {
+      "type": "bootmgr",
+      "key": "BOOT MANAGER"
+    },
+    {
+      "type": "kernel",
+      "key": "KERNEL"
+    },
+    {
+      "type": "uptime",
+      "key": "↑ UPTIME"
+    },
+    {
+      "type": "initsystem",
+      "key": "INIT"
+    },
+    {
+      "type": "packages",
+      "key": "PACKAGES"
+    },
+    {
+      "type": "shell",
+      "key": "› SHELL"
+    },
+    {
+      "type": "command",
+      "key": "INSTALLED TOOLS",
+      "text": "pkg query '%n %v' llvm21 rust go126 python312 uv git-lite kicad",
+      "splitLines": true
+    },
+    {
+      "type": "locale",
+      "key": "LOCALE"
+    },
+    {
+      "type": "datetime",
+      "key": "DATE / TIME"
+    },
+    "break",
+    {
+      "type": "cpu",
+      "key": "▣ CPU",
+      "temp": true,
+      "format": "{name} | {cores-physical} cores / {cores-logical} threads | base {freq-base} / max {freq-max}{?temperature} | {temperature}{?}"
+    },
+    {
+      "type": "cpucache",
+      "key": "CPU CACHE"
+    },
+    {
+      "type": "cpuusage",
+      "key": "CPU LOAD"
+    },
+    {
+      "type": "loadavg",
+      "key": "LOAD AVERAGE"
+    },
+    {
+      "type": "memory",
+      "key": "▤ RAM"
+    },
+    {
+      "type": "physicalmemory",
+      "key": "MEMORY MODULES"
+    },
+    {
+      "type": "swap",
+      "key": "SWAP"
+    },
+    {
+      "type": "processes",
+      "key": "PROCESSES"
+    },
+    {
+      "type": "gpu",
+      "key": "▣ GPU",
+      "temp": true,
+      "driverSpecific": true,
+      "format": "{name} [{type}] | {driver}{?temperature} | {temperature}{?}"
+    },
+    {
+      "type": "opengl",
+      "key": "OPENGL"
+    },
+    {
+      "type": "vulkan",
+      "key": "VULKAN"
+    },
+    {
+      "type": "opencl",
+      "key": "OPENCL"
+    },
+    "break",
+    {
+      "type": "physicaldisk",
+      "key": "▰ STORAGE",
+      "temp": true,
+      "format": "{name} | {size} | {interconnect} {physical-type} | {dev-path}{?revision} | firmware {revision}{?}{?temperature} | {temperature}{?}"
+    },
+    {
+      "type": "disk",
+      "key": "FILESYSTEM",
+      "showHidden": true,
+      "hideFolders": ""
+    },
+    {
+      "type": "zpool",
+      "key": "ZFS POOLS"
+    },
+    {
+      "type": "diskio",
+      "key": "DISK I/O"
+    },
+    {
+      "type": "battery",
+      "key": "BATTERY",
+      "temp": true,
+      "format": "{manufacturer} {name} | {capacity} [{status}]{?time-formatted} | {time-formatted}{?}{?cycle-count} | cycles {cycle-count}{?}{?temperature} | {temperature}{?}"
+    },
+    {
+      "type": "poweradapter",
+      "key": "POWER ADAPTER"
+    },
+    "break",
+    {
+      "type": "display",
+      "key": "DISPLAY"
+    },
+    {
+      "type": "monitor",
+      "key": "MONITOR"
+    },
+    {
+      "type": "brightness",
+      "key": "BRIGHTNESS"
+    },
+    {
+      "type": "wm",
+      "key": "COMPOSITOR"
+    },
+    {
+      "type": "wmtheme",
+      "key": "WM THEME"
+    },
+    {
+      "type": "lm",
+      "key": "LOGIN MANAGER"
+    },
+    {
+      "type": "theme",
+      "key": "GTK / QT THEME"
+    },
+    {
+      "type": "icons",
+      "key": "ICONS"
+    },
+    {
+      "type": "font",
+      "key": "FONTS"
+    },
+    {
+      "type": "cursor",
+      "key": "CURSOR"
+    },
+    {
+      "type": "terminal",
+      "key": "TERMINAL"
+    },
+    {
+      "type": "terminalfont",
+      "key": "TERMINAL FONT"
+    },
+    {
+      "type": "terminalsize",
+      "key": "TERMINAL SIZE"
+    },
+    {
+      "type": "terminaltheme",
+      "key": "TERMINAL THEME"
+    },
+    {
+      "type": "editor",
+      "key": "EDITOR"
+    },
+    {
+      "type": "wallpaper",
+      "key": "WALLPAPER"
+    },
+    "break",
+    {
+      "type": "localip",
+      "key": "NETWORK",
+      "showIpv6": true,
+      "showMac": true,
+      "showSpeed": true,
+      "showMtu": true,
+      "showAllIps": true,
+      "defaultRouteOnly": false
+    },
+    {
+      "type": "dns",
+      "key": "DNS"
+    },
+    {
+      "type": "wifi",
+      "key": "WI-FI"
+    },
+    {
+      "type": "netio",
+      "key": "NETWORK I/O",
+      "defaultRouteOnly": false
+    },
+    {
+      "type": "command",
+      "key": "WIREGUARD",
+      "text": "nostromo-vpn brief"
+    },
+    {
+      "type": "bluetooth",
+      "key": "BLUETOOTH DEVICES"
+    },
+    {
+      "type": "command",
+      "key": "BLUETOOTH HCI",
+      "text": "nostromo-bluetooth status"
+    },
+    {
+      "type": "sound",
+      "key": "AUDIO",
+      "soundType": "all"
+    },
+    {
+      "type": "keyboard",
+      "key": "KEYBOARD"
+    },
+    {
+      "type": "mouse",
+      "key": "POINTER"
+    },
+    {
+      "type": "gamepad",
+      "key": "GAMEPAD"
+    },
+    {
+      "type": "camera",
+      "key": "CAMERA"
+    },
+    {
+      "type": "tpm",
+      "key": "TPM"
+    },
+    {
+      "type": "version",
+      "key": "FASTFETCH"
+    }
+  ]
+}

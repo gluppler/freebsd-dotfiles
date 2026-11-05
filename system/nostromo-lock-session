@@ -1,0 +1,39 @@
+#!/bin/sh
+# Run as the desktop user by the bounded system suspend hook.
+set -eu
+[ "$(id -u)" != 0 ] && [ "$#" = 0 ] || exit 1
+PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
+GDK_BACKEND=wayland
+export PATH GDK_BACKEND
+unset DISPLAY WAYLAND_SOCKET
+# su has no pam_xdg session by default. Resolve the existing login directory
+# using that module's configured prefix; do not create a replacement directory.
+prefix=$(awk '
+    $1=="session" && $3 ~ /(^|\/)pam_xdg\.so$/ {
+        n++; prefix="/var/run/xdg"
+        for(i=4;i<=NF && $i !~ /^#/;i++) if($i ~ /^runtime_dir_prefix=/) {
+            if(seen++)exit 1
+            prefix=substr($i,20)
+        }
+        print prefix
+    }
+    END {if(n!=1)exit 1}
+' /etc/pam.d/system)
+case $prefix in /*) ;; *) exit 1 ;; esac
+case $prefix in *[[:cntrl:]]* | *'"'* | *"'"*) exit 1 ;; esac
+runtime=$prefix/$(id -un)
+XDG_RUNTIME_DIR=$runtime
+export XDG_RUNTIME_DIR
+[ -d "$runtime" ] && [ ! -L "$runtime" ] &&
+    [ "$(stat -f '%u %Lp' "$runtime")" = "$(id -u) 700" ] || exit 1
+found=no
+for socket in "$runtime"/wayland-*; do
+    [ -S "$socket" ] && [ ! -L "$socket" ] || continue
+    WAYLAND_DISPLAY=${socket##*/}
+    export WAYLAND_DISPLAY
+    found=yes
+    if ! nostromo-control is-locked; then gtklock --daemonize; fi
+    nostromo-control is-locked
+done
+# An absent/unknown compositor is not evidence of a locked session.
+[ "$found" = yes ]

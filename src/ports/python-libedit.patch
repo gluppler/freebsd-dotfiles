@@ -1,0 +1,22 @@
+--- a/lang/python312/Makefile
++++ b/lang/python312/Makefile
+@@ -20,7 +20,7 @@
+ 		libffi.so:devel/libffi
+ 
+ USES=		compiler:c11 cpe ncurses pathfix pkgconfig \
+-		python:${PYTHON_DISTVERSION:R},env readline shebangfix ssl tar:xz
++		python:${PYTHON_DISTVERSION:R},env shebangfix ssl tar:xz
+ PATHFIX_MAKEFILEIN=	Makefile.pre.in
+ USE_LDCONFIG=	yes
+ GNU_CONFIGURE=	yes
+@@ -31,7 +31,9 @@
+ 		Lib/test/ziptestdata/header.sh
+ 
+ DISABLED_EXTENSIONS=	_sqlite3 _tkinter _gdbm
+-CONFIGURE_ARGS+=	--enable-shared --without-ensurepip --with-system-expat
++LIB_DEPENDS+=	libedit.so:devel/libedit
++CONFIGURE_ARGS+=	--with-readline=editline \
++		--enable-shared --without-ensurepip --with-system-expat
+ CONFIGURE_ENV+=		OPT="" # Null out OPT to respect user CFLAGS and remove optimizations
+ 
+ INSTALL_TARGET=		altinstall					# Don't want cloberring of unprefixed files

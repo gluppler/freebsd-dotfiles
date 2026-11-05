@@ -1,0 +1,106 @@
+#!/bin/sh
+# One-shot FreeBSD HWP policy, invoked by ACPI changes and the keyboard menu.
+set -eu
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
+export PATH
+[ "$(uname -s)" = FreeBSD ] || {
+    echo 'FreeBSD HWP controls are required.' >&2
+    exit 1
+}
+[ "$#" -le 1 ] || exit 2
+profile=${1:-auto}
+case $profile in auto | event | ac | battery | save | status) ;; *)
+    echo 'Use auto, ac, battery, save or status.' >&2
+    exit 2
+    ;;
+esac
+keys=$(sysctl -aN | LC_ALL=C awk '/^dev\.hwpstate_intel\.[0-9]+\.epp$/')
+state=/var/db/nostromo
+file=$state/power-profile
+selected=auto
+if [ -e "$file" ]; then
+    [ ! -L "$state" ] && [ ! -L "$file" ] && [ "$(stat -f '%u %Lp' "$file")" = '0 600' ] || exit 1
+    selected=$(cat "$file")
+    case $selected in auto | ac | battery | save) ;; *) exit 1 ;; esac
+fi
+request=$profile
+[ "$profile" != event ] || profile=$selected
+if [ "$profile" = status ]; then
+    printf 'Selected policy: %s\n' "$selected"
+    if [ -z "$keys" ]; then
+        printf 'HWP unavailable; frequency driver: '
+        sysctl -n dev.cpufreq.0.freq_driver 2>/dev/null || printf 'unavailable\n'
+    else
+        for key in $keys; do sysctl "$key"; done
+    fi
+    exit 0
+fi
+[ "$(id -u)" = 0 ] || {
+    echo 'Use nostromo-admin performance for a power-profile change.' >&2
+    exit 1
+}
+if [ -z "$keys" ]; then
+    case $profile in auto) ;; *)
+        echo 'Manual EPP profiles require the native HWP driver; powerd manages AC/battery here.' >&2
+        exit 1
+        ;;
+    esac
+    # Bootstrap configures native powerd only on a detected non-HWP driver.
+    service powerd onestatus >/dev/null 2>&1 || {
+        echo 'No HWP controls or running powerd fallback; inspect the detected driver.' >&2
+        exit 1
+    }
+    exit 0
+fi
+case $profile in
+auto) case $(sysctl -n hw.acpi.acline 2>/dev/null || :) in 1) value=0 ;; *) value=50 ;; esac ;;
+ac) value=0 ;;
+battery) value=50 ;;
+save) value=80 ;;
+esac
+umask 077
+lock=/var/run/nostromo-performance.lock
+mkdir "$lock" || {
+    echo 'A power-policy update is already running.' >&2
+    exit 1
+}
+temporary=
+finish() {
+    status=$?
+    trap - 0
+    if [ "$status" != 0 ] && [ -f "$lock/changed" ]; then
+        while IFS=' ' read -r key old; do
+            # Preserve a subsequent administrator change while recovering ours.
+            current=$(sysctl -n "$key") || continue
+            [ "$current" != "$value" ] || sysctl "$key=$old" >/dev/null || :
+        done <"$lock/changed"
+    fi
+    [ -z "$temporary" ] || rm -f "$temporary"
+    rm -f "$lock/changed" "$lock/before"
+    rmdir "$lock"
+    exit "$status"
+}
+trap finish 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
+# Preflight every node before changing any; journal successful changes.
+for key in $keys; do
+    old=$(sysctl -n "$key")
+    case $old in '' | *[!0-9]*) exit 1 ;; esac
+    printf '%s %s\n' "$key" "$old" >>"$lock/before"
+done
+while IFS=' ' read -r key old; do
+    if [ "$old" != "$value" ]; then
+        printf '%s %s\n' "$key" "$old" >>"$lock/changed"
+        sysctl "$key=$value" >/dev/null
+    fi
+done <"$lock/before"
+if [ "$request" != event ]; then
+    [ ! -L "$state" ] || exit 1
+    mkdir -p "$state"
+    [ "$(stat -f '%u %Lp' "$state")" = '0 700' ] || exit 1
+    temporary=$(mktemp "$state/.power-profile.XXXXXXXX")
+    printf '%s\n' "$profile" >"$temporary"
+    mv "$temporary" "$file"
+    temporary=
+fi

@@ -1,0 +1,31 @@
+--- a/textproc/fcitx5/Makefile
++++ b/textproc/fcitx5/Makefile
+@@ -29,7 +29,7 @@
+ 
+ # gettext-tools for both build-time hard requirement and Fcitx5 helper shell scripts
+ USES=		cmake compiler:c++20-lang gettext-runtime \
+-		gettext-tools:build,run gnome kde pkgconfig tar:zst
++		gettext-tools:build gnome kde pkgconfig tar:zst
+ 
+ CXXFLAGS+=	-fexperimental-library
+ 
+@@ -79,4 +79,7 @@
+ post-extract:
+ 	${CP} ${DISTDIR}/${DIST_SUBDIR}/${SPELL_EN_DICT_TAR} ${WRKSRC}/src/modules/spell/
+ 
++post-install:
++	${INSTALL_SCRIPT} ${FILESDIR}/fcitx5-diagnose ${STAGEDIR}${PREFIX}/bin/fcitx5-diagnose
++
+ .include <bsd.port.mk>
+--- a/textproc/fcitx5/files/fcitx5-diagnose
++++ b/textproc/fcitx5/files/fcitx5-diagnose
+@@ -0,0 +1,9 @@
++#!/bin/sh
++# Native Wayland diagnostics; no GNU gettext or Bash utility at runtime.
++set -eu
++printf 'Wayland display: %s\nRuntime directory: %s\n' "${WAYLAND_DISPLAY:-unset}" "${XDG_RUNTIME_DIR:-unset}"
++printf 'Fcitx version: '; fcitx5 --version
++printf 'Active engine: '; fcitx5-remote -n
++printf 'Input state (0=unavailable, 1=inactive, 2=active): '; fcitx5-remote
++printf 'Native environment: GTK_IM_MODULE=%s QT_IM_MODULE=%s\n' "${GTK_IM_MODULE:-Wayland protocol}" "${QT_IM_MODULE:-Wayland protocol}"
++printf 'Use nostromo-language menu for English/Japanese/Korean selection.\n'

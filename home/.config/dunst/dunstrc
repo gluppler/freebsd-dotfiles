@@ -1,0 +1,42 @@
+[global]
+    force_xwayland = false
+    follow = keyboard
+    width = 340
+    origin = top-right
+    offset = (16, 44)
+    font = Michroma 10
+    padding = 12
+    horizontal_padding = 12
+    frame_width = 1
+    frame_color = "#ffffff"
+    # The source patch interprets the outer radius as a diagonal cut size.
+    corner_radius = 12
+    corners = bottom-right
+    gap_size = 12
+    notification_limit = 4
+    progress_bar_corner_radius = 0
+    separator_color = frame
+    word_wrap = yes
+    icon_position = off
+    enable_posix_regex = true
+    dmenu = nostromo-picker -i -l 8 -p NOTIF
+    browser = nostromo-browser
+    markup = full
+    format = "<b>%s</b>\n%b"
+    mouse_left_click = close_current
+    mouse_middle_click = do_action
+    mouse_right_click = close_all
+[urgency_low]
+    background = "#000000e6"
+    foreground = "#aaaaaa"
+    timeout = 5
+[urgency_normal]
+    background = "#000000e6"
+    foreground = "#ffffff"
+    timeout = 8
+[urgency_critical]
+    background = "#000000e6"
+    foreground = "#ffffff"
+    frame_color = "#ffffff"
+    timeout = 0
+

@@ -1,0 +1,9 @@
+[default_config]
+# GAS is syntax here, not an installed GNU assembler. LLVM assembles the code.
+assembler = "gas"
+instruction_set = "x86/x86-64"
+[opts]
+compiler = "/usr/bin/clang"
+diagnostics = true
+# Cross targets must provide their own flags; never guess a target from the host.
+default_diagnostics = false

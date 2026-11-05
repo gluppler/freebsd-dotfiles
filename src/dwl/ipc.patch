@@ -1,0 +1,36 @@
+--- a/dwl.c
++++ b/dwl.c
+@@ -489,6 +489,7 @@
+ 
+ #include "ime.h"
+ #include "nostromo.h"
++#include "ipc.h"
+ 
+ /* function implementations */
+ void
+@@ -829,6 +830,7 @@
+ 	LayerSurface *l, *tmp;
+ 	size_t i;
+ 
++	nostromo_ipc_removed(m);
+ 	/* m->layers[i] are intentionally not unlinked */
+ 	for (i = 0; i < LENGTH(m->layers); i++) {
+ 		wl_list_for_each_safe(l, tmp, &m->layers[i], link)
+@@ -2266,6 +2268,7 @@
+ void
+ printstatus(void)
+ {
++	nostromo_ipc_update();
+ 	Monitor *m = NULL;
+ 	Client *c;
+ 	uint32_t occ, urg, sel;
+@@ -2628,6 +2631,9 @@
+ 	/* The Wayland display is managed by libwayland. It handles accepting
+ 	 * clients from the Unix socket, managing Wayland globals, and so on. */
+ 	dpy = wl_display_create();
++	wl_list_init(&nostromo_subscriptions);
++	if (!wl_global_create(dpy, &zdwl_ipc_manager_v2_interface, 2, NULL, nostromo_ipc_bind))
++		die("Could not create dwl IPC global");
+ 	event_loop = wl_display_get_event_loop(dpy);
+ 
+ 	/* The backend is a wlroots feature which abstracts the underlying input and

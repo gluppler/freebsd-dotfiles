@@ -1,0 +1,40 @@
+#!/bin/sh
+set -eu
+umask 077
+case ${1:-focused} in
+focused)
+    [ "$#" -le 1 ] || exit 2
+    # The compositor supplies the selected client's actual rectangle.
+    exec wtype -M logo -M shift -k s -m shift -m logo
+    ;;
+full)
+    [ "$#" = 1 ] || exit 2
+    set --
+    ;;
+region | select)
+    [ "$#" = 1 ] || exit 2
+    geometry=$(slurp) || exit 0
+    set -- -g "$geometry"
+    ;;
+--geometry)
+    [ "$#" = 2 ] || exit 2
+    geometry=$2
+    printf '%s\n' "$geometry" | LC_ALL=C grep -Eq '^-?[0-9]+,-?[0-9]+ [1-9][0-9]*x[1-9][0-9]*$' || exit 2
+    set -- -g "$geometry"
+    ;;
+*)
+    echo 'Usage: nostromo-screenshot focused|full|region' >&2
+    exit 2
+    ;;
+esac
+directory=$HOME/Pictures/Screenshots
+mkdir -p "$directory"
+pending=$(mktemp "$directory/.capture.XXXXXXXX")
+trap 'rm -f "$pending"' 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
+grim "$@" -t png "$pending"
+file=$directory/$(date +%Y%m%d-%H%M%S)-$$.png
+mv "$pending" "$file"
+wl-copy --type image/png <"$file"
+notify-send 'Screenshot saved' "$file"

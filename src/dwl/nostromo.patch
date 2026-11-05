@@ -1,0 +1,177 @@
+--- a/dwl.c
++++ b/dwl.c
+@@ -121,6 +121,9 @@
+ 	Monitor *mon;
+ 	struct wlr_scene_tree *scene;
+ 	struct wlr_scene_rect *border[4]; /* top, bottom, left, right */
++	struct wlr_scene_buffer *rail;
++	int ntop, nright, nbottom, nwidth, nheight, nscale, nside;
++	char nlabel[512];
+ 	struct wlr_scene_tree *scene_surface;
+ 	struct wl_list link;
+ 	struct wl_list flink;
+@@ -372,6 +375,8 @@
+ static void xytonode(double x, double y, struct wlr_surface **psurface,
+ 		Client **pc, LayerSurface **pl, double *nx, double *ny);
+ static void zoom(const Arg *arg);
++static void nostromo_layout(const Arg *arg);
++static void nostromo_move(const Arg *arg);
+ 
+ /* variables */
+ static pid_t child_pid = -1;
+@@ -483,26 +488,27 @@
+ #include "client.h"
+ 
+ #include "ime.h"
++#include "nostromo.h"
+ 
+ /* function implementations */
+ void
+ applybounds(Client *c, struct wlr_box *bbox)
+ {
+ 	/* set minimum client size to 1 */
+-	c->geom.width = MAX(1 + 2 * (int)c->bw, c->geom.width);
+-	c->geom.height = MAX(1 + 2 * (int)c->bw, c->geom.height);
++	c->geom.width = MAX(1 + 2 * (int)c->bw + c->nright, c->geom.width);
++	c->geom.height = MAX(1 + 2 * (int)c->bw + c->ntop + c->nbottom, c->geom.height);
+ 
+ 	if (!c->isfullscreen) {
+ 		struct wlr_box min = {0}, max = {0};
+ 		client_get_size_hints(c, &max, &min);
+-		c->geom.width = MAX(min.width + 2 * (int)c->bw, c->geom.width);
+-		c->geom.height = MAX(min.height + 2 * (int)c->bw, c->geom.height);
++		c->geom.width = MAX(min.width + 2 * (int)c->bw + c->nright, c->geom.width);
++		c->geom.height = MAX(min.height + 2 * (int)c->bw + c->ntop + c->nbottom, c->geom.height);
+ 		/* Some clients set their max size to INT_MAX, which does not violate the
+ 		 * protocol but it's unnecesary, as they can set their max size to zero. */
+-		if (max.width > 0 && 2 * (int)c->bw <= INT_MAX - max.width) /* Checks for overflow */
+-			c->geom.width = MIN(max.width + 2 * (int)c->bw, c->geom.width);
+-		if (max.height > 0 && 2 * (int)c->bw <= INT_MAX - max.height) /* Checks for overflow */
+-			c->geom.height = MIN(max.height + 2 * (int)c->bw, c->geom.height);
++		if (max.width > 0 && 2 * (int)c->bw + c->nright <= INT_MAX - max.width) /* Checks for overflow */
++			c->geom.width = MIN(max.width + 2 * (int)c->bw + c->nright, c->geom.width);
++		if (max.height > 0 && 2 * (int)c->bw + c->ntop + c->nbottom <= INT_MAX - max.height) /* Checks for overflow */
++			c->geom.height = MIN(max.height + 2 * (int)c->bw + c->ntop + c->nbottom, c->geom.height);
+ 	}
+ 
+ 	if (c->geom.x >= bbox->x + bbox->width)
+@@ -1330,7 +1336,7 @@
+ 
+ 	toplevel_from_wlr_surface(active_constraint->surface, &c, NULL);
+ 	if (c && active_constraint->current.cursor_hint.enabled) {
+-		wlr_cursor_warp(cursor, NULL, sx + c->geom.x + c->bw, sy + c->geom.y + c->bw);
++		wlr_cursor_warp(cursor, NULL, sx + c->geom.x + c->bw, sy + c->geom.y + c->bw + c->ntop);
+ 		wlr_seat_pointer_warp(active_constraint->seat, sx, sy);
+ 	}
+ }
+@@ -1902,9 +1908,12 @@
+ 		c->border[i]->node.data = c;
+ 	}
+ 
+-	/* Initialize client geometry with room for border */
+-	c->geom.width += 2 * c->bw;
+-	c->geom.height += 2 * c->bw;
++	/* Include the decoration in every client size/allocation. */
++	c->rail = wlr_scene_buffer_create(c->scene, NULL);
++	c->rail->node.data = c; c->nwidth = 0;
++	nostromo_padding(c);
++	c->geom.width += 2 * c->bw + c->nright;
++	c->geom.height += 2 * c->bw + c->ntop + c->nbottom;
+ 
+ 	/* Insert this client into client lists. */
+ 	wl_list_insert(&clients, &c->link);
+@@ -1932,6 +1941,7 @@
+ 	} else {
+ 		applyrules(c);
+ 	}
++	nostromo_place(c, p);
+ 	printstatus();
+ 
+ unset_fullscreen:
+@@ -2034,7 +2044,7 @@
+ 			toplevel_from_wlr_surface(active_constraint->surface, &c, NULL);
+ 			if (c && active_constraint->surface == seat->pointer_state.focused_surface) {
+ 				sx = cursor->x - c->geom.x - c->bw;
+-				sy = cursor->y - c->geom.y - c->bw;
++				sy = cursor->y - c->geom.y - c->bw - c->ntop;
+ 				if (wlr_region_confine(&active_constraint->region, sx, sy,
+ 						sx + dx, sy + dy, &sx_confined, &sy_confined)) {
+ 					dx = sx_confined - sx;
+@@ -2372,22 +2382,26 @@
+ 
+ 	bbox = interact ? &sgeom : &c->mon->w;
+ 
+-	client_set_bounds(c, geo.width, geo.height);
++	nostromo_padding(c);
++	client_set_bounds(c, MAX(1, geo.width - 2 * (int)c->bw - c->nright),
++			MAX(1, geo.height - 2 * (int)c->bw - c->ntop - c->nbottom));
+ 	c->geom = geo;
+ 	applybounds(c, bbox);
+ 
+-	/* Update scene-graph, including borders */
++	/* The outline encloses the client; the opaque rail attaches outside it. */
+ 	wlr_scene_node_set_position(&c->scene->node, c->geom.x, c->geom.y);
+-	wlr_scene_node_set_position(&c->scene_surface->node, c->bw, c->bw);
+-	wlr_scene_rect_set_size(c->border[0], c->geom.width, c->bw);
+-	wlr_scene_rect_set_size(c->border[1], c->geom.width, c->bw);
+-	wlr_scene_rect_set_size(c->border[2], c->bw, c->geom.height - 2 * c->bw);
+-	wlr_scene_rect_set_size(c->border[3], c->bw, c->geom.height - 2 * c->bw);
+-	wlr_scene_node_set_position(&c->border[1]->node, 0, c->geom.height - c->bw);
+-	wlr_scene_node_set_position(&c->border[2]->node, 0, c->bw);
+-	wlr_scene_node_set_position(&c->border[3]->node, c->geom.width - c->bw, c->bw);
+-
+-	client_set_size(c, c->geom.width - 2 * c->bw, c->geom.height - 2 * c->bw);
++	wlr_scene_node_set_position(&c->scene_surface->node, c->bw, c->bw + c->ntop);
++	wlr_scene_rect_set_size(c->border[0], c->geom.width - c->nright, c->bw);
++	wlr_scene_rect_set_size(c->border[1], c->geom.width - c->nright, c->bw);
++	wlr_scene_rect_set_size(c->border[2], c->bw, c->geom.height - c->ntop - c->nbottom - 2 * c->bw);
++	wlr_scene_rect_set_size(c->border[3], c->bw, c->geom.height - c->ntop - c->nbottom - 2 * c->bw);
++	wlr_scene_node_set_position(&c->border[0]->node, 0, c->ntop);
++	wlr_scene_node_set_position(&c->border[1]->node, 0, c->geom.height - c->nbottom - c->bw);
++	wlr_scene_node_set_position(&c->border[2]->node, 0, c->bw + c->ntop);
++	wlr_scene_node_set_position(&c->border[3]->node, c->geom.width - c->nright - c->bw, c->bw + c->ntop);
++	wlr_scene_node_set_position(&c->rail->node, c->nright ? c->geom.width - c->nright : 0, c->nbottom ? c->geom.height - c->nbottom : 0);
++	nostromo_decoration(c);
++	client_set_size(c, c->geom.width - 2 * c->bw - c->nright, c->geom.height - 2 * c->bw - c->ntop - c->nbottom);
+ 	client_get_clip(c, &clip);
+ 	wlr_scene_subsurface_tree_set_clip(&c->scene_surface->node, &clip);
+ }
+@@ -3136,6 +3150,8 @@
+ updatetitle(struct wl_listener *listener, void *data)
+ {
+ 	Client *c = wl_container_of(listener, c, set_title);
++	if (c->scene && c->mon)
++		nostromo_decoration(c);
+ 	if (c == focustop(c->mon))
+ 		printstatus();
+ 
+@@ -3226,9 +3242,13 @@
+ 				!(node = wlr_scene_node_at(&layers[layer]->node, x, y, nx, ny)))
+ 			continue;
+ 
+-		if (node->type == WLR_SCENE_NODE_BUFFER)
+-			surface = wlr_scene_surface_try_from_buffer(
+-					wlr_scene_buffer_from_node(node))->surface;
++		if (node->type == WLR_SCENE_NODE_BUFFER) {
++			struct wlr_scene_surface *s = wlr_scene_surface_try_from_buffer(
++					wlr_scene_buffer_from_node(node));
++			/* Rails are compositor buffers, not client input surfaces. */
++			if (!s) break;
++			surface = s->surface;
++		}
+ 	}
+ 
+ 	if (psurface) *psurface = surface;
+--- a/client.h
++++ b/client.h
+@@ -163,8 +163,8 @@
+ 	*clip = (struct wlr_box){
+ 		.x = 0,
+ 		.y = 0,
+-		.width = c->geom.width - c->bw,
+-		.height = c->geom.height - c->bw,
++		.width = c->geom.width - 2 * c->bw - c->nright,
++		.height = c->geom.height - 2 * c->bw - c->ntop - c->nbottom,
+ 	};
+ 
+ #ifdef XWAYLAND

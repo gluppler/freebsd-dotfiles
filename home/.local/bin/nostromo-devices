@@ -1,0 +1,29 @@
+#!/bin/sh
+set -eu
+choice=$(printf '%s\n' 'MOUNT READ ONLY' 'MOUNT READ WRITE' UNMOUNT 'USB PROBE ACCESS' |
+    nostromo-picker -p DEVICES -l 4) || exit 0
+case $choice in
+'MOUNT READ ONLY' | 'MOUNT READ WRITE')
+    item=$(nostromo-admin device list | nostromo-picker -p PARTITION) || exit 0
+    [ -n "$item" ] || exit 0
+    mode=ro
+    [ "$choice" != 'MOUNT READ WRITE' ] || mode=rw
+    exec nostromo-admin device mount "${item%% *}" "$mode"
+    ;;
+UNMOUNT)
+    item=$(mount -p | awk '$2~/^\/media\/nostromo-da[0-9]+([sp][0-9]+)?[a-h]?$/ {sub(/^\/dev\//,"",$1);print $1}' |
+        nostromo-picker -p UNMOUNT) || exit 0
+    [ -n "$item" ] || exit 0
+    exec nostromo-admin device unmount "$item"
+    ;;
+'USB PROBE ACCESS')
+    item=$(usbconfig list | nostromo-picker -p 'SELECT YOUR DEBUG PROBE') || exit 0
+    [ -n "$item" ] || exit 0
+    device=${item%%:*}
+    printf 'Grant access to this attached device only:\n%s\nType GRANT to continue: ' "$item"
+    IFS= read -r answer
+    [ "$answer" = GRANT ] || exit 0
+    exec nostromo-admin device probe "$device"
+    ;;
+*) exit 2 ;;
+esac

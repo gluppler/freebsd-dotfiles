@@ -1,0 +1,22 @@
+local l = vis.lexers
+-- Inherit foot's default background so vis stays equally transparent inside dvtm.
+l.STYLE_DEFAULT = 'fore:white'
+l.STYLE_NOTHING = ''
+l.STYLE_COMMENT = 'fore:brightblack,italics'
+l.STYLE_KEYWORD = 'fore:white,bold'
+l.STYLE_TYPE = 'fore:white,bold'
+l.STYLE_FUNCTION = 'fore:white'
+l.STYLE_STRING = 'fore:white'
+l.STYLE_NUMBER = 'fore:white'
+l.STYLE_CONSTANT = 'fore:white,bold'
+l.STYLE_OPERATOR = 'fore:white'
+l.STYLE_PREPROCESSOR = 'fore:white,bold'
+l.STYLE_IDENTIFIER = 'fore:white'
+l.STYLE_ERROR = 'fore:black,back:white,bold'
+l.STYLE_CURSOR = 'fore:black,back:white'
+l.STYLE_CURSOR_PRIMARY = 'fore:black,back:white'
+l.STYLE_SELECTION = 'fore:black,back:white'
+l.STYLE_LINENUMBER = 'fore:brightblack'
+l.STYLE_STATUS = 'fore:white'
+l.STYLE_STATUS_FOCUSED = 'fore:black,back:white,bold'
+

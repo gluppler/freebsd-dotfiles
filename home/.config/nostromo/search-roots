@@ -1,0 +1,6 @@
+# Literal directories, one per line. Only a leading ~/ is expanded; no shell code.
+# Hidden/ignored files and symlink targets are not searched. Keep roots focused.
+~/Projects
+~/Documents
+~/Downloads
+~/src

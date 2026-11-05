@@ -1,0 +1,25 @@
+#!/bin/sh
+# PROVIDE: nostromo_wireguard
+# REQUIRE: NETWORKING
+# KEYWORD: nojail shutdown
+# shellcheck disable=SC2034
+# shellcheck source=/dev/null
+. /etc/rc.subr
+name=nostromo_wireguard
+rcvar=nostromo_wireguard_enable
+start_cmd=nostromo_wireguard_start
+stop_cmd=nostromo_wireguard_stop
+nostromo_wireguard_start() {
+    for interface in $nostromo_wireguard_interfaces; do
+        /usr/local/libexec/nostromo-wireguard up "$interface" || return 1
+    done
+}
+nostromo_wireguard_stop() {
+    for interface in $nostromo_wireguard_interfaces; do
+        /usr/local/libexec/nostromo-wireguard down "$interface" || return 1
+    done
+}
+load_rc_config "$name"
+: "${nostromo_wireguard_enable:=NO}"
+: "${nostromo_wireguard_interfaces:=}"
+run_rc_command "$1"

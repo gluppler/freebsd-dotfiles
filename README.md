@@ -1,2 +1,79 @@
-# FreeBSD-dotfiles
-FreeBSD + DWM + ST + etc dotfiles
+# Nostromo
+
+FreeBSD **15.1-RELEASE amd64** dotfiles for a keyboard-driven Wayland desktop on
+the ThinkPad T14 Gen 2 Intel: Core i5-1135G7, Iris Xe graphics and NVMe storage.
+The default hostname is `nostromo`; the install account defaults to `gluppler`.
+
+The desktop uses **dwl, foot, qutebrowser, oksh, vis and abduco/dvtm**, with
+fuzzel, fastfetch, zoxide, nnn, Git/lazygit, LLVM, uv and native WireGuard.
+Michroma and Azeret Mono, monochrome artwork, custom window bars and adjustable
+CRT effects are animated by default. Development tools cover C/C++, Rust, Go, Python,
+shell, assembly, KiCad PCB design and the documented Zephyr/Rust embedded workflows.
+
+Native FreeBSD builds, first login, reboot and hardware acceptance are still
+pending; see [validation](docs/VALIDATION.md). Simulated screenshots and SVG
+originals are archived outside this repository. Installed artwork uses PNG.
+
+## Install
+
+Install the OS manually using [Base-Setup](docs/BASE-SETUP.md), including the
+[firmware settings](docs/FIRMWARE.md). Keep a complete checkout or extracted
+source archive under the desktop account's home, owned by that account.
+
+Review the plan as the ordinary user:
+
+```sh
+sh install.sh --preview gluppler
+```
+
+Then, from a local root console in the same directory:
+
+```sh
+sh install.sh --check gluppler
+sh install.sh --apply gluppler
+```
+
+Boot normally into multi-user mode first. `sh install.sh --wifi` provides
+standalone console Wi-Fi setup; `--apply` offers it before downloads.
+`--check` performs read-only native preflight. `--apply` installs packages,
+builds as the ordinary user, backs up replaced files and enables login after
+validation. Base `mdo` grants limited ACPI access; administrative changes use
+base `su`/PAM authentication. No existing privilege wrapper is needed.
+It does not partition disks or reboot. Read the [installation and recovery
+guide](docs/INSTALL.md) before applying it. Keep this checkout in place: installed
+user files and built programs link into it.
+
+## Layout
+
+| Path | Contents |
+| --- | --- |
+| `install.sh` | Root installer and read-only preview/preflight |
+| `home/` | User dotfiles, mirroring their locations under `$HOME` |
+| `system/` | System settings, privileged helpers, login theme and boot assets |
+| `src/` | Source patches, compositor configuration and shared drawing code |
+| `scripts/` | Build, provisioning, validation, linking and export helpers |
+| `assets/` | Fonts, artwork, wallpapers and attribution |
+| `docs/`, `tests/` | Setup guides, references, previews and verification |
+| `links.txt` | Explicit user-file installation manifest |
+| `packages.*`, `ports.lock`, `sources.lock` | Package policy and pinned build inputs |
+
+Build output stays in `.build/`. `sh scripts/export.sh` creates a checked source
+archive under `.dist/`, with a SHA256 checksum and file list. Both directories
+are excluded from Git. The archive contains everything needed from this project;
+installation still downloads native packages and pinned sources. No archived
+dotfiles tree is required. See [source exports](docs/INSTALL.md#source-exports).
+
+Keep credentials and personal overrides outside the checkout. The shipped
+WireGuard, SSH and service settings contain no enrolled keys or real endpoints;
+local setup is covered in the relevant guides. Review [security](docs/SECURITY.md)
+and [licenses and attribution](COPYING.md) before publishing changes.
+
+## Guides
+
+- [Keyboard controls](docs/KEYBINDINGS.md), [editor and development](docs/DEVELOPMENT.md), [embedded Rust/Zephyr](docs/EMBEDDED.md)
+- [First-run requirements](docs/FIRST-RUN.md), [PCB workflow](docs/EDA.md), [full laptop information](docs/SYSTEM-INFO.md)
+- [Offline manuals and formatted examples](docs/OFFLINE-DOCS.md), [password store](docs/PASSWORDS.md)
+- [Packages and GNU exceptions](docs/PACKAGES.md), [boot and session](docs/BOOT-AND-SESSION.md)
+- [Hardware](docs/HARDWARE.md), [performance](docs/PERFORMANCE.md), [fingerprint/FIDO](docs/AUTHENTICATION.md)
+- [Wi-Fi](docs/WIFI.md), [WireGuard](docs/WIREGUARD.md), [Bluetooth](docs/BLUETOOTH.md)
+- [Requirements](PLANS.md), [migration coverage](docs/MIGRATION-COVERAGE.md), [validation](docs/VALIDATION.md)

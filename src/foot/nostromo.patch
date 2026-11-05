@@ -1,0 +1,49 @@
+--- a/key-binding.h
++++ b/key-binding.h
+@@ -25,6 +25,9 @@
+     BIND_ACTION_FONT_SIZE_UP,
+     BIND_ACTION_FONT_SIZE_DOWN,
+     BIND_ACTION_FONT_SIZE_RESET,
++    BIND_ACTION_ALPHA_UP,
++    BIND_ACTION_ALPHA_DOWN,
++    BIND_ACTION_ALPHA_RESET,
+     BIND_ACTION_SPAWN_TERMINAL,
+     BIND_ACTION_MINIMIZE,
+     BIND_ACTION_MAXIMIZE,
+--- a/config.c
++++ b/config.c
+@@ -165,6 +165,9 @@
+     [BIND_ACTION_FONT_SIZE_UP] = "font-increase",
+     [BIND_ACTION_FONT_SIZE_DOWN] = "font-decrease",
+     [BIND_ACTION_FONT_SIZE_RESET] = "font-reset",
++    [BIND_ACTION_ALPHA_UP] = "alpha-increase",
++    [BIND_ACTION_ALPHA_DOWN] = "alpha-decrease",
++    [BIND_ACTION_ALPHA_RESET] = "alpha-reset",
+     [BIND_ACTION_SPAWN_TERMINAL] = "spawn-terminal",
+     [BIND_ACTION_MINIMIZE] = "minimize",
+     [BIND_ACTION_MAXIMIZE] = "maximize",
+--- a/input.c
++++ b/input.c
+@@ -206,6 +206,22 @@
+     case BIND_ACTION_FONT_SIZE_RESET:
+         term_font_size_reset(term);
+         return true;
++
++    case BIND_ACTION_ALPHA_UP:
++    case BIND_ACTION_ALPHA_DOWN:
++    case BIND_ACTION_ALPHA_RESET: {
++        /* Background only; text and pane dividers retain their own opacity. */
++        int alpha = action == BIND_ACTION_ALPHA_RESET
++            ? term_theme_get(term)->alpha
++            : term->colors.alpha + (action == BIND_ACTION_ALPHA_UP ? 3277 : -3277);
++        term->colors.alpha = min(65535, max(6554, alpha));
++        wayl_win_alpha_changed(term->window);
++        term_font_subpixel_changed(term);
++        term_damage_view(term);
++        term_damage_margins(term);
++        render_refresh(term);
++        return true;
++    }
+ 
+     case BIND_ACTION_SPAWN_TERMINAL:
+         term_spawn_new(term);

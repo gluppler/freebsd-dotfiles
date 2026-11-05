@@ -1,0 +1,17 @@
+#!/bin/sh
+# gtklock -d returns success only after ext-session-lock acknowledges the lock.
+set -eu
+[ "$#" -le 1 ] || exit 2
+case ${1:-lock} in
+lock) exec gtklock ;;
+suspend)
+    # The compositor confirms a live enforced lock; no PID/file is accepted as proof.
+    if ! nostromo-control is-locked; then gtklock --daemonize; fi
+    nostromo-control is-locked
+    exec /usr/bin/mdo -k -g nostromo_power -- /usr/sbin/acpiconf -s 3
+    ;;
+*)
+    echo 'Usage: nostromo-lock [lock|suspend]' >&2
+    exit 2
+    ;;
+esac

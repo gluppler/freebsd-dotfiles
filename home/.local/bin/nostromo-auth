@@ -1,0 +1,45 @@
+#!/bin/sh
+# Enrollment stays local; this menu does not modify PAM or assume a reader model.
+set -eu
+[ "$#" -le 1 ] || exit 2
+action=${1:-menu}
+if [ "$action" = menu ]; then
+    action=$(printf '%s\n' PROBE 'ENROLL FINGERPRINT' 'VERIFY FINGERPRINT' 'ENROLL FIDO' GUIDE |
+        fzf --prompt='Authentication > ') || exit 0
+fi
+case $action in
+PROBE)
+    usbconfig list
+    printf '\nOptional native modules:\n'
+    for file in /usr/local/lib/security/pam_fprintd.so /usr/local/lib/pam_u2f.so; do
+        if [ -f "$file" ]; then printf 'available: %s\n' "$file"; else printf 'not installed: %s\n' "$file"; fi
+    done
+    if command -v fprintd-list >/dev/null 2>&1; then fprintd-list "$(id -un)" || :; fi
+    if command -v fido2-token >/dev/null 2>&1; then fido2-token -L || :; fi
+    ;;
+'ENROLL FINGERPRINT') exec fprintd-enroll "$(id -un)" ;;
+'VERIFY FINGERPRINT') exec fprintd-verify "$(id -un)" ;;
+'ENROLL FIDO')
+    command -v pamu2fcfg >/dev/null || {
+        echo 'Install the reviewed pam_u2f option first.' >&2
+        exit 1
+    }
+    directory=${XDG_CONFIG_HOME:-$HOME/.config}/nostromo
+    umask 077
+    mkdir -p "$directory"
+    candidate=$(mktemp "$directory/fido-enrollment.XXXXXXXX")
+    trap 'rm -f "$candidate"' 0
+    trap 'exit 130' INT
+    trap 'exit 143' HUP TERM
+    pamu2fcfg -u "$(id -un)" -o pam://nostromo -i pam://nostromo >"$candidate"
+    [ -s "$candidate" ] || exit 1
+    # Keep all earlier credentials. The root mapping is installed explicitly after review.
+    destination=$directory/fido-credential-$(date +%Y%m%d-%H%M%S)-$$
+    mv "$candidate" "$destination"
+    printf 'New public credential mapping: %s\nFollow AUTHENTICATION.md to test it before enabling PAM.\n' "$destination"
+    ;;
+GUIDE) exec less "${XDG_DATA_HOME:-$HOME/.local/share}/nostromo/AUTHENTICATION.md" ;;
+*) exit 2 ;;
+esac
+printf '\nEnter to close '
+IFS= read -r _reply || :

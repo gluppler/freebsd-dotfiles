@@ -1,0 +1,373 @@
+--- a/cad/kicad/Makefile
++++ b/cad/kicad/Makefile
+@@ -11,8 +11,7 @@
+ LICENSE=	GPLv2
+ 
+ BUILD_DEPENDS=	${LOCALBASE}/include/glm/glm.hpp:math/glm	\
+-		swig:devel/swig				\
+-		gtar:archivers/gtar
++		swig:devel/swig
+ LIB_DEPENDS=	libboost_locale.so:devel/boost-libs	\
+ 		libabsl_log_internal_check_op.so:devel/abseil		\
+ 		libgit2.so:devel/libgit2		\
+@@ -42,7 +41,7 @@
+ USE_XORG=	ice x11 xext
+ USE_GL=		egl gl glu glut opengl
+ USE_WX=		3.2
+-WX_COMPS=	python:lib wx
++WX_COMPS=	wx
+ USE_GNOME=	atk cairo gdkpixbuf gtk30 pango
+ 
+ USE_GITLAB=	yes
+@@ -54,18 +53,17 @@
+ CMAKE_ARGS=	-DwxWidgets_CONFIG_EXECUTABLE=${WX_CONFIG}	\
+ 		-DwxWidgets_USE_UNICODE=ON			\
+ 		-DwxWidgets_wxrc_EXECUTABLE=${WXRC_CMD}		\
+-		-DKICAD_SPICE_QA=ON				\
++		-DKICAD_SPICE_QA=OFF				\
+ 		-DKICAD_USE_SENTRY=OFF				\
+ 		-DKICAD_SIGNAL_INTEGRITY=ON			\
+-		-DKICAD_BUILD_QA_TESTS=ON			\
+-		-DKICAD_SCRIPTING_WXPYTHON=ON			\
++		-DKICAD_BUILD_QA_TESTS=OFF			\
++		-DKICAD_SCRIPTING_WXPYTHON=OFF			\
+ 		-DKICAD_UPDATE_CHECK=OFF			\
+ 		-DKICAD_USE_EGL=ON				\
+ 		-DKICAD_WAYLAND=ON				\
+ 		-DKICAD_INSTALL_DEMOS=ON			\
+ 		-DNANODBC_ENABLE_BOOST=ON			\
+-		-DOCC_INCLUDE_DIR=${LOCALBASE}/include/OpenCASCADE	\
+-		-DTAR=${LOCALBASE}/bin/gtar
++		-DOCC_INCLUDE_DIR=${LOCALBASE}/include/OpenCASCADE
+ CMAKE_ENV+=	DODBC_PATH=${LOCALBASE}
+ USE_LDCONFIG=	yes
+ 
+--- a/graphics/poppler/Makefile
++++ b/graphics/poppler/Makefile
+@@ -12,30 +12,24 @@
+ LICENSE=	GPLv2
+ LICENSE_FILE=	${WRKSRC}/COPYING
+ 
+-LIB_DEPENDS=	libnspr4.so:devel/nspr \
+-		liblcms2.so:graphics/lcms2 \
++LIB_DEPENDS=	liblcms2.so:graphics/lcms2 \
+ 		libpng16.so:graphics/png \
+ 		libtiff.so:graphics/tiff \
+ 		libfreetype.so:print/freetype2 \
+-		libnss3.so:security/nss \
+-		libfontconfig.so:x11-fonts/fontconfig \
+-		libassuan.so:security/libassuan
+-BUILD_DEPENDS=	${LOCALBASE}/include/boost/container/small_vector.hpp:devel/boost-libs \
+-		gsed:textproc/gsed
++		libfontconfig.so:x11-fonts/fontconfig
++BUILD_DEPENDS=	${LOCALBASE}/include/boost/container/small_vector.hpp:devel/boost-libs
+ RUN_DEPENDS=	poppler-data>0:graphics/poppler-data
+ 
+-USES=		cmake:testing compiler:c++20-lang cpe gperf jpeg \
++USES=		cmake:testing compiler:c++20-lang cpe jpeg \
+ 		localbase pathfix pkgconfig tar:xz
+ CPE_VENDOR=	freedesktop
+ USE_LDCONFIG=	yes
+ CMAKE_ON=	ENABLE_BOOST \
+ 		ENABLE_LCMS \
+ 		ENABLE_LIBTIFF \
+-		ENABLE_NSS3 \
+ 		ENABLE_UNSTABLE_API_ABI_HEADERS \
+-		ENABLE_ZLIB_UNCOMPRESS \
+-		RUN_GPERF_IF_PRESENT
+-CMAKE_OFF=	BUILD_GTK_TESTS
++		ENABLE_ZLIB_UNCOMPRESS
++CMAKE_OFF=	BUILD_GTK_TESTS ENABLE_NSS3 RUN_GPERF_IF_PRESENT
+ # Ensure that path ordering does not lead to openjpeg15 being found and picked
+ # instead of openjpeg2 on systems that have both installed
+ # Note: since f3ba77e14cac05d43caf35100848eeaee3bc64b4 graphics/openjpeg15 installs
+@@ -49,9 +43,6 @@
+ # Slave ports.
+ _POPPLER_SLAVES=	library glib qt5 qt6 utils
+ _SLAVE_PORT?=		library
+-
+-BINARY_ALIAS=		gperf=${GPERF} \
+-			sed=${LOCALBASE}/bin/gsed
+ 
+ # Activate the wanted module, and deactivate the others.
+ CMAKE_ON+=	ENABLE_${_SLAVE_PORT:tu}
+--- a/cad/ngspice_rework/Makefile
++++ b/cad/ngspice_rework/Makefile
+@@ -1,7 +1,7 @@
+ PORTNAME=	ngspice_rework
+ PORTVERSION=	44.2
+ CATEGORIES=	cad
+-MASTER_SITES=	SF/ngspice/ng-spice-rework/${PORTVERSION}
++MASTER_SITES=	SF/ngspice/ng-spice-rework/old-releases/${PORTVERSION}
+ DISTNAME=	ngspice-${PORTVERSION}
+ 
+ MAINTAINER=	kevinz5000@gmail.com
+@@ -18,7 +18,7 @@
+ shlib_PKGNAMESUFFIX=		-shlib
+ shlib_PLIST=			${MASTERDIR}/pkg-plist-shlib
+ 
+-USES=		compiler:c11 gmake libtool ncurses readline autoreconf pkgconfig
++USES=		compiler:c11 gmake libtool ncurses pkgconfig
+ 
+ GNU_CONFIGURE=	yes
+ CONFIGURE_ARGS_armv7=	--disable-openmp
+@@ -29,7 +29,7 @@
+ 
+ .if ${FLAVOR:U} ==	shlib
+ USE_LDCONFIG=		yes
+-CONFIGURE_ARGS+=	--with-ngshared --enable-shared
++CONFIGURE_ARGS+=	--with-ngshared --enable-shared --without-x --with-readline=no
+ .else
+ USES+=			xorg
+ USE_XORG=		ice sm x11 xaw xext xmu xt xft
+--- a/cad/opencascade/Makefile
++++ b/cad/opencascade/Makefile
+@@ -14,180 +14,45 @@
+ LICENSE_FILE=	${WRKSRC}/OCCT_LGPL_EXCEPTION.txt
+ LICENSE_PERMS=	dist-mirror dist-sell pkg-mirror pkg-sell auto-accept
+ 
+-BUILD_DEPENDS=	rapidjson>0:devel/rapidjson			\
+-		${LOCALBASE}/lib/qt5/bin/moc:devel/qt5-buildtools
+-LIB_DEPENDS=	libfontconfig.so:x11-fonts/fontconfig	\
+-		libfreetype.so:print/freetype2		\
+-		libtbbmalloc.so:devel/onetbb		\
+-		libexpat.so:textproc/expat2		\
+-		libdraco.so:archivers/draco		\
+-		libpng16.so:graphics/png		\
+-		libvtksys-${VTK_VER}.so:math/vtk${VTK_VER:R}
+-RUN_DEPENDS=	bash:shells/bash
+-
+-# Check ${WRKSRC}/dox/build/build_occt/building_occt.md
+-USES=		cmake compiler:c++17-lang eigen:3 gettext-runtime	\
+-		gl gnome localbase python qmake:no_configure,no_env qt:5\
+-		shebangfix tk xorg
+-USE_XORG=	ice sm x11 xau xcb xdmcp xext xft xi xmu xrender xscrnsaver xt
+-USE_GL=		egl gl glesv2 glu
+-USE_GNOME=	libxml2
+-USE_QT=		buildtools:build core declarative gui network quick3d	\
+-		linguisttools widgets xml
+-
++# Geometry, data exchange and visualization libraries used by KiCad.
++# Draw, Qt examples and VTK are separate applications/dependency trees.
++BUILD_DEPENDS=	rapidjson>0:devel/rapidjson
++LIB_DEPENDS=	libfontconfig.so:x11-fonts/fontconfig \
++		libfreetype.so:print/freetype2 \
++		libtbbmalloc.so:devel/onetbb \
++		libdraco.so:archivers/draco
++USES=		cmake compiler:c++17-lang gl localbase
++USE_GL=		gl
+ USE_GITHUB=	yes
+ GH_ACCOUNT=	Open-Cascade-SAS
+ GH_PROJECT=	OCCT
+-
+-SHEBANG_FILES=	adm/templates/*.sh	\
+-		adm/templates/*.sh.in	\
+-		adm/templates/*.sh.main	\
+-		adm/scripts/migration_800/*.py
+-ENVSH=		adm/templates/env.sh
+-
+-OPTIONS_DEFINE=	DOCS DOXYGEN FFMPEG VIS
+-VIS_DESC=	Build Visualizazion module (requires OpenGL, freetype, ftgl)
+-OPTIONS_DEFAULT=FFMPEG VIS
+-OPTIONS_SUB=	yes
+-
+-REINPLACE_ARGS=	-i ""
+-LDFLAGS+=	-Wl,--allow-shlib-undefined -lexecinfo
+-CMAKE_ARGS=	-DINSTALL_DIR:PATH=${OCCROOT}				\
+-		-DINSTALL_DIR_INCLUDE:PATH=${PREFIX}/include/OpenCASCADE	\
+-		-DINSTALL_DIR_LIB:PATH=${PREFIX}/lib				\
+-		-DINSTALL_DIR_CMAKE:PATH=${PREFIX}/lib/cmake			\
+-		-DINSTALL_DIR_DATA:PATH=${OCCROOT}/data			\
+-		-DINSTALL_DIR_RESOURCE:PATH=${OCCROOT}/resources		\
+-		-DINSTALL_DIR_TESTS:PATH=${OCCROOT}/tests			\
+-		-D3RDPARTY_QT_DIR:PATH=${LOCALBASE}/lib/cmake/Qt5	\
+-		-D3RDPARTY_DRACO_DIR:PATH=${LOCALBASE}			\
+-		-D3RDPARTY_DRACO_LIBRARY=libdraco.so			\
+-		-D3RDPARTY_DRACO_LIBRARY_DIR:PATH=${LOCALBASE}/lib	\
+-		-D3RDPARTY_DRACO_INCLUDE_DIR:PATH=${LOCALBASE}/include/draco	\
+-		-D3RDPARTY_VTK_INCLUDE_DIR:PATH=${LOCALBASE}/include/vtk-${VTK_VER}
+-CMAKE_ON=	CAN_USE_DRACO CAN_USE_EIGEN CAN_USE_FREETYPE CAN_USE_RAPIDJSON	\
+-		CAN_USE_TBB CAN_USE_TK CAN_USE_VTK CAN_USE_XLIB INSTALL_TEST_CASES\
+-		USE_DRACO USE_FREETYPE USE_RAPIDJSON USE_TBB USE_TCL USE_TK	\
+-		USE_VTK USE_XLIB
+-CONFIGURE_ENV+=	DESTDIR=${STAGEDIR}
+ USE_LDCONFIG=	yes
+-
+-.if defined(MAINTAINER_MODE)
+-CMAKE_ARGS+=	-DCMAKE_MESSAGE_CONTEXT_SHOW:BOOL=ON	\
+-		-DCMAKE_MESSAGE_LOG_LEVEL:STRING=DEBUG
+-.endif
+-
+-CONFLICTS_INSTALL=	opencascade740 # OpenCAS/bin/DRAWEXE
+-
+-LOCCROOT=	OpenCAS
+-OCCROOT=	${PREFIX}/${LOCCROOT}
+-PLIST_SUB=	OCCROOT="${LOCCROOT}" BITS=${BITS} CC=${CHOSEN_COMPILER_TYPE}	\
+-		VE=${PORTVERSION:R} VER=${PORTVERSION}
+-
+-FFMPEG_CMAKE_ON=	-DCAN_USE_FFMPEG:BOOL=ON -DUSE_FFMPEG:BOOL=ON \
+-			-D3RDPARTY_FFMPEG_INCLUDE_DIR=${LOCALBASE}/ffmpeg6/include \
+-			-D3RDPARTY_FFMPEG_DIR=${LOCALBASE}/ffmpeg6
+-FFMPEG_CMAKE_OFF=	-DUSE_FFMPEG:BOOL=OFF
+-FFMPEG_LIB_DEPENDS=	libavcodec.so.60:multimedia/ffmpeg6	\
+-			libtheoraenc.so:multimedia/libtheora	\
+-			libunistring.so:devel/libunistring	\
+-			libvdpau.so:multimedia/libvdpau		\
+-			libxvidcore.so:multimedia/xvid		\
+-			libp11-kit.so:security/p11-kit		\
+-			libx264.so:multimedia/libx264		\
+-			libtasn1.so:security/libtasn1		\
+-			libvorbis.so:audio/libvorbis		\
+-			libdav1d.so:multimedia/dav1d		\
+-			libnettle.so:security/nettle		\
+-			libgnutls.so:security/gnutls		\
+-			libvpx.so:multimedia/libvpx		\
+-			libx265.so:multimedia/x265		\
+-			libdrm.so:graphics/libdrm		\
+-			libva.so:multimedia/libva		\
+-			libaom.so:multimedia/aom		\
+-			libmp3lame.so:audio/lame		\
+-			libffi.so:devel/libffi			\
+-			libidn2.so:dns/libidn2			\
+-			libogg.so:audio/libogg			\
+-			libopus.so:audio/opus			\
+-			libgmp.so:math/gmp
+-
+-VIS_CMAKE_ON=		-DCAN_USE_FREEIMAGE:BOOL=ON -DUSE_FREEIMAGE:BOOL=ON	\
+-			-DCAN_USE_OPENGL:BOOL=ON -DUSE_OPENGL:BOOL=ON	\
+-			-DCAN_USE_GLES2:BOOL=ON -DUSE_GLES2:BOOL=ON	\
+-			-D3RDPARTY_FREETYPE_DIR=${LOCALBASE}
+-VIS_CMAKE_OFF=		-DUSE_FREEIMAGE:BOOL=OFF	\
+-			-DUSE_GLES2:BOOL=OFF
+-VIS_LIB_DEPENDS=	libftgl.so:graphics/ftgl	\
+-			libfreeimageplus.so:graphics/freeimage
+-VIS_USE=		GL=glesv2,opengl
+-
+-DOXYGEN_IMPLIES=	DOCS
+-DOXYGEN_USES=		tex
+-DOXYGEN_USE=		TEX=latex:build
+-DOXYGEN_BUILD_DEPENDS=	bash:shells/bash		\
+-			doxygen:devel/doxygen		\
+-			dot:graphics/graphviz		\
+-			pdftex:print/tex-basic-engines	\
+-			inkscape:graphics/inkscape
+-DOXYGEN_RUN_DEPENDS=	${LOCALBASE}/www/MathJax/MathJax.js:www/mathjax
+-DOXYGEN_CMAKE_ON=	-DBUILD_DOC_Overview:BOOL=ON	\
+-			-DINSTALL_DOC_Overview:BOOL=ON
+-
+-.include <bsd.port.options.mk>
+-
+-.if ${ARCH} == armv6 || ${ARCH} == armv7 || ${ARCH} == powerpc || ${ARCH} == powerpcspe || ${ARCH} == "i386"
+-BITS=	32
+-.else
+-BITS=	64
+-.endif
++CMAKE_ARGS=	-DINSTALL_DIR:PATH=${PREFIX} \
++		-DINSTALL_DIR_INCLUDE:STRING=include/OpenCASCADE \
++		-DINSTALL_DIR_LIB:STRING=lib \
++		-DINSTALL_DIR_CMAKE:STRING=lib/cmake/OpenCASCADE \
++		-DINSTALL_DIR_SCRIPT:STRING=share/opencascade/scripts \
++		-DINSTALL_DIR_RESOURCE:STRING=share/opencascade/resources
++CMAKE_ON=	USE_FREETYPE USE_RAPIDJSON USE_TBB USE_DRACO
++CMAKE_OFF=	BUILD_MODULE_Draw USE_VTK USE_TK USE_QT USE_XLIB USE_FFMPEG USE_EIGEN \
++		USE_FREEIMAGE USE_GLES2 BUILD_DOC_Overview \
++		BUILD_DOC_RefMan INSTALL_TEST_CASES BUILD_GTEST
++LDFLAGS+=	-lexecinfo
++PLIST=		/dev/null
+ 
+ pre-configure:
+-	${REINPLACE_CMD} 's|<malloc.h>|<stdlib.h>|'	\
+-		${WRKSRC}/src/ModelingAlgorithms/TKMesh/BRepMesh/delabella.cpp	\
++	${REINPLACE_CMD} 's|<malloc.h>|<stdlib.h>|' \
++		${WRKSRC}/src/ModelingAlgorithms/TKMesh/BRepMesh/delabella.cpp \
+ 		${WRKSRC}/src/FoundationClasses/TKernel/OSD/OSD_MemInfo.cxx
+-	${GREP} -rl x86_64 ${WRKSRC} | ${XARGS} ${REINPLACE_CMD}	\
+-		-e 's|x86_64|amd64|'
+-.for es in ${ENVSH}
+-	${REINPLACE_CMD} -e 's|lin|bsd|' ${WRKSRC}/${es}
+-.endfor
+-
+-post-configure:
+-	${REINPLACE_CMD} -e '/Standard_Version.hxx/s|${BUILD_WRKSRC}/||'	\
+-		${BUILD_WRKSRC}/cmake_install.cmake
+-
+-post-stage:
+-	${MKDIR} ${STAGEDIR}${PREFIX}/lib/cmake/OpenCASCADE
+-	${MV} ${STAGEDIR}${PREFIX}/lib/cmake/*.cmake	\
+-		${STAGEDIR}${PREFIX}/lib/cmake/OpenCASCADE
+-.if defined(WITH_DEBUG)
+-	${FIND} ${STAGEDIR}${PREFIX}/lib/cmake/OpenCASCADE -name "*.cmake" |	\
+-		${XARGS} ${SED} -i '' -e 's/$${OCCT_INSTALL_BIN_LETTER}/d/'
+-.else
+-	${FIND} ${STAGEDIR}${PREFIX}/lib/cmake/OpenCASCADE -name "*.cmake" |	\
+-		${XARGS} ${SED} -i '' -e 's/$${OCCT_INSTALL_BIN_LETTER}//'
+-.endif
+-	${REINPLACE_CMD} -e '/Standard_Version.hxx/s|${STAGEDIR}${PREFIX}/||'	\
+-		-e '/^@dir/d' ${WRKDIR}/.PLIST.mktmp
+ 
+ post-install:
+-	${MV} ${STAGEDIR}${OCCROOT}/bin/DRAWEXE-${PORTVERSION}	\
+-		${STAGEDIR}${PREFIX}/bin/DRAWEXE
+-	${RLN} ${STAGEDIR}${PREFIX}/bin/DRAWEXE ${STAGEDIR}${OCCROOT}/bin
++	# No Draw or shell environment entry points in this library-only variant.
++	${RM} -r ${STAGEDIR}${PREFIX}/share/opencascade/scripts
++	${FIND} ${STAGEDIR}${PREFIX} \( -type f -o -type l \) \
++		! -path '${STAGEDIR}${PREFIX}/share/licenses/*' | \
++		${SED} 's|^${STAGEDIR}${PREFIX}/||' | ${SORT} >> ${TMPPLIST}
++	${FIND} ${STAGEDIR}${PREFIX} -type d -empty \
++		! -path '${STAGEDIR}${PREFIX}/share/licenses*' | \
++		${SED} 's|^${STAGEDIR}${PREFIX}/|@dir |' | ${SORT} >> ${TMPPLIST}
+ 
+-post-install-DOXYGEN-on:
+-	${RLN} ${STAGEDIR}${OCCROOT}/${DOCSDIR_REL} ${STAGEDIR}${DOCSDIR}
+-
+-.if defined(MAINTAINER_MODE)
+-regression-test:	install
+-	${RM} -rf /tmp/testOCC
+-	${MKDIR} /tmp/testOCC
+-	bash -c "\
+-	cd ${OCCROOT} && . ${OCCROOT}/bin/env.sh &&	\
+-	CSF_TestScriptsPath=${OCCROOT}/tests		\
+-	CSF_TestDataPath=${OCCROOT}/data		\
+-	DRAWEXE -f ${FILESDIR}/regtest "
+-.endif
+-
+-.include <../../math/vtk9/Makefile.version>
+ .include <bsd.port.mk>
+--- a/cad/ngspice_rework/files/patch-configure.ac
++++ /dev/null
+@@ -1,34 +0,0 @@
+---- configure.ac.orig	2020-05-06 06:11:56 UTC
+-+++ configure.ac
+-@@ -707,7 +707,6 @@ fi
+- # Xft is optional, allows text rotation in plots
+- 
+- if test "x$no_x" != xyes ; then
+--    X_CFLAGS="$X_CFLAGS -I/usr/include/freetype2"
+-     AC_CHECK_LIB([Xaw], [main], [X_LIBS="$X_LIBS -lXaw"],
+-         [AC_MSG_ERROR([Couldn't find Xaw library])], [$X_LIBS $X_EXTRA_LIBS])
+-     AC_CHECK_LIB([Xmu], [main], [X_LIBS="$X_LIBS -lXmu"],
+-@@ -716,21 +715,8 @@ if test "x$no_x" != xyes ; then
+-     AC_CHECK_LIB([Xext], [XShmAttach], [X_LIBS="$X_LIBS -lXext"],
+-         [AC_MSG_ERROR([Couldn't find Xext library])], [$X_LIBS $X_EXTRA_LIBS])
+-     X_LIBS="$X_LIBS -lX11"
+--	AC_CHECK_LIB([Xft], [main],
+--        [AC_DEFINE([HAVE_LIBXFT], [1], [Have xft routines in libxft])]
+--        X_LIBS="$X_LIBS -lXft -lfontconfig -lXrender -lfreetype"
+--        has_xft=yes,
+--        [has_xft=no], [$X_LIBS $X_EXTRA_LIBS])
+--
+--    if test "x$has_xft" = xyes ; then
+--        AC_CHECK_LIB([fontconfig], [main], [],
+--            [AC_MSG_ERROR([Couldn't find fontconfig library])], [$X_LIBS $X_EXTRA_LIBS])
+--#        AC_CHECK_LIB([Xrender], [main], [],
+--#            [AC_MSG_ERROR([Couldn't find Xrender library])], [$X_LIBS $X_EXTRA_LIBS])
+--        AC_CHECK_LIB([freetype], [main], [],
+--            [AC_MSG_ERROR([Couldn't find freetype library])], [$X_LIBS $X_EXTRA_LIBS])
+--    fi
+--
+-+    PKG_CHECK_MODULES([XFT], [xft], [X_CFLAGS="$X_CFLAGS $XFT_CFLAGS"; X_LIBS="$X_LIBS $XFT_LIBS"],
+-+                      [AC_MSG_ERROR([Couldn't find freetype library])])
+-     has_no_x=false
+- else
+-     AC_DEFINE([X_DISPLAY_MISSING])

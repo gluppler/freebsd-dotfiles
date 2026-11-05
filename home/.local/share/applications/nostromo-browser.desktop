@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Qutebrowser
+Comment=Keyboard browser for Nostromo
+Exec=nostromo-browser %U
+Terminal=false
+Categories=Network;WebBrowser;
+MimeType=text/html;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;

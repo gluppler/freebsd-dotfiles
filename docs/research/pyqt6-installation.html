@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Installing PyQt6 &#8212; PyQt Documentation v6.11.0</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="_static/riverbank.css?v=d2919eab" />
+    
+    <script src="_static/documentation_options.js?v=15ae032f"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Differences Between PyQt6 and PyQt5" href="pyqt5_differences.html" />
+    <link rel="prev" title="Support for Old Versions of Python" href="eol_policy.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General index"
+             accesskey="I">Index</a></li>
+        <li class="right" >
+          <a href="sip-classes.html" title="Index of all classes"
+             accesskey="C">Classes</a> |</li>
+        <li class="right" >
+          <a href="module_index.html" title="Index of all modules"
+             accesskey="M">Modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">PyQt Documentation v6.11.0</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Installing PyQt6</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <section id="installing-pyqt6">
+<h1>Installing PyQt6<a class="headerlink" href="#installing-pyqt6" title="Link to this heading">¶</a></h1>
+<p>Both the GPL and commercial versions of PyQt6 can be built from sdists or
+installed from binary wheels.  Although this section concentrates on PyQt6
+itself it applies equally to the add-on projects (e.g. PyQt6-3D,
+PyQt6-NetworkAuth etc.).</p>
+<section id="understanding-the-correct-version-to-install">
+<h2>Understanding the Correct Version to Install<a class="headerlink" href="#understanding-the-correct-version-to-install" title="Link to this heading">¶</a></h2>
+<p>People sometimes mistakenly believe that support for a particular version of Qt
+requires a matching version of PyQt.</p>
+<p>Qt uses <a class="reference external" href="https://semver.org/spec/v2.0.0.html">semantic versioning</a> when
+deciding on the version number of a release.  In summary the major version is
+increased when a release includes incompatible changes, the minor version is
+increased when a release includes compatible changes, and the patch version is
+increased when a release includes no user-visible changes.</p>
+<p>With PyQt6 the version number of PyQt6 is tied, to a certain extent, to the
+version of Qt v6 so that:</p>
+<ul class="simple">
+<li><p>The major version will always be <strong>6</strong>.</p></li>
+<li><p>For a particular minor version <em>n</em> it will build against any version of Qt
+v6.  It will not support any new features introduced in Qt v6.<em>n+1</em> or
+later.</p></li>
+<li><p>It will support all the features of supported modules of Qt v6.<em>n</em> or
+earlier.</p></li>
+<li><p>Support for new modules may be added to PyQt6 at any time.  This would result
+in a change of patch version only.</p></li>
+<li><p>The major and minor versions of the latest release of PyQt6 will be the same
+as the latest release of Qt v6.</p></li>
+<li><p>The patch versions of PyQt6 and Qt v6 are entirely unrelated to each other.</p></li>
+</ul>
+<p>So, for example, PyQt6 v6.1 will build against Qt v6.2 but will not support any
+new features introduced in Qt v6.2.  PyQt6 v6.1 will support all the features
+of supported modules of Qt v6.0 and those new features introduced in Qt v6.1.</p>
+<p>In summary, you should always try and use the latest version of PyQt6 no matter
+what version of Qt v6 you are using.</p>
+</section>
+<section id="installing-from-wheels">
+<h2>Installing from Wheels<a class="headerlink" href="#installing-from-wheels" title="Link to this heading">¶</a></h2>
+<p>Wheels are the standard Python packaging format for pure Python or binary
+extension modules such as PyQt6.  Wheels are provided for 64-bit Windows (Intel
+and ARM), 64-bit macOS (Intel and ARM) and 64-bit Linux (Intel and ARM).  These
+correspond to the platforms for which The Qt Company provides binary
+installers.</p>
+<p>Wheels are installed using Python’s <strong class="program">pip</strong> program.</p>
+<section id="installing-the-gpl-version">
+<h3>Installing the GPL Version<a class="headerlink" href="#installing-the-gpl-version" title="Link to this heading">¶</a></h3>
+<p>To install the wheel for the GPL version of PyQt6, run:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="n">PyQt6</span>
+</pre></div>
+</div>
+<p>This will attempt to install the wheel for your platform and your version of
+Python (assuming both are supported).  The wheel will be automatically
+downloaded from <a class="reference external" href="https://pypi.org/project/PyQt6/">PyPI</a>.</p>
+<p>You may find that <strong class="program">pip</strong> doesn’t download a wheel but instead downloads
+the sdist and tries to build PyQt6 from source.  If it does then the build will
+probably fail with a cryptic error message.  There are a number of reasons for
+this:</p>
+<ul class="simple">
+<li><p>there is no wheel available for your platform and version of Python</p></li>
+<li><p>your version of Python is unsupported</p></li>
+<li><p>your version of <strong class="program">pip</strong> is too old and doesn’t support the current
+standards for naming wheels</p></li>
+<li><p>in order for <strong class="program">pip</strong> to build from source additional options must be
+specified.</p></li>
+</ul>
+<p>When using <strong class="program">pip</strong> to build from source then a command line similar to
+the following should be used:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="o">-</span><span class="n">v</span> <span class="n">install</span> <span class="o">--</span><span class="n">config</span><span class="o">-</span><span class="n">settings</span> <span class="o">--</span><span class="n">confirm</span><span class="o">-</span><span class="n">license</span><span class="o">=</span> <span class="o">--</span><span class="n">config</span><span class="o">-</span><span class="n">settings</span> <span class="o">--</span><span class="n">qmake</span><span class="o">=/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">qmake</span> <span class="n">PyQt6</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">-v</span></code> option is not required but is recommended. The <strong class="program">qmake</strong>
+location does not need to specified if it is on <span class="target" id="index-0"></span><code class="xref std std-envvar docutils literal notranslate"><span class="pre">PATH</span></code>.</p>
+<p><strong class="program">pip</strong> will also automatically install any dependencies that are
+required.  In the case of PyQt6 itself this will be the PyQt6-Qt6 and PyQt6-sip
+projects.  The PyQt6-Qt6 project contains the parts of a standard LGPL Qt
+installation required by PyQt6.  The PyQt6-sip project contains the
+<a class="reference external" href="api/sip/sip-module.html">sip</a> module.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If you want PyQt6 to use a copy of Qt that you already have installed then
+you need to build it from source.</p>
+</div>
+<p>To uninstall the GPL version, run:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">uninstall</span> <span class="n">PyQt6</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The Qt libraries in the Linux wheel of the PyQt6-Qt6 project require
+OpenSSL v1.1 however some Linux distributions (specifically Ubuntu 22.04 at
+the time of writing) include the incompatible OpenSSL v3.</p>
+<p>The required version of OpenSSL can be downloaded from the Ubuntu 20.04
+repository by clicking <a class="reference external" href="http://security.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.16_amd64.deb">here</a>.</p>
+<p>The downloaded <code class="docutils literal notranslate"><span class="pre">.deb</span></code> file can then be installed by running:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sudo</span> <span class="n">apt</span> <span class="n">install</span> <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">libssl1</span><span class="mf">.1_1.1.1</span><span class="n">f</span><span class="o">-</span><span class="mi">1</span><span class="n">ubuntu2</span><span class="mf">.16</span><span class="n">_amd64</span><span class="o">.</span><span class="n">deb</span>
+</pre></div>
+</div>
+</div>
+</section>
+<section id="installing-the-commercial-version">
+<h3>Installing the Commercial Version<a class="headerlink" href="#installing-the-commercial-version" title="Link to this heading">¶</a></h3>
+<p>Wheels are also provided for the commercial version of PyQt6 but they must be
+downloaded from your account on the Riverbank Computing website.  Before you
+install the downloaded wheel using <strong class="program">pip</strong> you must ensure you have an
+appropriate Qt license and have decided how you want to distribute your PyQt6
+wheels to your developers.</p>
+<p>By default, installing the commercial PyQt6 wheel will do the same as
+installing the GPL wheel, i.e. it will automatically download and install the
+required parts of a standard LGPL Qt installation from PyPI.  There are a
+number of reasons why you might not want to do this:</p>
+<ul class="simple">
+<li><p>you have a commercial Qt license and need to make sure that is used with
+PyQt6</p></li>
+<li><p>you don’t allow your developers access to PyPI</p></li>
+<li><p>you want to minimise the number of wheels you need to distribute to your
+developers.</p></li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Some Qt libraries are licensed under the GPL rather than the LGPL.  If your
+own application license is compatibile with the LGPL but is incompatible
+with the GPL then you must make sure you do not use the corresponding PyQt
+modules (even though you have a commercial PyQt license).</p>
+</div>
+<p>The solution to all these issues is to use the <strong class="program">pyqt-bundle</strong> program
+to bundle a copy of your own Qt installation with your commercial PyQt6.  This
+will produce a new wheel that you can distribute easily to your developers.</p>
+<p><strong class="program">pyqt-bundle</strong> is part of <a class="reference external" href="https://pypi.org/project/PyQt-builder/">PyQt-builder</a>.  To install it, run:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="n">PyQt</span><span class="o">-</span><span class="n">builder</span>
+</pre></div>
+</div>
+<p>The documentation can be found <a class="reference external" href="https://pyqt-builder.readthedocs.io/en/stable/pyqtbundle.html">here</a>.</p>
+<p>To uninstall the commercial version, run:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">uninstall</span> <span class="n">PyQt6</span><span class="o">-</span><span class="n">commercial</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="building-and-installing-from-source">
+<h2>Building and Installing from Source<a class="headerlink" href="#building-and-installing-from-source" title="Link to this heading">¶</a></h2>
+<p>As described above <strong class="program">pip</strong> can be used to download, build and
+install the GPL source packages from the <a class="reference external" href="https://pypi.org/project/PyQt6/">PyQt6</a> project at PyPI.  However doing so is not
+recommended as it is not easy to configure the installation or diagnose any
+problems.</p>
+<p>PyQt6 is built using <a class="reference external" href="https://pypi.org/project/PyQt-builder/">PyQt-builder</a>.
+To install it, run:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="n">PyQt</span><span class="o">-</span><span class="n">builder</span>
+</pre></div>
+</div>
+<p>PyQt-builder is an extension to the <a class="reference external" href="https://pypi.org/project/sip/">SIP</a>
+bindings generator which will be installed automatically.</p>
+<p>The rest of these instructions assume that you have downloaded the PyQt6 sdist
+from <a class="reference external" href="https://pypi.org/project/PyQt6/">PyPI</a> and will used SIP’s
+<strong class="program">sip-install</strong> command line tool to do the build and installation.</p>
+<p>If you are using the commercial version of PyQt6 then you should use the
+download instructions which were sent to you when you made your purchase.  You
+must also download your <code class="file docutils literal notranslate"><span class="pre">pyqt-commercial.sip</span></code> license file.</p>
+<p>PyQt-builder extends SIP’s build system by adding <a class="reference external" href="https://pyqt-builder.readthedocs.io/en/stable/command_line_tools.html">options</a>
+to SIP’s <a class="reference external" href="https://python-sip.readthedocs.io/en/stable/command_line_tools.html">command line tools</a>.</p>
+<p>PyQt6 further extends the build system by adding the following options to SIP’s
+command line tools.</p>
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-confirm-license">
+<span class="sig-name descname"><span class="pre">--confirm-license</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-confirm-license" title="Link to this definition">¶</a></dt>
+<dd><p>Using this confirms that you accept the terms of the PyQt license.  If it
+is omitted then you will be asked for confirmation during configuration.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-dbus">
+<span class="sig-name descname"><span class="pre">--dbus</span></span><span class="sig-prename descclassname"> <span class="pre">DIR</span></span><a class="headerlink" href="#cmdoption-dbus" title="Link to this definition">¶</a></dt>
+<dd><p>The directory containing the <code class="file docutils literal notranslate"><span class="pre">dbus/dbus-python.h</span></code> header file of the
+dbus-python package can be found in the directory <code class="docutils literal notranslate"><span class="pre">DIR</span></code>.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-license-dir">
+<span class="sig-name descname"><span class="pre">--license-dir</span></span><span class="sig-prename descclassname"> <span class="pre">DIR</span></span><a class="headerlink" href="#cmdoption-license-dir" title="Link to this definition">¶</a></dt>
+<dd><p>The <code class="file docutils literal notranslate"><span class="pre">pyqt-commercial,sip</span></code> license file needed by the commercial
+version of PyQt6 can be found in the directory <code class="docutils literal notranslate"><span class="pre">DIR</span></code>.  By default it is
+assumed that you have copied it to the <code class="file docutils literal notranslate"><span class="pre">sip</span></code> sub-directory of the
+unpacked sdist.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-no-dbus-python">
+<span class="sig-name descname"><span class="pre">--no-dbus-python</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-no-dbus-python" title="Link to this definition">¶</a></dt>
+<dd><p>The Qt support for the dbus-python package will not be built.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-no-designer-plugin">
+<span class="sig-name descname"><span class="pre">--no-designer-plugin</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-no-designer-plugin" title="Link to this definition">¶</a></dt>
+<dd><p>The Qt Designer plugin will not be built.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-no-qml-plugin">
+<span class="sig-name descname"><span class="pre">--no-qml-plugin</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-no-qml-plugin" title="Link to this definition">¶</a></dt>
+<dd><p>The <strong class="program">qmlscene</strong> plugin will not be built.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-no-tools">
+<span class="sig-name descname"><span class="pre">--no-tools</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-no-tools" title="Link to this definition">¶</a></dt>
+<dd><p>The <strong class="program">pyuic6</strong> and <strong class="program">pylupdate6</strong> tools will not be built.</p>
+</dd></dl>
+
+<dl class="std option">
+<dt class="sig sig-object std" id="cmdoption-qt-shared">
+<span class="sig-name descname"><span class="pre">--qt-shared</span></span><span class="sig-prename descclassname"></span><a class="headerlink" href="#cmdoption-qt-shared" title="Link to this definition">¶</a></dt>
+<dd><p>Normally Qt is checked to see if it has been built as shared libraries.
+Some Linux distributions configure their Qt builds to make this check
+unreliable.  This option ignores the result of the check and assumes that
+Qt has been built as shared libraries.</p>
+</dd></dl>
+
+<section id="building-the-sip-module">
+<h3>Building the <a class="reference external" href="api/sip/sip-module.html">sip</a> Module<a class="headerlink" href="#building-the-sip-module" title="Link to this heading">¶</a></h3>
+<p>It is not necessary to install the <a class="reference external" href="api/sip/sip-module.html">PyQt6.sip</a> module before building
+PyQt6 but it must be installed before PyQt6 can be used.</p>
+<p>The module is built using <code class="xref py py-mod docutils literal notranslate"><span class="pre">setuptools</span></code> and is available from the
+<a class="reference external" href="https://pypi.org/project/PyQt6-sip/">PyQt6-sip</a> project at PyPI.  It uses
+<code class="xref py py-mod docutils literal notranslate"><span class="pre">setuptools</span></code> as its build system and can be installed by <strong class="program">pip</strong>
+or you can also unpack the sdist and install it by running its
+<strong class="program">setup.py</strong> script.</p>
+</section>
+<section id="building-pyqt6">
+<h3>Building PyQt6<a class="headerlink" href="#building-pyqt6" title="Link to this heading">¶</a></h3>
+<p>Once you have downloaded the sdist from PyPI, unpack it and change directory to
+its top level directory (i.e. the one containing the <code class="file docutils literal notranslate"><span class="pre">pyproject.toml</span></code>
+file.</p>
+<p>If you are building the commercial version of PyQt6 then copy the
+<code class="file docutils literal notranslate"><span class="pre">pyqt-commercial.sip</span></code> license file to the <code class="file docutils literal notranslate"><span class="pre">sip</span></code> sub-directory.</p>
+<p>To build and install PyQt6, run:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sip</span><span class="o">-</span><span class="n">install</span>
+</pre></div>
+</div>
+<p>In order to see all the available command line options, run:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sip</span><span class="o">-</span><span class="n">install</span> <span class="o">-</span><span class="n">h</span>
+</pre></div>
+</div>
+<p>If you want to run <strong class="program">make</strong> seperately then instead run:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">sip</span><span class="o">-</span><span class="n">build</span> <span class="o">--</span><span class="n">no</span><span class="o">-</span><span class="n">make</span>
+<span class="n">make</span>
+<span class="n">make</span> <span class="n">install</span>
+</pre></div>
+</div>
+</section>
+<section id="building-pyqt6-add-on-projects">
+<h3>Building PyQt6 Add-on Projects<a class="headerlink" href="#building-pyqt6-add-on-projects" title="Link to this heading">¶</a></h3>
+<p>The add-on PyQt6 projects are built and installed in exactly the same way as
+PyQt6 itself.  PyQt6 must be built and installed first.</p>
+</section>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#">Installing PyQt6</a><ul>
+<li><a class="reference internal" href="#understanding-the-correct-version-to-install">Understanding the Correct Version to Install</a></li>
+<li><a class="reference internal" href="#installing-from-wheels">Installing from Wheels</a><ul>
+<li><a class="reference internal" href="#installing-the-gpl-version">Installing the GPL Version</a></li>
+<li><a class="reference internal" href="#installing-the-commercial-version">Installing the Commercial Version</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#building-and-installing-from-source">Building and Installing from Source</a><ul>
+<li><a class="reference internal" href="#building-the-sip-module">Building the sip Module</a></li>
+<li><a class="reference internal" href="#building-pyqt6">Building PyQt6</a></li>
+<li><a class="reference internal" href="#building-pyqt6-add-on-projects">Building PyQt6 Add-on Projects</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="eol_policy.html"
+                          title="previous chapter">Support for Old Versions of Python</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="pyqt5_differences.html"
+                          title="next chapter">Differences Between PyQt6 and PyQt5</a></p>
+  </div>
+<search id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="Related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General index"
+             >Index</a></li>
+        <li class="right" >
+          <a href="sip-classes.html" title="Index of all classes"
+             >Classes</a> |</li>
+        <li class="right" >
+          <a href="module_index.html" title="Index of all modules"
+             >Modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">PyQt Documentation v6.11.0</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Installing PyQt6</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+    &#169; Copyright 2026, Riverbank Computing Limited, The Qt Company.
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    </div>
+  </body>
+</html>

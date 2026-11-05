@@ -1,0 +1,60 @@
+--- a/dvtm-editor.c
++++ b/dvtm-editor.c
+@@ -63,15 +63,23 @@
+ 	char buffer[2048];
+ 	ssize_t bytes;
+ 	while ((bytes = read(STDIN_FILENO, buffer, sizeof(buffer))) > 0) {
++		const char *cursor = buffer;
+ 		do {
+-			ssize_t written = write(tmp_write, buffer, bytes);
+-			if (written == -1) {
++			ssize_t written = write(tmp_write, cursor, bytes);
++			if (written < 0 && errno == EINTR)
++				continue;
++			if (written <= 0) {
+ 				error("failed to write data to temporary file `%s'",
+ 				      tempname);
+ 				goto err;
+ 			}
++			cursor += written;
+ 			bytes -= written;
+ 		} while (bytes > 0);
++	}
++	if (bytes < 0) {
++		error("failed to read filter data");
++		goto err;
+ 	}
+ 
+ 	if (fsync(tmp_write) == -1) {
+@@ -157,18 +165,28 @@
+ 		goto err;
+ 	}
+ 
+-	if (stat_before.st_mtime == stat_after.st_mtime)
++	if (stat_before.st_size == stat_after.st_size &&
++	    stat_before.st_mtim.tv_sec == stat_after.st_mtim.tv_sec &&
++	    stat_before.st_mtim.tv_nsec == stat_after.st_mtim.tv_nsec)
+ 		goto ok; /* no modifications */
+ 
+ 	while ((bytes = read(tmp_read, buffer, sizeof(buffer))) > 0) {
++		const char *cursor = buffer;
+ 		do {
+-			ssize_t written = write(STDOUT_FILENO, buffer, bytes);
+-			if (written == -1) {
++			ssize_t written = write(STDOUT_FILENO, cursor, bytes);
++			if (written < 0 && errno == EINTR)
++				continue;
++			if (written <= 0) {
+ 				error("failed to write data to stdout");
+ 				goto err;
+ 			}
++			cursor += written;
+ 			bytes -= written;
+ 		} while (bytes > 0);
++	}
++	if (bytes < 0) {
++		error("failed to read filter data");
++		goto err;
+ 	}
+ 
+ ok:

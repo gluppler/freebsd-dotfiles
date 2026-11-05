@@ -1,0 +1,63 @@
+#!/bin/sh
+set -eu
+actions() {
+    printf '%s\n' PROJECTS EDITOR DOCS GIT FILES DEVICES BROWSER 'PCB DESIGN' 'PCB WORKFLOW' DISCORD SERVER PASSWORDS EMBEDDED WIFI VPN BLUETOOTH LANGUAGE DISPLAYS AUDIO BRIGHTNESS CLAMSHELL CLIPBOARD \
+        SOFTWARE 'INSTALL PACKAGES' 'UPDATE PACKAGES' 'REMOVE PACKAGES' 'PORTS' 'BASE PATCHES' 'FIRMWARE' \
+        'SYSTEM INFO' AUTHENTICATION 'POWER PROFILE' WALLPAPER 'CRT TOGGLE' 'CRT STATIC' 'NOTIFICATION HISTORY' 'NOTIFICATION ACTION' \
+        'NOTIFICATION QUIET' 'SCREENSHOT WINDOW' 'SCREENSHOT FULL' LOCK POWER KEYBINDINGS
+}
+[ "$#" -le 1 ] || exit 2
+case ${1:-} in
+--list)
+    actions
+    exit 0
+    ;;
+'') choice=$(actions | nostromo-picker -i -l 12 -p NOSTROMO) || exit 0 ;;
+*) choice=$1 ;;
+esac
+case $choice in
+PROJECTS) exec foot -e nostromo-project ;;
+EDITOR) exec foot -e vis ;;
+DOCS) exec nostromo-docs menu ;;
+GIT) exec foot -e lazygit ;;
+FILES) exec foot -e nnn ;;
+DEVICES) exec foot -e nostromo-devices ;;
+BROWSER) exec nostromo-browser ;;
+'PCB DESIGN') exec nostromo-eda gui ;;
+'PCB WORKFLOW') exec foot -e nostromo-eda ;;
+DISCORD) exec nostromo-browser --discord ;;
+SERVER) exec foot -e nostromo-server ;;
+PASSWORDS) exec foot -e nostromo-passwords ;;
+EMBEDDED) exec foot -e nostromo-embedded ;;
+WIFI) exec nostromo-wifi ;;
+BLUETOOTH) exec nostromo-bluetooth menu ;;
+LANGUAGE) exec nostromo-language menu ;;
+VPN) exec nostromo-vpn menu ;;
+DISPLAYS) exec nostromo-display ;;
+AUDIO) exec nostromo-audio ;;
+BRIGHTNESS) exec nostromo-brightness menu ;;
+CLAMSHELL) exec nostromo-lid ;;
+CLIPBOARD) exec nostromo-clipboard ;;
+SOFTWARE) exec foot -e nostromo-software ;;
+'INSTALL PACKAGES') exec foot -e nostromo-software install ;;
+'UPDATE PACKAGES') exec foot -e nostromo-software update ;;
+'REMOVE PACKAGES') exec foot -e nostromo-software remove ;;
+PORTS) exec foot -e nostromo-software ports ;;
+'BASE PATCHES') exec foot -e nostromo-software patches ;;
+FIRMWARE) exec foot -e nostromo-software firmware ;;
+'SYSTEM INFO') exec foot -e nostromo-fetch --live ;;
+AUTHENTICATION) exec foot -e nostromo-auth ;;
+'POWER PROFILE') exec nostromo-profile ;;
+WALLPAPER) exec nostromo-wallpaper menu ;;
+'CRT TOGGLE') exec nostromo-crt toggle ;;
+'CRT STATIC') exec nostromo-crt static ;;
+'NOTIFICATION HISTORY') exec dunstctl history-pop ;;
+'NOTIFICATION ACTION') exec dunstctl context ;;
+'NOTIFICATION QUIET') exec dunstctl set-paused toggle ;;
+'SCREENSHOT WINDOW') exec nostromo-screenshot focused ;;
+'SCREENSHOT FULL') exec nostromo-screenshot full ;;
+LOCK) exec nostromo-lock ;;
+POWER) exec nostromo-power ;;
+KEYBINDINGS) exec foot -e less "$HOME/.local/share/nostromo/KEYBINDINGS.md" ;;
+*) exit 2 ;;
+esac

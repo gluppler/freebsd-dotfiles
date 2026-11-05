@@ -1,0 +1,44 @@
+# Interactive oksh only. Login and non-login terminals share this ENV file.
+case $- in *i*) ;; *) return ;; esac
+umask 022
+mkdir -p "$HOME/.local/state/oksh"
+export HISTFILE="$HOME/.local/state/oksh/history"
+HISTSIZE=10000
+set -o emacs
+set -o notify
+bind '^R'=search-history
+bind '^L'=clear-screen
+bind '^I'=complete
+bind '^W'=delete-word-backward
+_host=$(hostname -s)
+# Write outside PS1 so escape bytes never affect oksh prompt width.
+_nostromo_prompt() { nostromo-cwd > /dev/tty 2>/dev/null || :; }
+PS1='$(_nostromo_prompt)${USER}@${_host} ${PWD}
+> '
+alias ll='ls -lah'
+alias la='ls -A'
+alias vi=vis
+alias vim=vis
+alias work=nostromo-project
+alias mux=nostromo-project
+alias fetch=nostromo-fetch
+alias lg=lazygit
+alias server=nostromo-server
+alias vpn=nostromo-vpn
+alias software=nostromo-software
+alias rg='rg --smart-case'
+alias py='uv run python'
+alias venv='uv venv --python python3'
+
+mkcd() { mkdir -p "$1" && cd "$1" || return; }
+f() { _file=$(rg --files --hidden -g '!.git' | fzf) && vis "$_file"; }
+c() { _dir=$(find "${1:-.}" -type d ! -path '*/.git/*' | fzf) && cd "$_dir" || return; }
+# User-owned optional overrides are not part of the repository.
+# shellcheck source=/dev/null
+[ ! -r "$HOME/.config/oksh/local" ] || . "$HOME/.config/oksh/local"
+# The POSIX backend requires the prompt hook; its default PWD hook is unsupported.
+# Initialize last so local prompt changes retain directory tracking.
+if command -v zoxide >/dev/null 2>&1; then
+    _zinit=$(zoxide init posix --hook prompt) && eval "$_zinit"
+    unset _zinit
+fi

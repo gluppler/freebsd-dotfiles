@@ -1,0 +1,50 @@
+#!/bin/sh
+# Called by the native event watcher, never sourced by root/devd.
+set -eu
+umask 077
+[ "$#" = 1 ] || exit 2
+case $1 in
+sleep) exec nostromo-lock suspend ;;
+outputs | open | closed) ;;
+*) exit 2 ;;
+esac
+runtime=${XDG_RUNTIME_DIR:?}/nostromo-output
+state=${XDG_STATE_HOME:-$HOME/.local/state}/nostromo
+mkdir -p "$runtime"
+case $1 in open | closed) printf '%s\n' "$1" >"$runtime/lid" ;; esac
+lid=open
+[ ! -f "$runtime/lid" ] || IFS= read -r lid <"$runtime/lid"
+policy=PORTABLE
+[ ! -f "$state/lid-policy" ] || IFS= read -r policy <"$state/lid-policy"
+json=$(wlr-randr --json)
+internals=$(printf '%s\n' "$json" | jq -r '.[] | select(.name|test("^(eDP|LVDS)-[0-9]+$")) | .name')
+external=$(printf '%s\n' "$json" | jq '[.[] | select(.enabled and (.name|test("^(eDP|LVDS)-[0-9]+$")|not))] | length')
+keyboard=$(sysctl -aN | awk '/^dev\.ukbd\.[0-9]+\.%parent$/ {n++} END{print n+0}')
+set --
+if [ "$lid" = closed ] && [ "$policy" = DOCKED ] && [ "$external" -gt 0 ] && [ "$keyboard" -gt 0 ]; then
+    for output in $internals; do
+        enabled=$(printf '%s\n' "$json" | jq -r --arg output "$output" '.[]|select(.name==$output)|.enabled')
+        [ "$enabled" != true ] || set -- "$@" --output "$output" --off
+    done
+else
+    for output in $internals; do
+        enabled=$(printf '%s\n' "$json" | jq -r --arg output "$output" '.[]|select(.name==$output)|.enabled')
+        [ "$enabled" = true ] || set -- "$@" --output "$output" --on
+    done
+fi
+if [ "$#" -gt 0 ]; then
+    wlr-randr --dryrun "$@"
+    wlr-randr "$@"
+fi
+# Only a changed topology/scale/selection restarts swaybg.
+current=$(wlr-randr --json | jq -c '[.[]|{name,enabled,scale,transform,modes:[.modes[]?|select(.current)]}]')
+before=
+[ ! -f "$runtime/layout" ] || IFS= read -r before <"$runtime/layout"
+if [ "$current" != "$before" ]; then
+    nostromo-wallpaper apply
+    printf '%s\n' "$current" >"$runtime/layout"
+fi
+if [ "$lid" = closed ] && { [ "$policy" != DOCKED ] || [ "$external" -eq 0 ] || [ "$keyboard" -eq 0 ]; }; then
+    # This also handles unplugging a dock while the lid stays closed.
+    nostromo-lock suspend || notify-send -u critical 'SUSPEND ABORTED' 'The session lock did not acknowledge. The laptop remains awake.'
+fi

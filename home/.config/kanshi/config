@@ -1,0 +1,9 @@
+# No invented monitor identifiers. Add a profile after native output discovery.
+# `kanshictl reload` applies edits without restarting the desktop.
+# Example structure (replace both descriptions and verify actual modes first):
+# profile docked {
+#     output "<actual internal output description>" disable
+#     output "<actual external output description>" enable position 0,0 scale 1
+#     exec nostromo-wallpaper apply
+# }
+# Always include a portable profile that enables the internal display after undocking.

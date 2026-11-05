@@ -1,0 +1,63 @@
+#!/bin/sh
+# Sample hardware status once per session interval.
+set -eu
+[ "$#" -le 1 ] || exit 2
+case ${1:---loop} in --once | --loop) ;; *) exit 2 ;; esac
+LC_ALL=C
+export LC_ALL
+temp_keys=$(sysctl -aN 2>/dev/null | awk '/^dev\.cpu\.[0-9]+\.temperature$/')
+previous=
+field() {
+    # The bar accepts fixed action IDs only. Escape metadata before its markup parser.
+    value=$(printf '%s' "$3" | tr -d '\000-\037\177' | sed 's/\^/^^/g')
+    printf '^lm(%s)%s %s^lm()  ' "$1" "$2" "$value"
+}
+sample() {
+    temperature=--
+    if [ -n "$temp_keys" ]; then
+        # Driver exposes one reading per core; show the hottest available core.
+        temperature=$({ for key in $temp_keys; do sysctl -n "$key" 2>/dev/null || :; done; } |
+            awk '/^[0-9]+([.][0-9]+)?C$/ {v=$0+0;if(!n++ || v>max)max=v} END {if(n)printf "%.0f°",max;else printf "--"}')
+    fi
+    battery=$(sysctl -n hw.acpi.battery.life 2>/dev/null || :)
+    case $battery in '' | *[!0-9]*) battery=-- ;; *) [ "$battery" -le 100 ] && battery=$battery% || battery=-- ;; esac
+    ac=$(sysctl -n hw.acpi.acline 2>/dev/null || :)
+    [ "$ac" != 1 ] || battery=+$battery
+    wifi=--
+    for interface in $(ifconfig -g wlan 2>/dev/null || :); do
+        case $interface in *[!a-zA-Z0-9]*) continue ;; esac
+        if ifconfig "$interface" | grep -q 'status: associated'; then
+            wifi=UP
+            break
+        else wifi=DOWN; fi
+    done
+    vpn=$(nostromo-vpn brief 2>/dev/null) || vpn=--
+    bluetooth=$(nostromo-bluetooth status 2>/dev/null) || bluetooth=--
+    audio=$(mixer -o vol.volume vol.mute 2>/dev/null | awk '
+        /vol.volume=/ {split($0,a,"=");split(a[2],b,":"); v=int(b[1]*100+.5);have=1}
+        /vol.mute=on/ {mute=1} END {if(mute)printf "MUTE";else if(have)printf "%d%%",v;else printf "--"}')
+    brightness=$(backlight -q 2>/dev/null || :)
+    case $brightness in '' | *[!0-9]*) brightness=-- ;; *) brightness=$brightness% ;; esac
+    language=$(nostromo-language status 2>/dev/null) || language=--
+    field 'SYSTEM INFO' '♨' "$temperature"
+    field POWER '▰' "$battery"
+    field WIFI '≋' "$wifi"
+    field VPN '◇' "$vpn"
+    field BLUETOOTH 'ᛒ' "$bluetooth"
+    field AUDIO '♪' "$audio"
+    field BRIGHTNESS '☼' "$brightness"
+    field LANGUAGE '文' "$language"
+    field 'SYSTEM INFO' '◷' "$(date '+%m-%d %H:%M')"
+    printf '\n'
+}
+while :; do
+    next=$(sample)
+    if [ "${1:---loop}" = --once ]; then
+        printf '%s\n' "$next"
+        exit
+    fi
+    if [ "$previous" != "$next" ]; then
+        if dwlb -status all "$next"; then previous=$next; fi
+    fi
+    sleep 5
+done

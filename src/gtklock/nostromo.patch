@@ -1,0 +1,343 @@
+--- a/src/window.c
++++ b/src/window.c
+@@ -5,7 +5,7 @@
+ 
+ #include <time.h>
+ 
+-#include <glib/gi18n-lib.h>
++#define _(text) (text)
+ #include <gtk/gtk.h>
+ #include <gtk-session-lock.h>
+ 
+@@ -16,6 +16,7 @@
+ #include "module.h"
+ 
+ extern struct GtkLock *gtklock;
++#include "theme.h"
+ 
+ struct Window *window_by_widget(GtkWidget *window) {
+ 	for(guint idx = 0; idx < gtklock->windows->len; idx++) {
+@@ -128,65 +129,55 @@
+ 	gtk_widget_set_sensitive(ctx->input_field, !busy);
+ }
+ 
+-static gboolean window_pw_failure(gpointer data) {
+-	struct Window *ctx = data;
+-	window_set_busy(ctx, FALSE);
+-	gtk_entry_set_text(GTK_ENTRY(ctx->input_field), "");
+-	gtk_entry_grab_focus_without_selecting(GTK_ENTRY(ctx->input_field));
+-	gtk_label_set_text(GTK_LABEL(ctx->error_label), _("Login failed"));
+-	return G_SOURCE_REMOVE;
+-}
+-
+-static gboolean window_pw_message(gpointer data) {
+-	window_setup_messages((struct Window *)data);
+-	return G_SOURCE_REMOVE;
+-}
+-
+-static gpointer window_pw_wait(gpointer data) {
+-	if (gtklock->test_mode) {
+-		g_application_quit(G_APPLICATION(gtklock->app));
+-	}
+-	struct Window *ctx = data;
+-	const char *password = gtk_entry_get_text((GtkEntry*)ctx->input_field);
+-	while(TRUE) {
+-		enum pwcheck ret = auth_pw_check(password);
+-		switch(ret) {
+-			case PW_FAILURE:
+-				g_main_context_invoke(NULL, window_pw_failure, ctx);
+-				return NULL;
+-			case PW_SUCCESS:
+-				g_application_quit(G_APPLICATION(gtklock->app));
+-				return NULL;
+-			case PW_ERROR:
+-				{
+-					char *err = auth_get_error();
+-					g_array_append_val(gtklock->errors, err);
+-					g_main_context_invoke(NULL, window_pw_message, ctx);
+-				}
+-				break;
+-			case PW_MESSAGE:
+-				{
+-					char *msg = auth_get_message();
+-					g_array_append_val(gtklock->messages, msg);
+-					g_main_context_invoke(NULL, window_pw_message, ctx);
+-				}
+-				break;
+-			case PW_WAIT:
+-				break;
+-		}
+-	}
+-
++static void password_free(gpointer data) {
++    char *password = data;
++    volatile char *p = password;
++    size_t length = strlen(password);
++    while (length--) *p++ = 0;
++    g_free(password);
++}
++
++static void password_worker(GTask *task, gpointer object, gpointer data, GCancellable *cancel) {
++    (void)object; (void)cancel;
++    g_task_return_boolean(task, auth_pw_check(data) == PW_SUCCESS);
++}
++
++static void password_done(GObject *object, GAsyncResult *result, gpointer data) {
++    (void)data;
++    struct Window *ctx = window_by_widget(GTK_WIDGET(object));
++    gboolean ok = g_task_propagate_boolean(G_TASK(result), NULL);
++    g_application_unmark_busy(G_APPLICATION(gtklock->app));
++    if (ok) {
++        gtklock->nostromo_authenticated = TRUE;
++        g_application_quit(G_APPLICATION(gtklock->app));
++    } else {
++        if (!ctx) ctx = gtklock->focused_window;
++        if (ctx) {
++            gtk_widget_set_sensitive(ctx->input_field, TRUE);
++            gtk_widget_set_sensitive(ctx->unlock_button, TRUE);
++            gtk_label_set_text(GTK_LABEL(ctx->error_label), "Authentication failed");
++            gtk_entry_grab_focus_without_selecting(GTK_ENTRY(ctx->input_field));
++        }
++    }
+ }
+ 
+ void window_pw_check(GtkWidget *widget, gpointer data) {
+-	struct Window *ctx = data;
+-	window_set_busy(ctx, TRUE);
+-	gtk_label_set_text(GTK_LABEL(ctx->error_label), NULL);
+-	g_thread_new(NULL, window_pw_wait, ctx);
++    (void)widget;
++    struct Window *ctx = data;
++    if (g_application_get_is_busy(G_APPLICATION(gtklock->app))) return;
++    char *password = g_strdup(gtk_entry_get_text(GTK_ENTRY(ctx->input_field)));
++    gtk_entry_set_text(GTK_ENTRY(ctx->input_field), "");
++    window_set_busy(ctx, TRUE);
++    gtk_label_set_text(GTK_LABEL(ctx->error_label), NULL);
++    GTask *task = g_task_new(ctx->window, NULL, password_done, NULL);
++    g_task_set_task_data(task, password, password_free);
++    g_task_run_in_thread(task, password_worker);
++    g_object_unref(task);
+ }
+ 
+ static void window_pw_set_vis(GtkEntry* entry, gboolean visibility) {
+-	const char *icon = visibility ? "view-conceal-symbolic" : "view-reveal-symbolic";
++	const char *icon = NULL;
++	visibility = FALSE;
+ 	gtk_entry_set_icon_from_icon_name(entry, GTK_ENTRY_ICON_SECONDARY, icon);
+ 	gtk_entry_set_visibility(entry, visibility);
+ }
+@@ -258,11 +249,11 @@
+ 	g_object_unref(cursor);
+ }
+ 
+-static gboolean window_idle_key(GtkWidget *self, GdkEventKey event, gpointer user_data) {
++static gboolean window_idle_key(GtkWidget *self, GdkEventKey *event, gpointer user_data) {
+ 	gtklock_idle_show(gtklock);
+ 	return FALSE;
+ }
+-static gboolean window_idle_motion(GtkWidget *self, GdkEventMotion event, gpointer user_data) {
++static gboolean window_idle_motion(GtkWidget *self, GdkEventMotion *event, gpointer user_data) {
+ 	gtklock_idle_show(gtklock);
+ 	return FALSE;
+ }
+@@ -370,6 +361,7 @@
+ 
+ 	if(gtklock->hidden) window_idle_hide(w);
+ 	module_on_window_create(gtklock, w);
++	nostromo_lock_theme(w);
+ 	gtk_widget_show_all(w->window);
+ 
+ 	g_object_unref(builder);
+--- a/src/source.c
++++ b/src/source.c
+@@ -7,7 +7,7 @@
+ #include <sys/wait.h>
+ #include <locale.h>
+ #include <glib-unix.h>
+-#include <glib/gi18n-lib.h>
++#define _(text) (text)
+ #include <gtk/gtk.h>
+ 
+ #include "util.h"
+@@ -62,7 +62,7 @@
+ 	{ "config", 'c', 0, G_OPTION_ARG_FILENAME, &config_path, "Load config file", NULL },
+ 	{ "daemonize", 'd', 0, G_OPTION_ARG_NONE, &should_daemonize, "Detach from controlling terminal", NULL },
+ 	{ "preview", 'p', 0, G_OPTION_ARG_NONE, &test_mode, "Enable preview mode where any password can unlock", NULL },
+-	{ NULL },
++	{ .long_name = NULL },
+ };
+ 
+ static GOptionEntry config_entries[] = {
+@@ -81,11 +81,11 @@
+ 	{ "unlock-command", 'U', 0, G_OPTION_ARG_STRING, &unlock_command, "Command to execute after unlocking", NULL },
+ 	{ "idle-command", 'I', 0, G_OPTION_ARG_STRING, &idle_command, "Command to execute after idle timeout", NULL },
+ 	{ "monitor-priority", 'M', 0, G_OPTION_ARG_STRING_ARRAY, &monitor_priority, "Set monitor focus priority", NULL },
+-	{ NULL },
++	{ .long_name = NULL },
+ };
+ 
+ static GOptionEntry debug_entries[] = {
+-	{ NULL },
++	{ .long_name = NULL },
+ };
+ 
+ static pid_t parent = -2;
+@@ -276,9 +276,9 @@
+ 
+ int main(int argc, char **argv) {
+ 	setlocale(LC_ALL, "");
+-	bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR);
+-	bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8");
+-	textdomain(GETTEXT_PACKAGE);
++
++
++
+ 
+ 	GOptionContext *option_context = g_option_context_new("- GTK-based lockscreen for Wayland");
+ 	g_option_context_add_main_entries(option_context, main_entries, NULL);
+--- a/src/gtklock.c
++++ b/src/gtklock.c
+@@ -57,12 +57,7 @@
+ 	}
+ }
+ 
+-static gboolean update_time_handler(gpointer data) {
+-	struct GtkLock *gtklock = (struct GtkLock *)data;
+-	gtklock_update_clocks(gtklock);
+-	gtklock_update_dates(gtklock);
+-	return G_SOURCE_CONTINUE;
+-}
++
+ 
+ static void exec_command(const gchar *command) {
+ 	GError *err = NULL;
+@@ -109,16 +104,10 @@
+ 	}
+ }
+ 
+-static gboolean signal_handler(gpointer data) {
+-	struct GtkLock *gtklock = data;
+-	g_application_quit(G_APPLICATION(gtklock->app));
+-	return FALSE;
+-}
+-
+ static void locked(GtkSessionLockLock *lock, void *data) {
+ 	struct GtkLock *gtklock = (struct GtkLock *)data;
+ 
+-	g_unix_signal_add(SIGUSR1, G_SOURCE_FUNC(signal_handler), gtklock);
++	/* A Unix signal must not authenticate an unlock. */
+ 
+ 	module_on_locked(gtklock);
+ 	if(gtklock->parent > 0) kill(gtklock->parent, SIGUSR2);
+@@ -144,7 +133,7 @@
+ 	gtk_session_lock_lock_lock(gtklock->lock);
+ 
+ 
+-	gtklock->draw_time_source = g_timeout_add(1000, G_SOURCE_FUNC(update_time_handler), gtklock);
++	/* No clock is displayed: do not keep an invisible one-second timer. */
+ 	gtklock_update_clocks(gtklock);
+ 	gtklock_update_dates(gtklock);
+ 	if(gtklock->use_idle_hide || gtklock->idle_command) gtklock->idle_hide_source =
+@@ -161,7 +150,10 @@
+ 		gtklock->idle_hide_source = 0;
+ 	}
+ 
+-	gtk_session_lock_lock_unlock_and_destroy(gtklock->lock);
++	if (gtklock->nostromo_authenticated)
++		gtk_session_lock_lock_unlock_and_destroy(gtklock->lock);
++	else
++		gtk_session_lock_lock_destroy(gtklock->lock);
+ 	gdk_display_sync(gdk_display_get_default());
+ 
+ 	for(guint idx = 0; idx < gtklock->windows->len; idx++) {
+--- a/include/gtklock.h
++++ b/include/gtklock.h
+@@ -11,6 +11,7 @@
+ struct Window;
+ 
+ struct GtkLock {
++	gboolean nostromo_authenticated;
+ 	GtkApplication *app;
+ 	GtkSessionLockLock *lock;
+ 	pid_t parent;
+--- a/res/gtklock.ui
++++ b/res/gtklock.ui
+@@ -2,13 +2,15 @@
+ <interface>
+ 	<object class="GtkBox" id="window-box">
+ 		<property name="name">window-box</property>
+-		<property name="margin">100</property>
++		<property name="margin">28</property>
+ 		<property name="halign">center</property>
+ 		<property name="valign">center</property>
+ 		<property name="orientation">vertical</property>
+ 		<property name="spacing">10</property>
+ 		<child>
+ 			<object class="GtkBox" id="info-box">
++<property name="no-show-all">1</property>
++<property name="visible">0</property>
+ 				<property name="name">info-box</property>
+ 				<property name="halign">center</property>
+ 				<property name="orientation">vertical</property>
+@@ -45,7 +47,7 @@
+ 						<child>
+ 							<object class="GtkLabel" id="input-label">
+ 								<property name="name">input-label</property>
+-								<property name="label" translatable="yes">Password:</property>
++								<property name="label">Password</property>
+ 							</object>
+ 							<packing>
+ 								<property name="left-attach">0</property>
+@@ -55,17 +57,17 @@
+ 						<child>
+ 							<object class="GtkEntry" id="input-field">
+ 								<property name="name">input-field</property>
+-								<property name="width-request">380</property>
++								<property name="width-request">280</property>
+ 								<property name="visibility">0</property>
+ 								<property name="caps-lock-warning">0</property>
+ 								<property name="input-purpose">password</property>
+-								<property name="secondary-icon-name">view-reveal-symbolic</property>
++								<property name="max-length">4096</property>
+ 								<signal name="icon-release" handler="window_pw_toggle_vis"/>
+ 								<signal name="activate" handler="window_pw_check"/>
+ 							</object>
+ 							<packing>
+-								<property name="left-attach">1</property>
+-								<property name="top-attach">0</property>
++								<property name="left-attach">0</property>
++								<property name="top-attach">1</property>
+ 								<property name="width">2</property>
+ 							</packing>
+ 						</child>
+@@ -92,8 +94,8 @@
+ 								</child>
+ 							</object>
+ 							<packing>
+-								<property name="left-attach">1</property>
+-								<property name="top-attach">1</property>
++								<property name="left-attach">0</property>
++								<property name="top-attach">2</property>
+ 								<property name="width">2</property>
+ 							</packing>
+ 						</child>
+@@ -113,6 +115,8 @@
+ 								</child>
+ 								<child>
+ 									<object class="GtkButton" id="unlock-button">
++<property name="no-show-all">1</property>
++<property name="visible">0</property>
+ 										<property name="name">unlock-button</property>
+ 										<property name="label" translatable="yes">Unlock</property>
+ 										<style>
+@@ -123,8 +127,8 @@
+ 								</child>
+ 							</object>
+ 							<packing>
+-								<property name="left-attach">1</property>
+-								<property name="top-attach">2</property>
++								<property name="left-attach">0</property>
++								<property name="top-attach">3</property>
+ 								<property name="width">2</property>
+ 							</packing>
+ 						</child>

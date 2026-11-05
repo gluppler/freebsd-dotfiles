@@ -1,0 +1,252 @@
+--- a/src/tpass/main.rs
++++ b/src/tpass/main.rs
+@@ -267,19 +271,7 @@
+         util::config::character_set_no_symbols(),
+     );
+ 
+-    // Source the extension script via bash
+-    let mut cmd_args = vec![path.to_string_lossy().to_string()];
+-    cmd_args.extend(args.iter().cloned());
+-
+-    let status = std::process::Command::new("bash").args(&cmd_args).status();
+-
+-    match status {
+-        Ok(s) => {
+-            if !s.success() {
+-                std::process::exit(s.code().unwrap_or(1));
+-            }
+-            true
+-        }
+-        Err(_) => false,
+-    }
+-}
++    let _ = (path, args);
++    eprintln!("Bash pass extensions are not supported by this POSIX environment.");
++    std::process::exit(1);
++}
+--- a/src/tpass/commands/generate.rs
++++ b/src/tpass/commands/generate.rs
+@@ -118,24 +118,18 @@
+ fn generate_password(length: usize, characters: &str) -> Result<String> {
+     use std::process::{Command, Stdio};
+ 
+-    // Use tr + /dev/urandom for exact compatibility with pass
+-    let mut child = Command::new("bash")
+-        .args([
+-            "-c",
+-            &format!(
+-                "LC_ALL=C tr -dc '{}' < /dev/urandom | head -c {}",
+-                characters.replace('\'', "'\\''"),
+-                length
+-            ),
+-        ])
+-        .stdout(Stdio::piped())
+-        .spawn()?;
+-
++    if length == 0 || length > 1024 * 1024 {
++        anyhow::bail!("Password length must be 1..1048576");
++    }
++    let mut child = Command::new("tr")
++        .args(["-dc", characters]).env("LC_ALL", "C")
++        .stdin(std::fs::File::open("/dev/urandom")?)
++        .stdout(Stdio::piped()).spawn()?;
+     let mut output = String::new();
+-    if let Some(mut stdout) = child.stdout.take() {
+-        stdout.read_to_string(&mut output)?;
+-    }
++    let result = child.stdout.take().unwrap().take(length as u64).read_to_string(&mut output);
++    let _ = child.kill();
+     let _ = child.wait();
++    result?;
+ 
+     if output.len() != length {
+         anyhow::bail!("Could not generate password from /dev/urandom.");
+--- a/src/tpass/commands/edit.rs
++++ b/src/tpass/commands/edit.rs
+@@ -1,4 +1,4 @@
+-use std::io::{Read, Write};
++use std::io::Read;
+ use std::path::{Path, PathBuf};
+ 
+ use anyhow::{Context, Result};
+@@ -27,7 +27,8 @@
+     let git_dir = git::find_git_dir(&passfile, &prefix);
+ 
+     // Create secure temp directory
+-    let tmpdir = create_secure_tmpdir()?;
++    let guard = TemporaryEdit(create_secure_tmpdir()?);
++    let tmpdir = &guard.0;
+     let tmp_file = create_secure_tmpfile(&tmpdir, path)?;
+ 
+     // Decrypt existing file to temp if it exists
+@@ -136,23 +137,12 @@
+     Ok(hex::encode(bytes))
+ }
+ 
+-/// Clean up temp directory: overwrite files with zeros then remove.
++// RAII removes plaintext on every returned error, including encryption failure.
++// Secure erasure cannot be promised on flash storage; prefer a RAM-backed TMPDIR.
++struct TemporaryEdit(PathBuf);
++impl Drop for TemporaryEdit {
++    fn drop(&mut self) { cleanup_tmpdir(&self.0); }
++}
+ fn cleanup_tmpdir(dir: &std::path::Path) {
+-    if let Ok(entries) = std::fs::read_dir(dir) {
+-        for entry in entries.flatten() {
+-            let path = entry.path();
+-            if path.is_file() {
+-                // Overwrite with zeros
+-                if let Ok(metadata) = std::fs::metadata(&path) {
+-                    let len = metadata.len() as usize;
+-                    if let Ok(mut f) = std::fs::OpenOptions::new().write(true).open(&path) {
+-                        let _ = f.write_all(&vec![0u8; len]);
+-                        let _ = f.sync_all();
+-                    }
+-                }
+-                let _ = std::fs::remove_file(&path);
+-            }
+-        }
+-    }
+     let _ = std::fs::remove_dir_all(dir);
+ }
+--- a/src/tpass/main.rs
++++ b/src/tpass/main.rs
+@@ -151,7 +151,7 @@
+     };
+ 
+     if let Err(e) = result {
+-        eprintln!("{}", e);
++        eprintln!("{e:#}");
+         std::process::exit(1);
+     }
+ }
+--- a/src/tpass/util/crypto.rs
++++ b/src/tpass/util/crypto.rs
+@@ -4,7 +4,12 @@
+ //! file I/O, pinentry prompts, and the pass-shape glue (signed `.gpg-id`,
+ //! reencrypt comparison key-id list).
+ 
++use std::io::{Cursor, Write};
++use std::os::unix::fs::OpenOptionsExt;
+ use std::path::{Path, PathBuf};
++
++use pgp::composed::{DecryptionOptions, Deserializable, Message, SignedSecretKey, TheRing};
++use pgp::types::Password;
+ 
+ use anyhow::{Context, Result};
+ use libtumpa::decrypt as ltd;
+@@ -44,9 +49,18 @@
+             .map_err(|e| anyhow::anyhow!("{e}"))
+             .context("Encryption failed")?;
+ 
+-    std::fs::write(output, &ciphertext)
+-        .context(format!("Failed to write output file {:?}", output))?;
+-    Ok(())
++    // Never truncate the previous entry before a complete ciphertext is on disk.
++    let temporary = output.with_extension(format!("gpg.{}.tmp", std::process::id()));
++    let mut file = std::fs::OpenOptions::new().write(true).create_new(true)
++        .mode(0o600).open(&temporary).context("Could not stage encrypted entry")?;
++    let result = (|| -> std::io::Result<()> {
++        file.write_all(&ciphertext)?;
++        file.sync_all()?;
++        std::fs::rename(&temporary, output)
++    })();
++    if result.is_err() { let _ = std::fs::remove_file(&temporary); }
++    result.context(format!("Failed to write output file {:?}", output))
++
+ }
+ 
+ /// Decrypt a .gpg file, returning plaintext bytes.
+@@ -151,7 +165,7 @@
+     let passphrase: Passphrase =
+         pinentry::get_passphrase(&desc, "Passphrase", Some(&key_info.fingerprint))?;
+ 
+-    match ltd::decrypt_with_key(&key_data, ciphertext, &passphrase) {
++    match decrypt_pass_entry(&key_data, ciphertext, &passphrase) {
+         Ok(z) => {
+             pinentry::cache_passphrase(&key_info.fingerprint, &passphrase);
+             Ok(Zeroizing::new(z.to_vec()))
+@@ -161,6 +175,33 @@
+             Err(anyhow::anyhow!("{e}")).context("Decryption failed")
+         }
+     }
++}
++
++// Accept authenticated GnuPG OCB packets as well as standard MDC/AEAD messages.
++// Unauthenticated legacy SED stays disabled. Fully read and verify before returning
++// any plaintext, including trailing authentication tags and compressed content.
++fn decrypt_pass_entry(key_data: &[u8], ciphertext: &[u8], passphrase: &str)
++    -> Result<Zeroizing<Vec<u8>>>
++{
++    let result = (|| -> Result<Zeroizing<Vec<u8>>> {
++        let (key, _) = SignedSecretKey::from_reader_single(Cursor::new(key_data))?;
++        let message = match Message::from_armor(Cursor::new(ciphertext)) {
++            Ok((message, _)) => message,
++            Err(_) => Message::from_bytes(ciphertext)?,
++        };
++        let password = Password::from(passphrase);
++        let ring = TheRing {
++            secret_keys: vec![&key], key_passwords: vec![&password],
++            decrypt_options: DecryptionOptions::new().enable_gnupg_aead(),
++            ..Default::default()
++        };
++        let (message, _) = message.decrypt_the_ring(ring, true)?;
++        let mut message = if message.is_compressed() { message.decompress()? } else { message };
++        let mut plaintext = Zeroizing::new(Vec::new());
++        std::io::Read::read_to_end(&mut message, &mut plaintext)?;
++        Ok(plaintext)
++    })();
++    result.map_err(|_| anyhow::anyhow!("Decryption failed"))
+ }
+ 
+ /// Get key IDs a file is encrypted to (for reencrypt comparison).
+--- a/src/tpass/cli.rs
++++ b/src/tpass/cli.rs
+@@ -52,11 +52,11 @@
+     /// Show existing password.
+     Show {
+         /// Copy to clipboard (optionally specify line number)
+-        #[clap(short = 'c', long = "clip")]
++        #[clap(short = 'c', long = "clip", require_equals = true)]
+         clip: Option<Option<usize>>,
+ 
+         /// Show as QR code (optionally specify line number)
+-        #[clap(short = 'q', long = "qrcode")]
++        #[clap(short = 'q', long = "qrcode", require_equals = true)]
+         qrcode: Option<Option<usize>>,
+ 
+         /// Password name
+--- a/src/tpass/commands/init.rs
++++ b/src/tpass/commands/init.rs
+@@ -182,6 +182,7 @@
+     }
+ 
+     let gpg_id_file = full_path.join(".gpg-id");
++    ensure_no_symlink_in_path(&gpg_id_file, &prefix)?;
+ 
+     let git_dir = git::find_git_dir(&gpg_id_file, &prefix);
+ 
+@@ -213,7 +214,9 @@
+         // Remove empty directories
+         let _ = remove_empty_parents(&full_path, &prefix);
+     } else {
+-        // Initialize
++        // Resolve every recipient before changing an existing store's .gpg-id.
++        let key_ids = crypto::recipient_encryption_key_ids(gpg_ids, None)?;
++        if key_ids.is_empty() { anyhow::bail!("No usable encryption subkey"); }
+         std::fs::create_dir_all(&full_path)?;
+ 
+         // Write gpg-ids to .gpg-id file
+--- a/src/pinentry/assuan.rs
++++ b/src/pinentry/assuan.rs
+@@ -51,6 +51,10 @@
+     if let Ok(explicit) = std::env::var("PINENTRY_PROGRAM") {
+         return vec![explicit];
+     }
++    // FreeBSD uses the built-in hidden terminal prompt, without GNU pinentry.
++    if cfg!(target_os = "freebsd") {
++        return Vec::new();
++    }
+     if cfg!(target_os = "macos") {
+         vec![
+             "pinentry-mac".to_string(),

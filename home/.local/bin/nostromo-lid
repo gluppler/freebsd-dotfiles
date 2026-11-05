@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+[ "$#" = 0 ] || exit 2
+state=${XDG_STATE_HOME:-$HOME/.local/state}/nostromo
+choice=$(printf '%s\n' PORTABLE DOCKED | nostromo-picker -p 'LID POLICY' -l 2) || exit 0
+case $choice in PORTABLE | DOCKED) ;; *) exit 2 ;; esac
+umask 077
+mkdir -p "$state"
+temporary=$(mktemp "$state/lid.XXXXXXXX")
+trap 'rm -f "$temporary"' 0
+printf '%s\n' "$choice" >"$temporary"
+mv "$temporary" "$state/lid-policy"
+notify-send 'LID POLICY' "$choice: docking requires an active external output and an attached USB keyboard."
+exec nostromo-output-change outputs

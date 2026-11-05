@@ -1,0 +1,5 @@
+#!/bin/sh
+# No unquoted evaluation of the selected desktop's Exec line.
+set -eu
+[ "$#" = 1 ] && [ "$1" = /usr/local/libexec/nostromo-session ] || exit 2
+exec /usr/local/libexec/nostromo-session

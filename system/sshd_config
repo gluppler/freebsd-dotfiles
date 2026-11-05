@@ -1,0 +1,24 @@
+# BEGIN NOSTROMO SSH
+Port 2222
+PermitRootLogin no
+AllowUsers @ACCOUNT@
+AuthenticationMethods publickey
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+HostbasedAuthentication no
+PermitEmptyPasswords no
+StrictModes yes
+AuthorizedKeysFile .ssh/authorized_keys
+DisableForwarding yes
+PermitTunnel no
+PermitUserEnvironment no
+PermitUserRC no
+LoginGraceTime 30
+MaxAuthTries 3
+MaxStartups 3:30:10
+PerSourceMaxStartups 3
+PerSourcePenalties yes
+LogLevel INFO
+# Inherit the release's maintained cipher/MAC/KEX defaults.
+# END NOSTROMO SSH

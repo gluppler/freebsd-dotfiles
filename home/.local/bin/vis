@@ -1,0 +1,13 @@
+#!/bin/sh
+# FreeBSD editors/vis installs "vise"; base /usr/bin/vis is an encoding utility.
+if [ -t 0 ]; then
+    tty_state=$(stty -g) || exit 1
+    trap 'stty "$tty_state"' 0
+    trap 'exit 130' INT
+    trap 'exit 143' HUP TERM
+    # curses cbreak leaves XON/XOFF enabled; give Ctrl+S to the editor mapping.
+    stty -ixon || exit 1
+    /usr/local/bin/vise "$@"
+    exit "$?"
+fi
+exec /usr/local/bin/vise "$@"

@@ -1,0 +1,18 @@
+--- a/dwl.c
++++ b/dwl.c
+@@ -123,6 +123,7 @@
+ 	struct wlr_scene_rect *border[4]; /* top, bottom, left, right */
+ 	struct wlr_scene_buffer *rail;
+ 	int ntop, nright, nbottom, nwidth, nheight, nscale, nside;
++	uint64_t nfade_started;
+ 	char nlabel[512];
+ 	struct wlr_scene_tree *scene_surface;
+ 	struct wl_list link;
+@@ -494,6 +495,7 @@
+ #include "client.h"
+ 
+ #include "ime.h"
++static void nostromo_animate_start(Client *c);
+ #include "nostromo.h"
+ #include "ipc.h"
+ #include "crt.h"

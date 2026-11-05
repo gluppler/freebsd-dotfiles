@@ -1,0 +1,2 @@
+# Pure Python plugin only. Native Python, Ruff, pylsp, cattrs and lsprotocol use audited pkg.
+python-lsp-ruff @ https://files.pythonhosted.org/packages/ab/9e/0f9412498fa72a016226e34dfff0c2c85383bb78133d8c1e55edf3c97106/python_lsp_ruff-2.3.4-py3-none-any.whl --hash=sha256:d2b60546f52cb19cdb4402f65c2f417e883b21c116a973eb52992d512e345083

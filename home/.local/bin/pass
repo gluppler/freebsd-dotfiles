@@ -1,0 +1,3 @@
+#!/bin/sh
+# Explicit pass-compatible tpass implementation; see PASSWORDS.md for differences.
+exec tpass "$@"

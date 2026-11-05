@@ -1,0 +1,21 @@
+--- a/multimedia/pipewire/Makefile
++++ b/multimedia/pipewire/Makefile
+@@ -24,7 +24,7 @@
+ 		libwebrtc-audio-processing-1.so:audio/webrtc-audio-processing
+ 
+ USES=		compiler:c11 gettext-tools gnome localbase:ldflags meson \
+-		ncurses pkgconfig python:build readline shebangfix ssl
++		ncurses pkgconfig python:build shebangfix ssl
+ USE_GNOME=	glib20
+ USE_LDCONFIG=	yes
+ 
+@@ -87,7 +87,8 @@
+ X11_BELL_USE=		xorg=x11,xfixes
+ X11_BELL_MESON_ENABLED=	libcanberra x11 x11-xfixes
+ 
+-MESON_ARGS=	-D pw-cat=enabled \
++MESON_ARGS=	-D readline=disabled \
++		-D pw-cat=enabled \
+ 		-D v4l2=enabled \
+ 		-D raop=enabled \
+ 		-D session-managers='[]' \

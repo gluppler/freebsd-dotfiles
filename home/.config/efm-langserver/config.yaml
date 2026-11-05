@@ -1,0 +1,18 @@
+version: 2
+root-markers: [.git/]
+lint-debounce: 500ms
+tools:
+  shell: &shell
+    lint-command: 'shellcheck --shell=sh --format=gcc -'
+    lint-stdin: true
+    lint-ignore-exit-code: true
+    lint-source: shellcheck
+    lint-formats:
+      - '%f:%l:%c: %trror: %m'
+      - '%f:%l:%c: %tarning: %m'
+      - '%f:%l:%c: %tote: %m'
+    format-command: 'shfmt -ln posix -i 4'
+    format-stdin: true
+languages:
+  sh: [*shell]
+  bash: [*shell]

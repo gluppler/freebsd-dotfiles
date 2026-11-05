@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+environment=${XDG_DATA_HOME:-$HOME/.local/share}/nostromo/embedded-python
+[ -x "$environment/bin/west" ] || {
+    echo 'Install the native embedded Python environment first.' >&2
+    exit 1
+}
+PATH=$environment/bin:$PATH
+export PATH
+exec "$environment/bin/west" "$@"

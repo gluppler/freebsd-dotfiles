@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+python=${XDG_DATA_HOME:-$HOME/.local/share}/nostromo/python-lsp/bin/python
+[ -x "$python" ] || {
+    echo 'Run the installer development-tools stage first.' >&2
+    exit 1
+}
+if [ "${1:-}" = --nostromo-check ]; then
+    exec "$python" -c 'import pylsp, pylsp_ruff, cattrs, lsprotocol'
+fi
+exec "$python" -m pylsp "$@"

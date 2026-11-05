@@ -1,0 +1,58 @@
+--- a/vt.c
++++ b/vt.c
+@@ -190,6 +190,7 @@
+ 	char ebuf[BUFSIZ];
+ 	unsigned int rlen, elen;
+ 	int srow, scol;          /* last known offset to display start row, start column */
++	char cwd[4096];
+ 	char title[256];         /* xterm style window title */
+ 	vt_title_handler_t title_handler; /* hook which is called when title changes */
+ 	vt_urgent_handler_t urgent_handler; /* hook which is called upon bell */
+@@ -1160,6 +1161,12 @@
+ 			if (t->title_handler)
+ 				t->title_handler(t, data+1);
+ 			break;
++		case 7: /* focused-pane directory */
++            if (strncmp(data+1,"file://",7) || strlen(data+1)>=sizeof t->cwd) break;
++            for (char *p=data+1;*p;p++) if ((unsigned char)*p<32 || *p==127) return;
++            strcpy(t->cwd,data+1);
++            if (t->title_handler) t->title_handler(t,NULL);
++            break;
+ 		case 1: /* icon name */
+ 			break;
+ 		default:
+@@ -1966,3 +1973,7 @@
+ {
+ 	return t->buffer->scroll_above;
+ }
++
++void vt_cwd_emit(Vt *t) {
++    if (t && t->cwd[0]) { printf("\033]2;NOSTROMO_CWD:%s\007\033]7;%s\007",t->cwd,t->cwd); fflush(stdout); }
++}
+--- a/vt.h
++++ b/vt.h
+@@ -64,3 +64,5 @@
+ int vt_content_start(Vt*);
+ 
+ #endif /* VT_H */
++
++void vt_cwd_emit(Vt *);
+--- a/dvtm.c
++++ b/dvtm.c
+@@ -588,6 +588,8 @@
+ 		detachstack(c);
+ 		attachstack(c);
+ 		settitle(c);
++		char *directory=nostromo_cwd(c->pid); nostromo_emit_cwd(directory); free(directory);
++		vt_cwd_emit(c->term);
+ 		c->urgent = false;
+ 		if (isarrange(fullscreen)) {
+ 			draw(c);
+@@ -620,6 +622,7 @@
+ 
+ static void
+ term_title_handler(Vt *term, const char *title) {
++    if (!title) { if (sel && sel->term==term) vt_cwd_emit(term); return; }
+ 	Client *c = (Client *)vt_data_get(term);
+ 	if (title)
+ 		strncpy(c->title, title, sizeof(c->title) - 1);

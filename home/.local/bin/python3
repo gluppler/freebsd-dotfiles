@@ -1,0 +1,3 @@
+#!/bin/sh
+# Packaged native interpreter; uv manages project environments, never interpreters.
+exec /usr/local/bin/python3.12 "$@"

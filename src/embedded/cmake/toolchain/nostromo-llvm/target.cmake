@@ -1,0 +1,38 @@
+if(NOT ARCH MATCHES "^(arm|arm64|riscv|x86)$")
+  message(FATAL_ERROR "This native LLVM route does not support ${ARCH}; no foreign SDK fallback")
+endif()
+if(NOT CONFIG_LLVM_USE_LLD OR NOT CONFIG_COMPILER_RT_RTLIB)
+  message(FATAL_ERROR "Select LLVM LLD and compiler-rt (llvm-minimal.conf)")
+endif()
+if(NOT IS_DIRECTORY "${NOSTROMO_RUNTIME}/resource/lib/baremetal")
+  message(FATAL_ERROR "Run nostromo-zephyr runtime PROFILE before configuring this build")
+endif()
+include(${ZEPHYR_BASE}/cmake/toolchain/host/llvm/target.cmake)
+file(STRINGS "${NOSTROMO_RUNTIME}/profile" runtime_record LIMIT_COUNT 1)
+string(REPLACE "|" ";" runtime_fields "${runtime_record}")
+list(GET runtime_fields 0 runtime_profile)
+list(GET runtime_fields 1 runtime_triple)
+if((ARCH STREQUAL "arm" AND NOT runtime_triple MATCHES "^arm") OR
+   (ARCH STREQUAL "arm64" AND NOT runtime_triple MATCHES "^aarch64") OR
+   (ARCH STREQUAL "riscv" AND NOT runtime_triple MATCHES "^riscv") OR
+   (ARCH STREQUAL "x86" AND NOT runtime_triple MATCHES "^(i686|x86_64)"))
+  message(FATAL_ERROR "Runtime ${runtime_profile} does not match board architecture ${ARCH}")
+endif()
+if(ARCH STREQUAL "arm")
+  if((CONFIG_FP_HARDABI AND NOT runtime_triple MATCHES "hf$") OR
+     (NOT CONFIG_FP_HARDABI AND runtime_triple MATCHES "hf$"))
+    message(FATAL_ERROR "Runtime ${runtime_profile} does not match the board float ABI")
+  endif()
+endif()
+if(ARCH MATCHES "^(riscv|x86)$")
+  if((CONFIG_64BIT AND NOT runtime_triple MATCHES "^(riscv64|x86_64)") OR
+     (NOT CONFIG_64BIT AND NOT runtime_triple MATCHES "^(riscv32|i686)"))
+    message(FATAL_ERROR "Runtime ${runtime_profile} has the wrong word size")
+  endif()
+endif()
+# Keep the resource-directory lookup on the same triple used to build its archive.
+set(CMAKE_C_COMPILER_TARGET ${runtime_triple})
+set(CMAKE_ASM_COMPILER_TARGET ${runtime_triple})
+set(CMAKE_CXX_COMPILER_TARGET ${runtime_triple})
+list(APPEND TOOLCHAIN_C_FLAGS "-resource-dir=${NOSTROMO_RUNTIME}/resource")
+list(APPEND TOOLCHAIN_LD_FLAGS "-resource-dir=${NOSTROMO_RUNTIME}/resource")

@@ -1,0 +1,105 @@
+#!/bin/sh
+# One query, then a combined list; no indexer, daemon or shell evaluation.
+set -eu
+umask 077
+query=$(nostromo-picker "$@" -p SEARCH </dev/null) || exit 0
+work=$(mktemp -d "${TMPDIR:-/tmp}/nostromo-search.XXXXXXXX")
+trap 'rm -rf "$work"' 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
+# Use a visible separator; paths containing control characters are excluded.
+separator='  >  '
+nostromo-menu --list >"$work/actions"
+# Enumerate executables without parsing or evaluating their names.
+: >"$work/apps"
+oldifs=$IFS
+IFS=:
+for directory in $PATH; do
+    case $directory in /*) ;; *) continue ;; esac
+    for program in "$directory"/*; do
+        [ -f "$program" ] && [ -x "$program" ] || continue
+        app=${program##*/}
+        case $app in '' | -* | *[[:cntrl:]]*) continue ;; esac
+        printf '%s\n' "$app" >>"$work/apps"
+    done
+done
+IFS=$oldifs
+LC_ALL=C sort -u "$work/apps" >"$work/apps.sorted"
+mv "$work/apps.sorted" "$work/apps"
+sed "s/^/ACTION$separator/" "$work/actions" >"$work/choices"
+sed "s/^/APP$separator/" "$work/apps" >>"$work/choices"
+NOSTROMO_QUERY=$query awk 'index(tolower($0), tolower(ENVIRON["NOSTROMO_QUERY"]))' \
+    "$work/choices" >"$work/results"
+
+if [ -n "$query" ]; then
+    roots=${XDG_CONFIG_HOME:-$HOME/.config}/nostromo/search-roots
+    : >"$work/files"
+    : >"$work/content"
+    : >"$work/errors"
+    if [ -r "$roots" ]; then
+        while IFS= read -r root || [ -n "$root" ]; do
+            case $root in
+            '' | '#'*) continue ;;
+            \~/*) root=$HOME/${root#\~/} ;;
+            /*) ;;
+            *)
+                printf 'Ignoring non-absolute search root: %s\n' "$root" >>"$work/errors"
+                continue
+                ;;
+            esac
+            [ -d "$root" ] || continue
+            # NUL separators keep hostile filenames out of the menu protocol.
+            rg --files --null -- "$root" >>"$work/files" 2>>"$work/errors" || :
+            rg -l -0 -F -i --max-filesize 1M -e "$query" -- "$root" \
+                >>"$work/content" 2>>"$work/errors" || :
+        done <"$roots"
+    fi
+    for kind in files content; do
+        # FreeBSD xargs -0 is a native utility feature; the shell remains POSIX.
+        # The child shell expands these variables for each argument batch.
+        # shellcheck disable=SC2016
+        xargs -0 sh -c '
+            for path do
+                case $path in *[[:cntrl:]]*) continue ;; esac
+                printf "%s\n" "$path"
+            done
+        ' sh <"$work/$kind" >"$work/paths"
+        if [ "$kind" = files ]; then
+            NOSTROMO_QUERY=$query awk 'index(tolower($0), tolower(ENVIRON["NOSTROMO_QUERY"]))' \
+                "$work/paths" >"$work/matches"
+            label=FILE
+        else
+            cp "$work/paths" "$work/matches"
+            label=TEXT
+        fi
+        LC_ALL=C sort -u "$work/matches" | sed -n "1,200s/^/$label$separator/p" >>"$work/results"
+    done
+    if [ -s "$work/errors" ]; then
+        cat "$work/errors" >&2
+        notify-send 'SEARCH' 'Some directories could not be searched; results may be incomplete.' || :
+    fi
+fi
+[ -s "$work/results" ] || {
+    notify-send 'SEARCH' 'No matches.' || :
+    exit 0
+}
+choice=$(nostromo-picker "$@" -l 14 -p RESULTS <"$work/results") || exit 0
+# Dispatch only offered rows; the picker also accepts arbitrary text.
+grep -Fqx -e "$choice" "$work/results" || exit 0
+kind=${choice%%"$separator"*}
+value=${choice#*"$separator"}
+case $kind in
+ACTION) nostromo-menu "$value" ;;
+FILE) nostromo-open "$value" ;;
+TEXT) foot -e vis "$value" ;;
+APP)
+    case $value in '' | -* | */* | *[[:cntrl:]]*) exit 2 ;; esac
+    case $value in
+    vis | vise | nnn | lazygit | oksh | top | systat | man | less | nostromo-software | nostromo-project)
+        foot -e "$value"
+        ;;
+    qutebrowser) nostromo-browser ;;
+    *) "$value" ;;
+    esac
+    ;;
+esac

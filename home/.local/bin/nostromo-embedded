@@ -1,0 +1,26 @@
+#!/bin/sh
+set -eu
+if [ "$#" = 0 ]; then exec less "$HOME/.local/share/nostromo/EMBEDDED.md"; fi
+action=$1
+shift
+case $action in
+serial)
+    [ "$#" -le 2 ] || exit 2
+    device=${1:-}
+    if [ -z "$device" ]; then
+        device=$(find /dev -maxdepth 1 \( -name 'cuaU[0-9]*' -o -name 'cuau[0-9]*' \) ! -name '*.init' ! -name '*.lock' -print | fzf --prompt='SERIAL > ') || exit 0
+    fi
+    case $device in /dev/cuaU[0-9]* | /dev/cuau[0-9]*) ;; *) exit 2 ;; esac
+    [ -c "$device" ] || exit 1
+    speed=${2:-115200}
+    case $speed in '' | *[!0-9]*) exit 2 ;; esac
+    exec cu -l "$device" -s "$speed"
+    ;;
+probes) exec usbconfig list ;;
+rust) exec nostromo-rust "$@" ;;
+zephyr) exec nostromo-zephyr "$@" ;;
+*)
+    echo 'Use nostromo-embedded [serial [DEVICE [BAUD]]|probes|rust ...|zephyr ...]' >&2
+    exit 2
+    ;;
+esac

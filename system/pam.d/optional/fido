@@ -1,0 +1,3 @@
+# Fixed relying-party ID matches the enrollment example in AUTHENTICATION.md.
+# The root-owned mappings file is public credential metadata, never a private key.
+auth sufficient /usr/local/lib/pam_u2f.so authfile=/usr/local/etc/nostromo/u2f_mappings origin=pam://nostromo appid=pam://nostromo cue authpending_file=

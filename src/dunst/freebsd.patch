@@ -1,0 +1,70 @@
+--- a/src/rules.c
++++ b/src/rules.c
+@@ -162,7 +162,7 @@
+         // modifiers
+         if (r->timeout != -1) printf("\ttimeout: %"G_GINT64_FORMAT"\n", r->timeout);
+         if (r->override_dbus_timeout != -1) printf("\toverride_dbus_timeout: %"G_GINT64_FORMAT"\n", r->override_dbus_timeout);
+-        if (r->markup != -1) printf("\tmarkup: %d\n", r->markup);
++        if (r->markup != MARKUP_NULL) printf("\tmarkup: %d\n", r->markup);
+         if (r->action_name != NULL) printf("\taction_name: '%s'\n", r->action_name);
+         if (r->urgency != URG_NONE) printf("\turgency: '%s'\n", notification_urgency_to_string(r->urgency));
+         if (r->history_ignore != -1) printf("\thistory_ignore: %d\n", r->history_ignore);
+--- a/src/notification.c
++++ b/src/notification.c
+@@ -421,7 +421,7 @@
+         assert(*needle[0] == '%');
+         // needle has to point into haystack (but not on the last char)
+         assert(*needle >= *haystack);
+-        assert(*needle - *haystack < strlen(*haystack) - 1);
++        assert((size_t)(*needle - *haystack) + 1 < strlen(*haystack));
+ 
+         int pos = *needle - *haystack;
+ 
+--- a/src/queues.c
++++ b/src/queues.c
+@@ -546,12 +546,12 @@
+                 iter = nextiter;
+         }
+ 
+-        int cur_displayed_limit;
++        guint cur_displayed_limit;
+         if (settings.notification_limit == 0)
+                 cur_displayed_limit = INT_MAX;
+         else if (   settings.indicate_hidden
+                  && settings.notification_limit > 1
+-                 && displayed->length + waiting->length > settings.notification_limit)
++                 && (guint64)displayed->length + waiting->length > (guint)settings.notification_limit)
+                 cur_displayed_limit = settings.notification_limit-1;
+         else
+                 cur_displayed_limit = settings.notification_limit;
+--- a/src/icon.c
++++ b/src/icon.c
+@@ -198,7 +198,7 @@
+         unsigned char *data_chk = g_malloc(data_chk_len);
+         size_t rowstride_short = pixelstride * width;
+ 
+-        for (int i = 0; i < height; i++) {
++        for (size_t i = 0; i < height; i++) {
+                 memcpy(data_chk + (i*rowstride_short),
+                        data_pb  + (i*rowstride),
+                        rowstride_short);
+--- a/src/dbus.c
++++ b/src/dbus.c
+@@ -1256,13 +1256,13 @@
+ 
+ 
+ static const GDBusInterfaceVTable interface_vtable_fdn = {
+-        dbus_cb_fdn_methods,
++        .method_call = dbus_cb_fdn_methods,
+ };
+ 
+ static const GDBusInterfaceVTable interface_vtable_dunst = {
+-        dbus_cb_dunst_methods,
+-        dbus_cb_dunst_Properties_Get,
+-        dbus_cb_dunst_Properties_Set,
++        .method_call = dbus_cb_dunst_methods,
++        .get_property = dbus_cb_dunst_Properties_Get,
++        .set_property = dbus_cb_dunst_Properties_Set,
+ };
+ 
+ static void dbus_cb_bus_acquired(GDBusConnection *connection,

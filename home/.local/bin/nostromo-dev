@@ -1,0 +1,206 @@
+#!/bin/sh
+set -eu
+action=${1:-}
+[ "$#" = 0 ] || shift
+file=${1:-}
+if [ "$action" = health ]; then
+    case $file in '' | --tools-only) ;; *)
+        echo 'Usage: nostromo-dev health [--tools-only]' >&2
+        exit 2
+        ;;
+    esac
+    failed=0
+    for tool in vise vis-menu fzf rg git lazygit nnn clang clang++ rustc cargo rustfmt \
+        cargo-clippy rust-analyzer go gopls python3 uv ruff pylsp efm-langserver \
+        asm-lsp shellcheck shfmt cmake ninja; do
+        if path=$(command -v "$tool"); then
+            printf 'OK      %-18s %s\n' "$tool" "$path"
+        else
+            printf 'MISSING %s\n' "$tool"
+            failed=1
+        fi
+    done
+    for tool in clangd clang-format clang-tidy lldb llvm-mc llvm-objdump; do
+        if path=$(nostromo-tool --path "$tool"); then
+            printf 'OK      %-18s %s\n' "$tool" "$path"
+        else failed=1; fi
+    done
+    if [ "$file" != --tools-only ]; then
+        config=${XDG_CONFIG_HOME:-$HOME/.config}/vis
+        for source in plugins/vis-lspc/init.lua dkjson.lua; do
+            if [ -s "$config/$source" ]; then
+                printf 'OK      %s\n' "$source"
+            else
+                printf 'MISSING %s\n' "$source"
+                failed=1
+            fi
+        done
+    fi
+    if command -v python3 >/dev/null; then
+        if pylsp --nostromo-check; then
+            printf 'OK      pylsp Ruff integration\n'
+        else
+            printf 'MISSING pylsp / python-lsp-ruff in the native Python environment\n'
+            failed=1
+        fi
+    fi
+    exit "$failed"
+fi
+if [ "$action" = format ]; then
+    [ -n "$file" ] || {
+        echo 'Usage: nostromo-dev format filename < input' >&2
+        exit 2
+    }
+    case $file in
+    *.c | *.h | *.cc | *.cpp | *.hpp | *.cxx) exec nostromo-tool clang-format --assume-filename="$file" ;;
+    *.rs) exec rustfmt --emit stdout ;;
+    *.go) exec gofmt ;;
+    *.py) exec ruff format --stdin-filename "$file" - ;;
+    *.sh | */.profile | */okshrc) exec shfmt -ln posix -i 4 ;;
+    *)
+        echo "No formatter configured for $file" >&2
+        exit 1
+        ;;
+    esac
+fi
+case $action in build | test | lint | check | test-file | test-pick | last | debug) ;;
+*)
+    echo 'Usage: nostromo-dev build|test|lint|check FILE|test-file FILE|test-pick|last|debug|format FILE|health' >&2
+    exit 2
+    ;;
+esac
+if [ "$action" = debug ]; then exec nostromo-tool lldb; fi
+# Resolve a file argument before walking up to its project root.
+if [ -n "$file" ]; then
+    case $file in /*) ;; *) file=$(pwd -P)/$file ;; esac
+    [ -f "$file" ] || {
+        echo "No saved file: $file" >&2
+        exit 1
+    }
+    cd "$(dirname -- "$file")"
+fi
+start=$(pwd -P)
+while [ ! -f Cargo.toml ] && [ ! -f go.mod ] && [ ! -f pyproject.toml ] &&
+    [ ! -f CMakeLists.txt ] && [ ! -f Makefile ] && [ ! -f makefile ] && [ ! -d .git ]; do
+    [ "$(pwd -P)" != / ] || {
+        cd "$start"
+        break
+    }
+    cd ..
+done
+state=${XDG_STATE_HOME:-$HOME/.local/state}/nostromo/tasks
+id=$(pwd -P | cksum | awk '{print $1}')
+if [ "$action" = last ]; then
+    [ -r "$state/$id" ] || {
+        echo 'No previous task for this project.' >&2
+        exit 1
+    }
+    {
+        IFS= read -r action
+        IFS= read -r file || :
+    } <"$state/$id"
+    # History is data, never shell code.
+    case $action in build | test | lint | check | test-file | test-name) ;;
+    *)
+        echo 'Invalid task history.' >&2
+        exit 1
+        ;;
+    esac
+fi
+
+tmp=
+trap '[ -z "$tmp" ] || rm -f "$tmp"' 0
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
+if [ "$action" = test-pick ]; then
+    tmp=$(mktemp "${TMPDIR:-/tmp}/nostromo-tests.XXXXXXXX")
+    if [ -f Cargo.toml ]; then
+        cargo test -- --list >"$tmp"
+        choices=$(sed -n 's/: test$//p' "$tmp")
+    elif [ -f go.mod ]; then
+        go test -list . ./... >"$tmp"
+        choices=$(sed -n '/^Test/p; /^Example/p; /^Fuzz/p' "$tmp" | sort -u)
+    elif [ -f pyproject.toml ]; then
+        uv run --offline --no-sync --no-managed-python pytest --collect-only -q >"$tmp"
+        choices=$(sed -n '/::/p' "$tmp")
+    elif [ -f CMakeLists.txt ]; then
+        ctest --test-dir build -N >"$tmp"
+        choices=$(sed -n 's/^[[:space:]]*Test[[:space:]]*#[0-9]*: //p' "$tmp")
+    else
+        echo 'This project has no configured test discovery; use its make test target.' >&2
+        exit 1
+    fi
+    file=$(printf '%s\n' "$choices" | fzf --prompt='TEST > ') || exit 0
+    [ -n "$file" ] || exit 0
+    action=test-name
+fi
+carriage_return=$(printf '\r')
+case $file in *'
+'* | *"$carriage_return"*)
+    echo 'Task arguments cannot contain line breaks.' >&2
+    exit 2
+    ;;
+esac
+umask 077
+mkdir -p "$state"
+[ -z "$tmp" ] || rm -f "$tmp"
+tmp=$(mktemp "$state/task.XXXXXXXX")
+printf '%s\n%s\n' "$action" "$file" >"$tmp"
+mv "$tmp" "$state/$id"
+tmp=
+
+if [ "$action" = check ]; then
+    case $file in
+    *.c | *.h | *.cc | *.cpp | *.hpp | *.cxx) exec nostromo-tool clang-tidy -p build "$file" ;;
+    *.py) exec ruff check "$file" ;;
+    *.sh | */.profile | */okshrc) exec shellcheck --shell=sh "$file" ;;
+    *.rs) exec cargo clippy --all-targets ;;
+    *.go) exec go vet ./... ;;
+    *)
+        echo 'Use the project lint target for this file type.' >&2
+        exit 1
+        ;;
+    esac
+fi
+if [ -f Cargo.toml ]; then
+    case $action in
+    build) exec cargo build ;; test) exec cargo test ;; lint) exec cargo clippy --all-targets ;;
+    test-name) exec cargo test "$file" -- --exact ;;
+    esac
+elif [ -f go.mod ]; then
+    case $action in
+    build) exec go build ./... ;; test) exec go test ./... ;; lint) exec go vet ./... ;;
+    test-file)
+        cd "$(dirname -- "$file")"
+        exec go test .
+        ;;
+    test-name) exec go test ./... -run "^$file$" ;;
+    esac
+elif [ -f pyproject.toml ]; then
+    case $action in
+    build) exec uv build --offline --no-managed-python ;;
+    test) exec uv run --offline --no-sync --no-managed-python pytest ;;
+    test-file | test-name) exec uv run --offline --no-sync --no-managed-python pytest "$file" ;;
+    lint) exec ruff check . ;;
+    esac
+elif [ -f CMakeLists.txt ]; then
+    case $action in
+    build)
+        cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+        exec cmake --build build
+        ;;
+    test) exec ctest --test-dir build --output-on-failure ;;
+    test-name)
+        pattern=$(printf '%s' "$file" | sed 's/[][\.^$*+?(){}|\\]/\\&/g')
+        exec ctest --test-dir build --output-on-failure -R "^$pattern$"
+        ;;
+    lint)
+        echo 'Use Space cl on a C/C++ file for clang-tidy; build/compile_commands.json is required.' >&2
+        exit 1
+        ;;
+    esac
+elif [ -f Makefile ] || [ -f makefile ]; then
+    case $action in build) exec make ;; test) exec make test ;; lint) exec make lint ;; esac
+fi
+echo 'No runner for this action/project. Rust tests use test-pick; C/C++ uses CTest or a BSD make test target.' >&2
+exit 1

@@ -1,0 +1,56 @@
+#!/bin/sh
+# Resolve FreeBSD's versioned LLVM tools without fixing the LLVM major version.
+set -eu
+mode='exec'
+if [ "${1:-}" = --path ]; then
+    mode=path
+    shift
+fi
+tool=${1:?Usage: nostromo-tool [--path] LLVM-tool [arguments]}
+shift
+case $tool in clangd | clang-format | clang-tidy | lldb | llvm-mc | llvm-objdump) ;;
+go | gofmt)
+    # The versioned FreeBSD Go port installs go126/gofmt126, not unversioned names.
+    path=
+    major=0
+    for candidate in /usr/local/go[0-9]*/bin/"$tool"; do
+        [ -x "$candidate" ] || continue
+        version=${candidate#/usr/local/go}
+        version=${version%%/*}
+        case $version in '' | *[!0-9]*) continue ;; esac
+        if [ "$version" -gt "$major" ]; then
+            path=$candidate
+            major=$version
+        fi
+    done
+    [ -n "$path" ] || {
+        echo 'Install the reviewed native Go toolchain.' >&2
+        exit 127
+    }
+    if [ "$mode" = path ]; then printf '%s\n' "$path"; else exec "$path" "$@"; fi
+    exit
+    ;;
+*)
+    echo "Unsupported LLVM tool: $tool" >&2
+    exit 2
+    ;;
+esac
+path=$(command -v "$tool" || :)
+if [ -z "$path" ]; then
+    major=0
+    for candidate in /usr/local/llvm*/bin/"$tool"; do
+        [ -x "$candidate" ] || continue
+        version=${candidate#/usr/local/llvm}
+        version=${version%%/*}
+        case $version in '' | *[!0-9]*) continue ;; esac
+        if [ "$version" -gt "$major" ]; then
+            path=$candidate
+            major=$version
+        fi
+    done
+fi
+[ -n "$path" ] || {
+    echo "Missing native LLVM tool: $tool" >&2
+    exit 127
+}
+if [ "$mode" = path ]; then printf '%s\n' "$path"; else exec "$path" "$@"; fi

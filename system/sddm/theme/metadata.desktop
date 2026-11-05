@@ -1,0 +1,12 @@
+[SddmGreeterTheme]
+Name=Nostromo
+Description=Nostromo monochrome Wayland login
+Author=Nostromo dotfiles
+License=MIT
+Type=sddm-theme
+Version=1.0
+MainScript=Main.qml
+ConfigFile=theme.conf
+Theme-Id=nostromo
+Theme-API=2.0
+QtVersion=6

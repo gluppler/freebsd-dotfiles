@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+if [ "${1:-}" = --keys ]; then exec less "$HOME/.local/share/nostromo/KEYBINDINGS.md"; fi
+exec vis "$@"

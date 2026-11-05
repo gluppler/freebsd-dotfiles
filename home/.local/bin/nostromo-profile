@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+[ "$#" -le 1 ] || exit 2
+action=${1:-menu}
+if [ "$action" = menu ]; then
+    action=$(printf '%s\n' AUTO 'AC PERFORMANCE' 'BATTERY BALANCED' SAVER STATUS |
+        nostromo-picker -p 'POWER PROFILE' -l 5) || exit 0
+fi
+case $action in
+AUTO | auto) profile=auto ;;
+'AC PERFORMANCE' | ac) profile=ac ;;
+'BATTERY BALANCED' | battery) profile=battery ;;
+SAVER | save) profile=save ;;
+STATUS | status) exec foot -e /bin/sh -c 'nostromo-admin performance status; printf "\nEnter to close "; read -r answer' ;;
+*) exit 2 ;;
+esac
+exec nostromo-admin performance "$profile"

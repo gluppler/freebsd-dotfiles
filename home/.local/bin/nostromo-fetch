@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+config=${XDG_CONFIG_HOME:-$HOME/.config}/fastfetch/config.jsonc
+data=${XDG_DATA_HOME:-$HOME/.local/share}/nostromo
+live=no
+if [ "$#" = 0 ] || { [ "$#" = 1 ] && [ "$1" = --live ]; }; then
+    [ -t 0 ] && [ -t 1 ] && live=yes
+    set --
+elif [ "$1" = --plain ]; then shift; fi
+if [ "$live" = no ]; then
+    exec fastfetch --config "$config" --logo "$data/nostromo-orb-small.txt" "$@"
+fi
+umask 077
+work=$(mktemp -d "${TMPDIR:-/tmp}/nostromo-fetch.XXXXXXXX")
+trap 'rm -rf "$work"' 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
+fastfetch --config "$config" --logo none --pipe true >"$work/report"
+nostromo-terminal-idle --report "$work/report" --art "$data/nostromo-orb-idle.txt"

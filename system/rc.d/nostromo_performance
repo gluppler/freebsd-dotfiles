@@ -1,0 +1,16 @@
+#!/bin/sh
+# PROVIDE: nostromo_performance
+# REQUIRE: kld sysctl
+# BEFORE: LOGIN
+# KEYWORD: nojail
+# FreeBSD rc.subr consumes rcvar/start_cmd/stop_cmd when run_rc_command executes.
+# shellcheck disable=SC2034
+# shellcheck source=/dev/null
+. /etc/rc.subr
+name=nostromo_performance
+rcvar=nostromo_performance_enable
+start_cmd='/usr/local/libexec/nostromo-performance event'
+stop_cmd=:
+load_rc_config "$name"
+: "${nostromo_performance_enable:=NO}"
+run_rc_command "$1"

@@ -1,0 +1,41 @@
+#!/bin/sh
+# abduco keeps this runner and its dvtm children alive across detach/reattach.
+set -eu
+umask 077
+SHELL=$(command -v oksh) || {
+    echo 'oksh is missing.' >&2
+    exit 1
+}
+export SHELL
+export DVTM_TERM=dvtm-256color DVTM_EDITOR=vis
+runtime=$(mktemp -d "${TMPDIR:-/tmp}/nostromo-mux.XXXXXXXX")
+status_pid=
+cleanup() {
+    if [ -n "$status_pid" ]; then
+        kill "$status_pid" 2>/dev/null || :
+        wait "$status_pid" 2>/dev/null || :
+    fi
+    rm -rf "$runtime"
+}
+trap cleanup 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
+mkfifo "$runtime/status"
+label=$(basename -- "$(pwd -P)" | LC_ALL=C tr -cd '[:print:]')
+(
+    sleeper=
+    running=yes
+    trap 'running=no; [ -z "$sleeper" ] || kill "$sleeper" 2>/dev/null || :' HUP INT TERM
+    while [ "$running" = yes ]; do
+        printf '%s | %s\n' "$label" "$(date +%H:%M)" || exit
+        sleep 30 >/dev/null 2>&1 &
+        sleeper=$!
+        # A stop can arrive between spawning sleep and recording its PID.
+        [ "$running" = yes ] || kill "$sleeper" 2>/dev/null || :
+        wait "$sleeper" || :
+        sleeper=
+    done
+) >"$runtime/status" &
+status_pid=$!
+# dvtm inserts each client at the head: editor left, shell/Git stacked right.
+dvtm -s "$runtime/status" 'lazygit; exec oksh' 'exec oksh' 'exec vis'

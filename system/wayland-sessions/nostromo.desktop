@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Nostromo
+Comment=Native FreeBSD Wayland desktop
+Exec=/usr/local/libexec/nostromo-session
+TryExec=/usr/local/libexec/nostromo-session
+Type=Application
+DesktopNames=dwl;nostromo;

@@ -1,0 +1,42 @@
+#!/bin/sh
+# One native menu adapter: contents determine width; callers validate selections.
+set -eu
+umask 077
+prompt=SELECT
+lines=12
+mode=menu
+index=no
+while [ "$#" -gt 0 ]; do
+    case $1 in
+    -i) ;;
+    --input) mode=input ;;
+    --password) mode=password ;;
+    --index) index=yes ;;
+    -p)
+        shift
+        prompt=${1:?Missing prompt}
+        ;;
+    -l)
+        shift
+        lines=${1:?Missing row count}
+        ;;
+    *)
+        echo 'Usage: nostromo-picker [-i] [-p prompt] [-l rows] [--index | --input | --password]' >&2
+        exit 2
+        ;;
+    esac
+    shift
+done
+case $lines in '' | *[!0-9]*) exit 2 ;; esac
+[ "$lines" -le 30 ] && [ "$lines" -gt 0 ] || exit 2
+if [ "$mode" != menu ]; then
+    [ "$index" = no ] || exit 2
+    set -- --dmenu --prompt-only="$prompt > " --cache=/dev/null --log-level=none
+    [ "$mode" != password ] || set -- "$@" --password --namespace=nostromo-secret
+    # No input file, command-line secret, menu history or diagnostic logging.
+    exec fuzzel "$@" </dev/null
+fi
+# The patched renderer measures shaped text in pixels, including the prompt.
+set -- --dmenu --lines="$lines" --minimal-lines --prompt="$prompt > " --cache=/dev/null
+[ "$index" != yes ] || set -- "$@" --index --no-sort
+exec fuzzel "$@"

@@ -1,0 +1,15 @@
+--- a/dwl.c
++++ b/dwl.c
+@@ -377,6 +377,12 @@
+ static void zoom(const Arg *arg);
+ static void nostromo_layout(const Arg *arg);
+ static void nostromo_move(const Arg *arg);
++static void nostromo_gaps(const Arg *arg);
++static void nostromo_stack(const Arg *arg);
++static void nostromo_scratch(const Arg *arg);
++static void nostromo_pointer(const Arg *arg);
++static void nostromo_capture(const Arg *arg);
++static void nostromo_tile(Monitor *m);
+ 
+ /* variables */
+ static pid_t child_pid = -1;

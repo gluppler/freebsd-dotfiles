@@ -1,0 +1,111 @@
+#!/bin/sh
+# Native output discovery with a timed revert; no connector names are assumed.
+set -eu
+umask 077
+[ "$#" = 0 ] || {
+    echo 'Usage: nostromo-display' >&2
+    exit 2
+}
+work=$(mktemp -d "${TMPDIR:-/tmp}/nostromo-display.XXXXXXXX")
+changed=no
+restore() {
+    set --
+    tab=$(printf '\t')
+    while IFS="$tab" read -r name enabled mode x y scale transform; do
+        set -- "$@" --output "$name"
+        if [ "$enabled" = false ]; then
+            set -- "$@" --off
+            continue
+        fi
+        set -- "$@" --on --pos "$x,$y" --scale "$scale" --transform "$transform"
+        [ "$mode" = - ] || set -- "$@" --mode "$mode"
+    done <"$work/before"
+    [ "$#" -eq 0 ] || wlr-randr "$@"
+}
+finish() {
+    status=$?
+    trap - 0
+    if [ "$changed" = yes ]; then
+        restore || {
+            echo "Automatic display restore failed; snapshot: $work/before" >&2
+            exit 1
+        }
+    fi
+    rm -rf "$work"
+    exit "$status"
+}
+trap finish 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
+wlr-randr --json >"$work/outputs.json"
+jq -r '.[] | [.name, .enabled,
+    ([.modes[]? | select(.current) | "\(.width)x\(.height)@\(.refresh)Hz"][0] // "-"),
+    (.position.x // 0), (.position.y // 0), (.scale // 1), (.transform // "normal")] | @tsv' \
+    "$work/outputs.json" >"$work/before"
+awk -F '\t' '
+    NF != 7 || $1 !~ /^[a-zA-Z0-9_][a-zA-Z0-9_.:-]*$/ || $2 !~ /^(true|false)$/ {bad=1}
+    $3 != "-" && $3 !~ /^[0-9]+x[0-9]+@[0-9.]+Hz$/ {bad=1}
+    $4 !~ /^-?[0-9]+$/ || $5 !~ /^-?[0-9]+$/ || $6 !~ /^[0-9]+(\.[0-9]+)?$/ {bad=1}
+    $7 !~ /^(normal|90|180|270|flipped|flipped-90|flipped-180|flipped-270)$/ {bad=1}
+    END {exit bad || NR == 0}
+' "$work/before" || {
+    echo 'Invalid or unavailable output snapshot.' >&2
+    exit 1
+}
+outputs=$(cut -f1 "$work/before")
+selected=$(printf '%s\n' "$outputs" | nostromo-picker -p OUTPUT) || exit 0
+printf '%s\n' "$outputs" | grep -Fxq -e "$selected" || exit 2
+action=$(printf '%s\n' ONLY 'EXTEND RIGHT' 'EXTEND LEFT' MIRROR 'MODE / RATE' SCALE ROTATE DISABLE |
+    nostromo-picker -l 8 -p DISPLAY) || exit 0
+set -- --output "$selected" --on
+case $action in
+ONLY)
+    set -- "$@" --pos 0,0
+    for output in $outputs; do
+        [ "$output" = "$selected" ] || set -- "$@" --output "$output" --off
+    done
+    ;;
+'EXTEND RIGHT' | 'EXTEND LEFT' | MIRROR)
+    anchor=$(printf '%s\n' "$outputs" | awk -v selected="$selected" '$0 != selected' |
+        nostromo-picker -p 'RELATIVE TO') || exit 0
+    [ "$anchor" != "$selected" ] && printf '%s\n' "$outputs" | grep -Fxq -e "$anchor" || exit 2
+    case $action in
+    'EXTEND RIGHT') set -- --output "$anchor" --on --pos 0,0 --output "$selected" --on --right-of "$anchor" ;;
+    'EXTEND LEFT') set -- --output "$anchor" --on --pos 0,0 --output "$selected" --on --left-of "$anchor" ;;
+    MIRROR) set -- --output "$anchor" --on --pos 0,0 --output "$selected" --on --pos 0,0 ;;
+    esac
+    ;;
+'MODE / RATE')
+    choices=$(jq -r --arg name "$selected" '.[] | select(.name==$name) | .modes[] |
+            "\(.width)x\(.height)@\(.refresh)Hz"' "$work/outputs.json")
+    mode=$(printf '%s\n' "$choices" | nostromo-picker -p MODE) || exit 0
+    printf '%s\n' "$choices" | grep -Fxq -e "$mode" || exit 2
+    set -- "$@" --mode "$mode"
+    ;;
+SCALE)
+    scale=$(printf '%s\n' 1 1.25 1.5 1.75 2 2.5 3 4 | nostromo-picker -p SCALE) || exit 0
+    case $scale in 1 | 1.25 | 1.5 | 1.75 | 2 | 2.5 | 3 | 4) ;; *) exit 2 ;; esac
+    set -- "$@" --scale "$scale"
+    ;;
+ROTATE)
+    rotation=$(printf '%s\n' normal 90 180 270 | nostromo-picker -p ROTATE) || exit 0
+    case $rotation in normal | 90 | 180 | 270) ;; *) exit 2 ;; esac
+    set -- "$@" --transform "$rotation"
+    ;;
+DISABLE)
+    jq -e --arg name "$selected" '[.[] | select(.enabled and .name!=$name)] | length>0' \
+        "$work/outputs.json" >/dev/null || {
+        echo 'Refusing to disable the last active output.' >&2
+        exit 1
+    }
+    set -- --output "$selected" --off
+    ;;
+*) exit 2 ;;
+esac
+wlr-randr --dryrun "$@"
+changed=yes
+wlr-randr "$@"
+confirm=$(printf '%s\n' REVERT KEEP | timeout 15 nostromo-picker -l 2 -p 'KEEP LAYOUT? 15 seconds') || exit 0
+[ "$confirm" = KEEP ] || exit 0
+changed=no
+nostromo-wallpaper apply

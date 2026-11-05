@@ -1,0 +1,56 @@
+#!/bin/sh
+set -eu
+[ "$#" -le 1 ] || exit 2
+config=${XDG_CONFIG_HOME:-$HOME/.config}/nostromo
+WG_INTERFACE=wg0
+# shellcheck source=home/.config/nostromo/services.conf
+[ ! -r "$config/services.conf" ] || . "$config/services.conf"
+# shellcheck source=/dev/null
+[ ! -r "$config/services.local" ] || . "$config/services.local"
+selection=${XDG_STATE_HOME:-$HOME/.local/state}/nostromo/wireguard-interface
+if [ -r "$selection" ]; then IFS= read -r WG_INTERFACE <"$selection" || exit 2; fi
+case $WG_INTERFACE in wg[0-9]*) ;; *) exit 2 ;; esac
+case ${WG_INTERFACE#wg} in *[!0-9]*) exit 2 ;; esac
+control() { nostromo-admin wireguard "$@"; }
+brief() {
+    # Interface state is public; handshake details require the authenticated menu.
+    if info=$(ifconfig "$WG_INTERFACE" 2>/dev/null); then
+        if printf '%s\n' "$info" | head -n 1 | grep -q '<UP[,>]'; then echo UP; else echo DOWN; fi
+    else echo OFF; fi
+}
+case ${1:-status} in
+brief)
+    brief
+    exit
+    ;;
+status | up | down)
+    control "${1:-status}" "$WG_INTERFACE"
+    exit
+    ;;
+menu) ;;
+*) exit 2 ;;
+esac
+# shellcheck source=home/.local/share/nostromo/network-menu.sh
+. "${XDG_DATA_HOME:-$HOME/.local/share}/nostromo/network-menu.sh"
+while :; do
+    state=$(brief) || state=--
+    action=$(network_choice "WireGuard / $WG_INTERFACE / $state" "$(printf '%s\n' STATUS UP DOWN TUNNEL EXIT)") || exit 0
+    case $action in
+    TUNNEL)
+        profiles=$(network_capture 'WireGuard tunnels' control profiles "$WG_INTERFACE") || continue
+        chosen=$(network_choice 'Configured tunnel' "$profiles") || continue
+        umask 077
+        mkdir -p "${selection%/*}"
+        temporary=$(mktemp "${selection}.XXXXXXXX")
+        printf '%s\n' "$chosen" >"$temporary"
+        mv "$temporary" "$selection"
+        WG_INTERFACE=$chosen
+        ;;
+    STATUS | UP | DOWN)
+        operation=$(printf '%s' "$action" | tr '[:upper:]' '[:lower:]')
+        network_run "WireGuard $operation" control "$operation" "$WG_INTERFACE"
+        ;;
+    EXIT) exit 0 ;;
+    *) exit 2 ;;
+    esac
+done

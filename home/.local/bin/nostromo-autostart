@@ -1,0 +1,39 @@
+#!/bin/sh
+# dwl owns this process group; each persistent helper is also tracked for cleanup.
+set -eu
+umask 077
+[ -n "${WAYLAND_DISPLAY:-}" ] && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || exit 1
+children=
+start() {
+    "$@" </dev/null &
+    children="$children $!"
+}
+cleanup() {
+    trap - 0
+    for child in $children; do kill "$child" 2>/dev/null || :; done
+    wait || :
+}
+trap cleanup 0
+trap 'exit 0' HUP INT TERM
+# Consume dwl's legacy stdout pipe; the bar itself uses typed Wayland IPC.
+cat >/dev/null &
+children="$children $!"
+dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE \
+    GDK_BACKEND QT_QPA_PLATFORM
+start dwlb
+start dunst
+nostromo-crt apply || printf '%s\n' 'CRT unavailable; normal composition remains active.' >&2
+start pipewire
+start wireplumber
+start fcitx5 --disable=xcb,xim --verbose default=3
+start swayidle -w timeout 300 'nostromo-lock'
+# The compositor must already have enumerated outputs before selecting exports.
+nostromo-wallpaper apply
+start nostromo-status
+if [ -s "${XDG_CONFIG_HOME:-$HOME/.config}/kanshi/config.local" ]; then
+    start kanshi -c "${XDG_CONFIG_HOME:-$HOME/.config}/kanshi/config.local"
+fi
+# These helpers are installed with the session only after their implementation gate.
+start nostromo-output-watch
+nostromo-splash
+wait

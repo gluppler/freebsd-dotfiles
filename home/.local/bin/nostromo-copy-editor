@@ -1,0 +1,15 @@
+#!/bin/sh
+# Return the selected text to dvtm's register and also copy it to the Wayland clipboard.
+set -eu
+umask 077
+selection=$(mktemp "${TMPDIR:-/tmp}/nostromo-copy.XXXXXXXX")
+trap 'rm -f "$selection"' 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
+export DVTM_EDITOR=vis NOSTROMO_COPY_MODE=1
+dvtm-editor "$@" >"$selection"
+[ -s "$selection" ] || exit 0
+cat "$selection"
+if [ -n "${WAYLAND_DISPLAY:-}" ] && command -v wl-copy >/dev/null; then
+    wl-copy --type text/plain <"$selection" >/dev/null 2>&1 || :
+fi

@@ -1,0 +1,35 @@
+#!/bin/sh
+set -eu
+[ "$#" -le 1 ] || exit 2
+action=${1:-toggle}
+directory=${XDG_STATE_HOME:-$HOME/.local/state}/nostromo
+file=$directory/crt-mode
+case $action in
+apply)
+    if [ -f "$file" ]; then IFS= read -r mode <"$file"; else mode=animated; fi
+    ;;
+toggle)
+    current=$(nostromo-control status)
+    if [ "$current" = off ]; then mode=animated; else mode=off; fi
+    ;;
+off | static | animated) mode=$action ;;
+status) exec nostromo-control status ;;
+*) exit 2 ;;
+esac
+case $mode in off | static | animated) ;; *)
+    echo 'Invalid saved CRT mode.' >&2
+    exit 1
+    ;;
+esac
+actual=$(nostromo-control "$mode")
+[ "$actual" = "$mode" ] || {
+    echo 'The compositor could not enable that CRT mode.' >&2
+    exit 1
+}
+umask 077
+mkdir -p "$directory"
+[ ! -L "$file" ] || exit 1
+temporary=$(mktemp "$directory/.crt-mode.XXXXXXXX")
+trap 'rm -f "$temporary"' 0
+printf '%s\n' "$mode" >"$temporary"
+mv "$temporary" "$file"

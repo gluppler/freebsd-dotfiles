@@ -1,0 +1,80 @@
+#!/bin/sh
+set -eu
+umask 077
+directory=${XDG_DATA_HOME:-$HOME/.local/share}/nostromo/assets/wallpapers
+state=${XDG_STATE_HOME:-$HOME/.local/state}/nostromo
+selection=default
+[ ! -f "$state/wallpaper" ] || IFS= read -r selection <"$state/wallpaper" || selection=default
+[ "$#" -le 1 ] || exit 2
+case ${1:-apply} in
+apply) ;;
+menu)
+    selection=$({
+        printf '%s\n' default
+        for file in "$directory"/nostromo-*-1920x1080.png; do
+            [ -f "$file" ] || continue
+            name=${file##*/nostromo-}
+            printf '%s\n' "${name%-1920x1080.png}"
+        done
+    } | nostromo-picker -l 10 -p WALLPAPER) || exit 0
+    ;;
+*) selection=$1 ;;
+esac
+case $selection in
+default) prefix=nostromo ;;
+'' | *[!a-z0-9-]*) exit 2 ;;
+*) prefix=nostromo-$selection ;;
+esac
+[ -f "$directory/$prefix-1920x1080.png" ] || {
+    echo 'Unknown wallpaper selection.' >&2
+    exit 2
+}
+mkdir -p "$state"
+temp=$(mktemp -d "$state/wallpaper.XXXXXXXX")
+trap 'rm -rf "$temp"' 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
+wlr-randr --json >"$temp/outputs.json"
+jq -r '.[] | select(.enabled) | .name as $name | .modes[] | select(.current) |
+    [$name, .width, .height] | @tsv' "$temp/outputs.json" >"$temp/outputs"
+# A default also covers an output arriving before kanshi reapplies its profile.
+set -- -i "$directory/$prefix-1920x1080.png" -m fit -c 000000
+tab=$(printf '\t')
+while IFS="$tab" read -r output width height; do
+    case $output in '' | *[[:cntrl:]]*) exit 2 ;; esac
+    case $width:$height in *[!0-9:]* | :* | *:) exit 2 ;; esac
+    if [ "$width" -le 1920 ] && [ "$height" -le 1080 ]; then
+        size=1920x1080
+    elif [ "$width" -le 2560 ] && [ "$height" -le 1440 ]; then
+        size=2560x1440
+    elif [ "$width" -le 3840 ] && [ "$height" -le 2160 ]; then
+        size=3840x2160
+    else size=7680x4320; fi
+    [ -f "$directory/$prefix-$size.png" ] || exit 1
+    set -- "$@" -o "$output" -i "$directory/$prefix-$size.png" -m fit -c 000000
+done <"$temp/outputs"
+# Keep the previous wallpaper if the replacement fails before creating surfaces.
+# swaybg puts new background surfaces above its predecessor's surfaces.
+old_pid=
+if [ -f "$state/wallpaper.pid" ]; then IFS= read -r old_pid <"$state/wallpaper.pid" || old_pid=; fi
+swaybg "$@" &
+new_pid=$!
+sleep 1
+kill -0 "$new_pid" 2>/dev/null || {
+    echo 'Wallpaper failed; previous selection retained.' >&2
+    exit 1
+}
+case $old_pid in
+'' | *[!0-9]*) ;;
+*)
+    old_command=$(ps -p "$old_pid" -o comm= 2>/dev/null) || old_command=
+    if [ "$(ps -p "$old_pid" -o uid= | tr -d ' ')" = "$(id -u)" ] &&
+        [ "${old_command##*/}" = swaybg ]; then
+        kill "$old_pid" 2>/dev/null || :
+    fi
+    ;;
+esac
+printf '%s\n' "$new_pid" >"$temp/pid"
+mv "$temp/pid" "$state/wallpaper.pid"
+printf '%s\n' "$selection" >"$temp/selection"
+mv "$temp/selection" "$state/wallpaper"

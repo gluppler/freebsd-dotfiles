@@ -1,0 +1,6 @@
+#!/bin/sh
+# Foot pipe-visible: select a displayed line and copy it, never execute its text.
+set -eu
+line=$(nostromo-picker -p COPY -l 12) || exit 0
+[ -n "$line" ] || exit 0
+printf '%s' "$line" | wl-copy --type 'text/plain;charset=utf-8'

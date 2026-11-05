@@ -1,0 +1,19 @@
+--- a/devel/cmake-core/Makefile
++++ b/devel/cmake-core/Makefile
+@@ -18,7 +18,6 @@
+ LICENSE_FILE=	${WRKSRC}/Copyright.txt
+ 
+ LIB_DEPENDS=	libexpat.so:textproc/expat2 \
+-		libidn2.so:dns/libidn2 \
+ 		libjsoncpp.so:devel/jsoncpp \
+ 		libpkg.so:${PKG_ORIGIN} \
+ 		librhash.so:security/rhash \
+--- a/devel/cmake-core/files/InitialCache.cmake.in
++++ b/devel/cmake-core/files/InitialCache.cmake.in
+@@ -24,3 +24,6 @@
+     "Flags used by the CXX compiler during DEBUG builds.")
+ set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG" CACHE STRING
+     "Flags used by the CXX compiler during RELEASE builds.")
++
++# ASCII/punycode CLI URLs; browser IDNA is provided by Qt/ICU.
++set(CURL_USE_LIBIDN2 OFF CACHE BOOL "No GNU IDN2" FORCE)

@@ -1,0 +1,14 @@
+* text=auto
+*.sh text eol=lf
+*.md text eol=lf
+*.awk text eol=lf
+*.patch text eol=lf
+home/.profile text eol=lf
+home/.local/bin/* text eol=lf
+system/nostromo-* text eol=lf
+system/rc.d/* text eol=lf
+*.png binary
+*.gif binary
+*.ttf binary
+docs/research/** -text
+assets/wallpaper-sources/REFERENCE-NOTICE.txt -text

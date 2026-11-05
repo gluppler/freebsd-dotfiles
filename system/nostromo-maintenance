@@ -1,0 +1,49 @@
+#!/bin/sh
+# FreeBSD base and firmware updates stay separate from application upgrades.
+set -eu
+PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
+LC_ALL=C
+export PATH LC_ALL
+[ "$(uname -s)" = FreeBSD ] && [ "$(id -u)" = 0 ] && [ "$#" = 1 ] || exit 1
+umask 077
+work=$(mktemp -d /var/tmp/nostromo-maintenance.XXXXXXXX)
+trap 'rm -rf "$work"' 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
+case $1 in
+firmware)
+    # Native detection only; do not use fwget's unconditional pkg install path.
+    fwget -nq >"$work/firmware"
+    set --
+    while IFS= read -r name; do
+        case $name in '' | *[!A-Za-z0-9_+.-]*) exit 1 ;; esac
+        set -- "$@" "$name"
+    done <"$work/firmware"
+    [ "$#" != 0 ] || {
+        echo 'No firmware package was requested by the detected devices.'
+        exit
+    }
+    /usr/local/libexec/nostromo-packages install "$@"
+    ;;
+patches)
+    pkg query -a '%o|%R' >"$work/packages"
+    awk -F '|' '$1 ~ /^base\// {print $2}' "$work/packages" | sort -u >"$work/base-repos"
+    if [ -s "$work/base-repos" ]; then
+        [ "$(wc -l <"$work/base-repos" | tr -d ' ')" = 1 ] || {
+            echo 'Multiple base repositories need review before updating.' >&2
+            exit 1
+        }
+        IFS= read -r repository <"$work/base-repos"
+        case $repository in '' | unknown-repository | *[!a-zA-Z0-9_.-]*) exit 1 ;; esac
+        printf 'Detected pkgbase repository: %s\n' "$repository"
+        pkg upgrade -n -r "$repository"
+        pkg upgrade -r "$repository"
+    else
+        printf 'Traditional distribution sets: fetch and install signed FreeBSD patches.\n'
+        freebsd-update fetch
+        freebsd-update install
+    fi
+    printf 'Read the update output before rebooting. No reboot is automatic.\n'
+    ;;
+*) exit 2 ;;
+esac

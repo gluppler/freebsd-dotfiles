@@ -1,0 +1,23 @@
+From a75ca796305e7a12bfbe89a57d31d92b7f35d601 Mon Sep 17 00:00:00 2001
+From: Guido Cella <guido@guidocella.xyz>
+Date: Tue, 22 Sep 2026 20:42:48 +0200
+Subject: [PATCH] add missing void
+
+Needed to compile on OpenBSD.
+---
+ ime.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ime.h b/ime.h
+index b9591f5..454a044 100644
+--- a/ime.h
++++ b/ime.h
+@@ -594,7 +594,7 @@ handle_focused_surface_destroy(struct wl_listener *listener,
+ }
+ 
+ struct input_method_relay *
+-input_method_relay_create()
++input_method_relay_create(void)
+ {
+ 	struct input_method_relay *relay = ecalloc(1, sizeof(*relay));
+ 	wl_list_init(&relay->text_inputs);

@@ -1,0 +1,29 @@
+#!/bin/sh
+set -eu
+[ "$#" = 1 ] || {
+    echo 'Usage: nostromo-open path-or-URL' >&2
+    exit 2
+}
+case $1 in http://* | https://*) exec nostromo-browser "$1" ;; esac
+case $1 in /*) path=$1 ;; *) path=$(pwd -P)/$1 ;; esac
+if [ -d "$path" ]; then exec foot -e nnn "$path"; fi
+[ -f "$path" ] || {
+    echo "Not a file: $path" >&2
+    exit 1
+}
+mime=$(file -biL "$path")
+case ${mime%%;*} in
+text/html) exec nostromo-browser "$path" ;;
+text/* | application/json | application/xml) exec foot -e vis "$path" ;;
+image/*) exec swayimg -- "$path" ;;
+application/pdf) exec zathura -- "$path" ;;
+audio/* | video/*) exec mpv -- "$path" ;;
+esac
+choice=$(printf '%s\n' 'VIEW AS TEXT' IMAGE PDF MEDIA CANCEL |
+    nostromo-picker -l 5 -p 'OPEN WITH') || exit 0
+case $choice in
+'VIEW AS TEXT') exec foot -e vis "$path" ;;
+IMAGE) exec swayimg -- "$path" ;;
+PDF) exec zathura -- "$path" ;;
+MEDIA) exec mpv -- "$path" ;;
+esac

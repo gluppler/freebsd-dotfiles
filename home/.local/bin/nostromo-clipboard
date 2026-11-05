@@ -1,0 +1,32 @@
+#!/bin/sh
+set -eu
+choice=$(printf '%s\n' 'SELECTION TO CLIPBOARD' 'CLIPBOARD TO SELECTION' CLEAR |
+    nostromo-picker -l 3 -p CLIPBOARD) || exit 0
+case $choice in
+'SELECTION TO CLIPBOARD')
+    from=primary
+    to=clipboard
+    ;;
+'CLIPBOARD TO SELECTION')
+    from=clipboard
+    to=primary
+    ;;
+CLEAR)
+    wl-copy --clear
+    wl-copy --primary --clear
+    exit
+    ;;
+*) exit 0 ;;
+esac
+umask 077
+temp=$(mktemp "${TMPDIR:-/tmp}/nostromo-clipboard.XXXXXXXX")
+trap 'rm -f "$temp"' 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
+set --
+[ "$from" != primary ] || set -- --primary
+# Read first so a missing source cannot erase the destination. Keep newlines.
+wl-paste "$@" --no-newline --type text >"$temp"
+set --
+[ "$to" != primary ] || set -- --primary
+wl-copy "$@" --type 'text/plain;charset=utf-8' <"$temp"

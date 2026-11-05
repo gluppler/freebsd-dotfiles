@@ -1,0 +1,40 @@
+#!/bin/sh
+# PROVIDE: nostromo_mdo
+# REQUIRE: sysctl
+# BEFORE: LOGIN
+# KEYWORD: nojail
+# FreeBSD rc.subr consumes rcvar/start_cmd/stop_cmd when run_rc_command executes.
+# shellcheck disable=SC2034
+# shellcheck source=/dev/null
+. /etc/rc.subr
+name=nostromo_mdo
+rcvar=nostromo_mdo_enable
+start_cmd=nostromo_mdo_start
+stop_cmd=:
+
+nostromo_mdo_start() {
+    policy=/usr/local/etc/nostromo/mdo-account
+    [ -f "$policy" ] && [ ! -L "$policy" ] && [ "$(stat -f '%u %Lp' "$policy")" = '0 600' ] || return 1
+    IFS=' ' read -r uid account extra <"$policy" || return 1
+    case $uid in '' | *[!0-9]* | 0) return 1 ;; esac
+    case $account in '' | root | *[!a-zA-Z0-9_-]*) return 1 ;; esac
+    [ -z "$extra" ] && [ "$(id -u "$account")" = "$uid" ] || return 1
+    gid=$(pw groupshow nostromo_power | cut -d: -f3) || return 1
+    case $gid in '' | *[!0-9]*) return 1 ;; esac
+    [ "$gid" -ge 1000 ] || return 1
+    group_policy=/usr/local/etc/nostromo/power-group
+    [ -f "$group_policy" ] && [ ! -L "$group_policy" ] &&
+        [ "$(stat -f '%u %Lp' "$group_policy")" = '0 644' ] &&
+        [ "$(cat "$group_policy")" = "$gid" ] &&
+        [ -z "$(pw groupshow nostromo_power | cut -d: -f4)" ] || return 1
+    kldstat -q -m mac_do || kldload mac_do || return 1
+    # Never overwrite unrelated administrator rules from sysctl.conf.
+    current=$(sysctl -n security.mac.do.rules) || return 1
+    next=$(printf '%s\n' "$current" | awk -v uid="$uid" -v gid="$gid" -f /usr/local/share/nostromo/merge-mdo.awk) || return 1
+    [ "$current" = "$next" ] || sysctl "security.mac.do.rules=$next" >/dev/null || return 1
+    sysctl security.mac.do.enabled=1 >/dev/null
+}
+
+load_rc_config "$name"
+: "${nostromo_mdo_enable:=NO}"
+run_rc_command "$1"

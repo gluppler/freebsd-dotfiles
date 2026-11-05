@@ -1,0 +1,164 @@
+#!/bin/sh
+# Classic Bluetooth only. A live HCI link does not establish an audio/HID profile.
+set -eu
+PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
+export PATH
+LC_ALL=C
+export LC_ALL
+umask 077
+[ "$(uname -s)" = FreeBSD ] && [ "$(id -u)" = 0 ] || exit 1
+[ "$#" -ge 1 ] && [ "$#" -le 3 ] || exit 2
+action=$1
+if [ "$action" = setup ]; then
+    [ "$#" = 1 ] || exit 2
+    nodes=$(hccontrol -N read_node_list 2>/dev/null | awk '$1 ~ /^[a-zA-Z0-9_]+hci$/ {print $1}')
+    if [ -n "$nodes" ]; then
+        printf '%s\n' "$nodes"
+        exit
+    fi
+    # Same USB identities and loader as base /etc/devd/iwmbtfw.conf.
+    for device in $(usbconfig list | awk '$1 ~ /^ugen[0-9]+\.[0-9]+:$/ {sub(/:$/,"",$1);print $1}'); do
+        descriptor=$(usbconfig -d "$device" dump_device_desc) || continue
+        vendor=$(printf '%s\n' "$descriptor" | awk '$1=="idVendor" {print $3}')
+        product=$(printf '%s\n' "$descriptor" | awk '$1=="idProduct" {print $3}')
+        [ "$vendor" = 0x8087 ] || continue
+        case $product in
+        0x07dc | 0x0a2a | 0x0aa7 | 0x0a2b | 0x0aaa | 0x0025 | 0x0026 | 0x0029 | 0x0032 | 0x0033 | 0x0035 | 0x0036)
+            if ! pkg info -e iwmbt-firmware >/dev/null 2>&1; then
+                /usr/local/libexec/nostromo-packages install iwmbt-firmware
+            fi
+            /usr/sbin/iwmbtfw -d "$device" -f /usr/local/share/iwmbt-firmware
+            ;;
+        esac
+    done
+    kldstat -q -m ng_ubt || kldload ng_ubt
+    sleep 2
+    for unit in $(sysctl -aN | sed -n 's/^dev\.ubt\.\([0-9][0-9]*\)\.%driver$/\1/p'); do
+        if ! hccontrol -N read_node_list | awk -v node="ubt${unit}hci" '$1==node{found=1}END{exit !found}'; then
+            service bluetooth onestart "ubt$unit"
+        fi
+    done
+    nodes=$(hccontrol -N read_node_list | awk '$1 ~ /^[a-zA-Z0-9_]+hci$/ {print $1}')
+    [ -n "$nodes" ] || {
+        echo 'No native HCI controller after initialization. Check BIOS, USB IDs and firmware support in BLUETOOTH.md.' >&2
+        exit 1
+    }
+    printf '%s\n' "$nodes"
+    exit
+fi
+nodes=$(hccontrol -N read_node_list | awk '$1 ~ /^[a-zA-Z0-9_]+hci$/ {print $1}')
+if [ "$action" = nodes ]; then
+    printf '%s\n' "$nodes"
+    exit
+fi
+node=${2:-}
+printf '%s\n' "$nodes" | grep -Fxq -e "$node" || {
+    echo 'No matching native HCI controller.' >&2
+    exit 1
+}
+case $action in
+scan) exec hccontrol -N -n "$node" inquiry ;;
+status) exec hccontrol -N -n "$node" read_connection_list ;;
+disconnect)
+    handle=${3:-}
+    case $handle in '' | *[!0-9]*) exit 2 ;; esac
+    hccontrol -N -n "$node" read_connection_list | awk -v h="$handle" '$2==h {found=1} END {exit !found}' || exit 2
+    exec hccontrol -N -n "$node" disconnect "$handle"
+    ;;
+connect | pair | hid) ;;
+*) exit 2 ;;
+esac
+address=${3:-}
+printf '%s\n' "$address" | grep -Eq '^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$' || exit 2
+address=$(printf '%s' "$address" | tr 'A-F' 'a-f')
+if [ "$action" = connect ]; then exec hccontrol -N -n "$node" create_connection "$address"; fi
+if [ "$action" = pair ]; then
+    IFS= read -r pin
+    # Legacy PIN flow; no permissive default device or guessed PIN.
+    case $pin in '' | *[!0-9A-Za-z]*)
+        echo 'Use the device PIN, 1–16 ASCII letters/digits.' >&2
+        exit 2
+        ;;
+    esac
+    [ "${#pin}" -le 16 ] || exit 2
+    service_name=hcsecd
+    file=$(sysrc -n hcsecd_config 2>/dev/null || printf '%s' /etc/bluetooth/hcsecd.conf)
+else
+    service_name=bthidd
+    file=$(sysrc -n bthidd_config 2>/dev/null || printf '%s' /etc/bluetooth/bthidd.conf)
+fi
+case $file in /etc/bluetooth/*.conf) ;; *)
+    echo 'Custom Bluetooth configuration location needs manual review.' >&2
+    exit 1
+    ;;
+esac
+[ ! -L /etc/bluetooth ] && [ ! -L "$file" ] || exit 1
+mkdir -p /etc/bluetooth
+[ "$(stat -f '%u' /etc/bluetooth)" = 0 ] || exit 1
+mode=$(stat -f '%Lp' /etc/bluetooth)
+[ "$((0$mode & 0022))" = 0 ] || exit 1
+lock=/var/run/nostromo-bluetooth.lock
+mkdir "$lock" || {
+    echo 'Bluetooth configuration is already being changed.' >&2
+    exit 1
+}
+changed=no
+had_file=no
+running=no
+service "$service_name" onestatus >/dev/null 2>&1 && running=yes
+replace_file() {
+    temporary=$(mktemp "${file}.nostromo.XXXXXXXX") || return 1
+    if install -m 600 "$1" "$temporary" && mv "$temporary" "$file"; then return 0; fi
+    rm -f "$temporary"
+    return 1
+}
+finish() {
+    result=$?
+    trap - 0
+    if [ "$changed" = yes ]; then
+        service "$service_name" onestop >/dev/null 2>&1 || :
+        if [ "$had_file" = yes ]; then replace_file "$lock/before"; else rm -f "$file"; fi
+        [ "$running" = no ] || service "$service_name" onestart || :
+    fi
+    rm -f "$lock/before" "$lock/block" "$lock/candidate"
+    rmdir "$lock"
+    exit "$result"
+}
+trap finish 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
+if [ -e "$file" ]; then
+    [ -f "$file" ] && [ "$(stat -f '%u' "$file")" = 0 ] || exit 1
+    cp -p "$file" "$lock/before"
+    had_file=yes
+else : >"$lock/before"; fi
+# Never replace a manually configured device. Existing project blocks are replaced.
+awk -v addr="$address" '
+    $0=="# BEGIN NOSTROMO " addr {inside=1}
+    !inside && tolower($0) ~ addr {found=1}
+    $0=="# END NOSTROMO " addr {inside=0}
+    END {exit found}
+' "$lock/before" || {
+    echo 'This device already has unmanaged configuration; edit it explicitly.' >&2
+    exit 1
+}
+if [ "$action" = pair ]; then
+    printf 'device {\n bdaddr %s;\n name "Nostromo device";\n key nokey;\n pin "%s";\n}\n' "$address" "$pin" >"$lock/block"
+    unset pin
+else
+    bthidcontrol -a "$address" query >"$lock/block"
+    [ -s "$lock/block" ] || {
+        echo 'No classic HID descriptor was returned.' >&2
+        exit 1
+    }
+fi
+awk -v name="$address" -v replacement="$lock/block" -f /usr/local/share/nostromo/merge-block.awk \
+    "$lock/before" >"$lock/candidate"
+changed=yes
+replace_file "$lock/candidate"
+service "$service_name" onerestart
+if [ "$action" = pair ]; then hccontrol -N -n "$node" create_connection "$address"; fi
+# Persist only after the daemon accepted its file and the connection request succeeded.
+sysrc "${service_name}_enable=YES" >/dev/null
+changed=no
+printf 'Configured %s for %s. Test the selected profile on the device.\n' "$address" "$service_name"

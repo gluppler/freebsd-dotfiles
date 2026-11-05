@@ -1,0 +1,14 @@
+# profile|LLVM triple|C/ASM flags (select the actual CPU/FPU ABI)
+cortex-m0|armv6m-none-eabi|-mcpu=cortex-m0 -mthumb -mfloat-abi=soft
+cortex-m3|armv7m-none-eabi|-mcpu=cortex-m3 -mthumb -mfloat-abi=soft
+cortex-m4-soft|armv7em-none-eabi|-mcpu=cortex-m4 -mthumb -mfloat-abi=soft
+cortex-m4-hard|armv7em-none-eabihf|-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
+cortex-m7-hard|armv7em-none-eabihf|-mcpu=cortex-m7 -mthumb -mfpu=fpv5-d16 -mfloat-abi=hard
+cortex-m33-soft|armv8m.main-none-eabi|-mcpu=cortex-m33 -mthumb -mfloat-abi=soft
+cortex-m33-hard|armv8m.main-none-eabihf|-mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard
+riscv32imc|riscv32-unknown-elf|-march=rv32imc -mabi=ilp32
+riscv32imac|riscv32-unknown-elf|-march=rv32imac -mabi=ilp32
+riscv64gc|riscv64-unknown-elf|-march=rv64gc -mabi=lp64d
+aarch64|aarch64-none-elf|-march=armv8-a
+x86-64|x86_64-pc-none-elf|-m64 -mno-red-zone
+i686|i686-pc-none-elf|-m32

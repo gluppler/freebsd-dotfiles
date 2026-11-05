@@ -1,0 +1,15 @@
+--- a/textproc/hunspell/Makefile
++++ b/textproc/hunspell/Makefile
+@@ -15,10 +15,10 @@
+ LICENSE_FILE_LGPL21+ =	${_LICENSE_STORE}/LGPL21
+ LICENSE_FILE_MPL11=	${WRKSRC}/COPYING.MPL
+ 
+-USES=		compiler:c++11-lang cpe gettext-tools iconv libtool:keepla ncurses pathfix perl5 readline shebangfix
++USES=		compiler:c++11-lang cpe gettext-tools iconv libtool:keepla ncurses pathfix perl5 shebangfix
+ USE_PERL5=	run
+ 
+-CONFIGURE_ARGS=	--disable-nls ${ICONV_CONFIGURE_ARG} --with-readline --with-ui
++CONFIGURE_ARGS=	--disable-nls ${ICONV_CONFIGURE_ARG} --without-readline --with-ui
+ GNU_CONFIGURE=	yes
+ USE_LDCONFIG=	yes
+ INSTALL_TARGET=	install-strip

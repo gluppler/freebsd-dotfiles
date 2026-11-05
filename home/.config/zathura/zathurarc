@@ -1,0 +1,21 @@
+set font "Michroma 10"
+# The compositor displays the filename in its bottom rail. Ctrl+N restores status.
+set window-title-basename true
+set window-title-page false
+set guioptions ""
+set default-bg "#000000"
+set default-fg "#ffffff"
+set statusbar-bg "#000000"
+set statusbar-fg "#ffffff"
+set inputbar-bg "#000000"
+set inputbar-fg "#ffffff"
+set completion-bg "#000000"
+set completion-fg "#bbbbbb"
+set completion-highlight-bg "#ffffff"
+set completion-highlight-fg "#000000"
+set notification-bg "#000000"
+set notification-fg "#ffffff"
+set recolor-darkcolor "#ffffff"
+set recolor-lightcolor "#000000"
+set recolor true
+set recolor-keephue false

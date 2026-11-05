@@ -1,0 +1,44 @@
+#!/bin/sh
+# SDDM/console entry, always under the authenticated ordinary account.
+set -eu
+umask 077
+[ "$(uname -s)" = FreeBSD ] && [ "$(id -u)" != 0 ] || exit 1
+[ "$#" -le 1 ] || exit 2
+case ${1:-} in '' | --bus) ;; *) exit 2 ;; esac
+set +u
+# shellcheck source=/dev/null
+[ ! -r /etc/profile ] || . /etc/profile
+# shellcheck source=home/.profile
+[ ! -r "$HOME/.profile" ] || . "$HOME/.profile"
+set -u
+case ${XDG_RUNTIME_DIR:-} in /*) ;; *)
+    echo 'PAM did not provide XDG_RUNTIME_DIR; inspect the native PAM session stack.' >&2
+    exit 1
+    ;;
+esac
+[ -d "$XDG_RUNTIME_DIR" ] && [ ! -L "$XDG_RUNTIME_DIR" ] &&
+    [ "$(stat -f '%u %Lp' "$XDG_RUNTIME_DIR")" = "$(id -u) 700" ] || {
+    echo 'Unsafe Wayland runtime directory.' >&2
+    exit 1
+}
+unset DISPLAY WAYLAND_DISPLAY GTK_IM_MODULE QT_IM_MODULE XMODIFIERS
+export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=dwl XDG_SESSION_DESKTOP=nostromo
+export GDK_BACKEND=wayland QT_QPA_PLATFORM=wayland SDL_VIDEODRIVER=wayland
+export LIBSEAT_BACKEND=seatd
+for command in dwl dwlb foot fuzzel gtklock dunst fcitx5 swayidle swaybg wlr-randr wl-copy wl-paste; do
+    command -v "$command" >/dev/null || {
+        printf 'Missing session program: %s\n' "$command" >&2
+        exit 1
+    }
+done
+if [ "${1:-}" != --bus ]; then
+    exec /usr/local/bin/dbus-run-session -- /usr/local/libexec/nostromo-session --bus
+fi
+state=${XDG_STATE_HOME:-$HOME/.local/state}/nostromo
+mkdir -p "$state"
+[ ! -L "$state/session.log" ] && [ ! -L "$state/session.previous.log" ] || exit 1
+[ ! -f "$state/session.log" ] || mv "$state/session.log" "$state/session.previous.log"
+# exec preserves this PID, allowing logout to target only the current compositor.
+NOSTROMO_DWL_PID=$$
+export NOSTROMO_DWL_PID
+exec dwl -s nostromo-autostart >"$state/session.log" 2>&1

@@ -1,0 +1,246 @@
+--- a/dwlb.c
++++ b/dwlb.c
+@@ -14,6 +14,7 @@
+ #include <sys/mman.h>
+ #include <sys/select.h>
+ #include <sys/socket.h>
++#include <sys/time.h>
+ #include <sys/stat.h>
+ #include <sys/un.h>
+ #include <unistd.h>
+@@ -585,11 +586,18 @@
+ static void
+ shell_command(char *command)
+ {
+-	if (fork() == 0) {
+-		setsid();
+-		execl("/bin/sh", "sh", "-c", command, NULL);
+-		exit(EXIT_SUCCESS);
+-	}
++    /* Status data selects fixed actions; it is never executable shell text. */
++    static const char *actions[] = {"SYSTEM INFO", "POWER", "WIFI", "VPN",
++        "BLUETOOTH", "AUDIO", "BRIGHTNESS", "LANGUAGE", "DISPLAYS"};
++    for (size_t i = 0; i < LENGTH(actions); i++) {
++        if (strcmp(command, actions[i])) continue;
++        if (fork() == 0) {
++            setsid();
++            execlp("nostromo-menu", "nostromo-menu", actions[i], (char *)NULL);
++            _exit(127);
++        }
++        return;
++    }
+ }
+ 
+ static void
+@@ -716,8 +724,8 @@
+ 			for (i = 0; i < seat->bar->status.buttons_l; i++) {
+ 			
+ 				if (seat->pointer_button == seat->bar->status.buttons[i].btn
+-				    && seat->pointer_x >= status_x + seat->bar->textpadding + seat->bar->status.buttons[i].x1 / seat->bar->scale
+-				    && seat->pointer_x < status_x + seat->bar->textpadding + seat->bar->status.buttons[i].x2 / seat->bar->scale) {
++				    && seat->pointer_x >= status_x + seat->bar->textpadding / seat->bar->scale + seat->bar->status.buttons[i].x1 / seat->bar->scale
++				    && seat->pointer_x < status_x + seat->bar->textpadding / seat->bar->scale + seat->bar->status.buttons[i].x2 / seat->bar->scale) {
+ 					shell_command(seat->bar->status.buttons[i].command);
+ 					break;
+ 				}
+@@ -750,8 +758,8 @@
+ 		/* Clicked on status */
+ 		for (i = 0; i < seat->bar->status.buttons_l; i++) {
+ 			if (btn == seat->bar->status.buttons[i].btn
+-			    && seat->pointer_x >= status_x + seat->bar->textpadding + seat->bar->status.buttons[i].x1 / seat->bar->scale
+-			    && seat->pointer_x < status_x + seat->bar->textpadding + seat->bar->status.buttons[i].x2 / seat->bar->scale) {
++			    && seat->pointer_x >= status_x + seat->bar->textpadding / seat->bar->scale + seat->bar->status.buttons[i].x1 / seat->bar->scale
++			    && seat->pointer_x < status_x + seat->bar->textpadding / seat->bar->scale + seat->bar->status.buttons[i].x2 / seat->bar->scale) {
+ 				shell_command(seat->bar->status.buttons[i].command);
+ 				break;
+ 			}
+@@ -1324,7 +1332,7 @@
+ }
+ 
+ static void
+-parse_into_customtext(CustomText *ct, char *text)
++parse_into_customtext(CustomText *ct, char *text, struct fcft_font *font)
+ {
+ 	ct->colors_l = ct->buttons_l = 0;
+ 
+@@ -1465,37 +1473,24 @@
+ }
+ 
+ static void
+-copy_customtext(CustomText *from, CustomText *to)
+-{
+-	snprintf(to->text, sizeof to->text, "%s", from->text);
+-	to->colors_l = to->buttons_l = 0;
+-	for (uint32_t i = 0; i < from->colors_l; i++) {
+-		Color *color;
+-		ARRAY_APPEND(to->colors, to->colors_l, to->colors_c, color);
+-		color->color = from->colors[i].color;
+-		color->bg = from->colors[i].bg;
+-		color->start = from->colors[i].start - (char *)&from->text + (char *)&to->text;
+-	}
+-	for (uint32_t i = 0; i < from->buttons_l; i++) {
+-		Button *button;
+-		ARRAY_APPEND(to->buttons, to->buttons_l, to->buttons_c, button);
+-		*button = from->buttons[i];
+-	}
+-}
+-
+-static void
+ read_socket(void)
+ {
+ 	int cli_fd;
+ 	if ((cli_fd = accept(sock_fd, NULL, 0)) == -1)
+ 		EDIE("accept");
+-	ssize_t len = recv(cli_fd, sockbuf, sizeof sockbuf - 1, 0);
+-	if (len == -1)
+-		EDIE("recv");
+-	close(cli_fd);
+-	if (len == 0)
+-		return;
+-	sockbuf[len] = '\0';
++    struct timeval timeout = { .tv_sec = 0, .tv_usec = 100000 };
++    setsockopt(cli_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
++    size_t len = 0;
++    while (len < sizeof sockbuf - 1) {
++        ssize_t n = recv(cli_fd, sockbuf + len, sizeof sockbuf - 1 - len, 0);
++        if (n < 0 && errno == EINTR) continue;
++        if (n < 0) { close(cli_fd); return; }
++        if (n == 0) break;
++        len += (size_t)n;
++    }
++    close(cli_fd);
++    if (len == 0 || len == sizeof sockbuf - 1) return;
++    sockbuf[len] = '\0';
+ 
+ 	char *wordbeg, *wordend;
+ 	wordend = (char *)&sockbuf;
+@@ -1532,36 +1527,24 @@
+ 		if (!*wordend)
+ 			return;
+ 		if (all) {
+-			Bar *first = NULL;
+ 			wl_list_for_each(bar, &bar_list, link) {
+-				if (first) {
+-					copy_customtext(&first->status, &bar->status);
+-				} else {
+-					parse_into_customtext(&bar->status, wordend);
+-					first = bar;
+-				}
++				parse_into_customtext(&bar->status, wordend, bar->font);
+ 				bar->redraw = true;
+ 			}
+ 		} else {
+-			parse_into_customtext(&bar->status, wordend);
++			parse_into_customtext(&bar->status, wordend, bar->font);
+ 			bar->redraw = true;
+ 		}
+ 	} else if (!strcmp(wordbeg, "title")) {
+ 		if (!custom_title || !*wordend)
+ 			return;
+ 		if (all) {
+-			Bar *first = NULL;
+ 			wl_list_for_each(bar, &bar_list, link) {
+-				if (first) {
+-					copy_customtext(&first->title, &bar->title);
+-				} else {
+-					parse_into_customtext(&bar->title, wordend);
+-					first = bar;
+-				}
++				parse_into_customtext(&bar->title, wordend, bar->font);
+ 				bar->redraw = true;
+ 			}
+ 		} else {
+-			parse_into_customtext(&bar->title, wordend);
++			parse_into_customtext(&bar->title, wordend, bar->font);
+ 			bar->redraw = true;
+ 		}
+ 	} else if (!strcmp(wordbeg, "show")) {
+@@ -1687,27 +1670,31 @@
+ 	
+ 	size_t len = strlen(sockbuf);
+ 			
+-	struct dirent *de;
+-	bool newfd = true;
+-
+-	/* Send data to all dwlb instances */
+-	while ((de = readdir(dir))) {
+-		if (!strncmp(de->d_name, "dwlb-", 5)) {
+-			if (!target_socket || !strncmp(de -> d_name, target_socket, 6)){
+-				if (newfd && (sock_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
+-					EDIE("socket");
+-				snprintf(sock_address->sun_path, sizeof sock_address->sun_path, "%s/%s", socketdir, de->d_name);
+-				if (connect(sock_fd, (struct sockaddr *) sock_address, sizeof(*sock_address)) == -1) {
+-					newfd = false;
+-					continue;
+-				}
+-				if (send(sock_fd, sockbuf, len, 0) == -1)
+-					fprintf(stderr, "Could not send status data to '%s'\n", sock_address->sun_path);
+-				close(sock_fd);
+-				newfd = true;
+-			}
+-		}
+-	}
++    struct dirent *de;
++    bool sent = false;
++    while ((de = readdir(dir))) {
++        if (strncmp(de->d_name, "dwlb-", 5) ||
++            (target_socket && strcmp(de->d_name, target_socket))) continue;
++        int n = snprintf(sock_address->sun_path, sizeof sock_address->sun_path,
++            "%s/%s", socketdir, de->d_name);
++        if (n < 0 || (size_t)n >= sizeof sock_address->sun_path) continue;
++        int fd = socket(AF_UNIX, SOCK_STREAM, 0);
++        if (fd < 0) continue;
++        struct timeval timeout = { .tv_sec = 1 };
++        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout);
++        if (connect(fd, (struct sockaddr *)sock_address, sizeof *sock_address) == 0) {
++            size_t done = 0;
++            while (done < len) {
++                ssize_t written = send(fd, sockbuf + done, len - done, MSG_NOSIGNAL);
++                if (written < 0 && errno == EINTR) continue;
++                if (written <= 0) break;
++                done += (size_t)written;
++            }
++            sent |= done == len;
++        }
++        close(fd);
++    }
++    if (!sent) DIE("No dwlb instance accepted the command");
+ 
+ 	closedir(dir);
+ }
+@@ -1723,18 +1710,23 @@
+ main(int argc, char **argv)
+ {
+ 	char *xdgruntimedir;
+-	struct sockaddr_un sock_address;
++	struct sockaddr_un sock_address = { .sun_len = sizeof(struct sockaddr_un), .sun_family = AF_UNIX };
+ 	Bar *bar, *bar2;
+ 	Seat *seat, *seat2;
+ 
+ 	/* Establish socket directory */
+ 	if (!(xdgruntimedir = getenv("XDG_RUNTIME_DIR")))
+ 		DIE("Could not retrieve XDG_RUNTIME_DIR");
+-	snprintf(socketdir, sizeof socketdir, "%s/dwlb", xdgruntimedir);
++	if (snprintf(socketdir, sizeof socketdir, "%s/dwlb", xdgruntimedir) >= (int)sizeof socketdir)
++        DIE("Runtime path too long");
++    struct stat info;
++    if (lstat(xdgruntimedir, &info) || !S_ISDIR(info.st_mode) ||
++        info.st_uid != getuid() || (info.st_mode & 077)) DIE("Unsafe runtime directory");
+ 	if (mkdir(socketdir, S_IRWXU) == -1)
+ 		if (errno != EEXIST)
+ 			EDIE("Could not create directory '%s'", socketdir);
+-	sock_address.sun_family = AF_UNIX;
++    if (lstat(socketdir, &info) || !S_ISDIR(info.st_mode) ||
++        info.st_uid != getuid() || (info.st_mode & 077)) DIE("Unsafe bar socket directory");
+ 
+ 	/* Parse options */
+ 	char *target_socket = NULL;
+@@ -1978,6 +1970,8 @@
+ 			DIE("socket");
+ 		snprintf(sock_address.sun_path, sizeof sock_address.sun_path, "%s/dwlb-%i", socketdir, i);
+ 		if (connect(sock_fd, (struct sockaddr *)&sock_address, sizeof sock_address) == -1) {
++			close(sock_fd);
++			if ((sock_fd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) EDIE("socket");
+ 			found = true;
+ 			break;
+ 		}
