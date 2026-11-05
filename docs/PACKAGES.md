@@ -65,11 +65,24 @@ There is no blanket autoremove or forced cascading deletion.
 ## Transaction and update behavior
 
 `scripts/packages.sh` uses the signed FreeBSD 15 amd64 quarterly repository,
+with kernel-module packages selected from `kmods_quarterly_${VERSION_MINOR}`
+(`kmods_quarterly_1` on FreeBSD 15.1),
 checks each package identity/ABI/dependency edge and rejects unknown origins,
 missing receipts or unreviewed GNU versions. It copies the checked archives into
 a private locally signed transaction repository, previews the operation, then
 installs with `--no-remove`. It records the exact graph and archive hashes under
 `/var/db/nostromo/packages/`. Existing system repository files are preserved.
+The private upstream names do not depend on the system repositories being named
+`FreeBSD`, `FreeBSD-ports` or `FreeBSD-ports-kmods`. Disabled pkgbase repositories
+are not enabled by an application transaction. The kmods URL follows the
+[release repository configuration](https://github.com/freebsd/freebsd-src/blob/releng/15.1/usr.sbin/pkg/FreeBSD.conf.quarterly-release).
+
+The archive reader accounts for pkg's empty-list output: a mixed query containing
+`%n` and dependency fields can produce `D|owner|||` for a leaf package. Only a
+fully empty dependency placeholder is removed. Declared dependency counts,
+nonempty identities, origins, ABI, versions and local-build receipts still have
+to pass the unchanged audit. Query failures stop the transaction before package
+installation. See [pkg's query implementation](https://github.com/freebsd/pkg/blob/2.8.4/src/query.c).
 
 The menu's **UPDATE** refreshes the catalogue, audits the installed application
 set and its dependencies, then uses `pkg upgrade` against that private repository.

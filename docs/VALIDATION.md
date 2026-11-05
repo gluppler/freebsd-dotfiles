@@ -1,14 +1,27 @@
 # Validation and native acceptance
 
-Updated **2026-11-05**. Host checks pass for the scopes listed below. The earlier
-reported audit findings have source fixes and regression checks below. The full native FreeBSD package build/install, first
-login/reboot and hardware acceptance have **not** run. The installer performs
+Updated **2026-11-05**. The first reported native attempt stopped at
+`python312-dependencies`: the installer misread pkg's empty dependency rows.
+The error has a source fix and regression coverage below; a native rerun of that
+fix is still pending. Host checks pass for the listed scopes. The full native
+FreeBSD package build/install, first login/reboot and hardware acceptance remain
+**incomplete**. The installer performs
 additional native stage/ABI/configuration checks before enabling SDDM; that is
 not a substitute for testing the actual session. No zero-error, all-board or
 measured battery-performance claim is made.
 
 ## Audit fixes
 
+- Dependency records now handle pkg's owner-only rows for packages without
+  dependencies. Regression inputs reproduce all five reported leaf-package
+  errors; the corrected resolver accepts empty lists while still rejecting
+  missing edges, wrong origins, partial records and query failures. Kernel
+  modules use the release-specific signed kmods repository, separate from the
+  ordinary quarterly packages and pkgbase.
+- Retries bound diagnostic-only logs and preserve recovery backups. Unchanged
+  package policies are reused; failed publication restores the previous policy.
+  Failure/signal tests cover temporary downloads, unpublished policy cleanup and
+  lock release, including log allocation failure and legacy failed-run retention.
 - Sleep-button events now use the session's acknowledged lock path, with automatic
   ACPI lid/button actions disabled. The devd Suspend guard checks the existing
   Wayland sockets and cancels with `acpiconf -k 1` on failure or timeout before
@@ -35,8 +48,8 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | --- | --- |
 | `python3 tests/check.py` | 18 passed: links/assets/fonts, manifest coverage, browser arguments/schema, CWD encoding, shell syntax, user-link preflight/rollback/idempotency |
 | `python3 tests/helpers.py` | 7 passed: display-mode/scale rollback and last-output protection, SSID bytes/managed blocks, USB CAM filtering and unsafe argument rejection |
-| `python3 tests/package-policy.py` | 12 passed: graph/identity/ABI/receipt validation, exact GNU roles/versions, stock conversion/cleanup, pkgbase separation, protected removal, native upgrade dispatch, pending versions and preserved automatic/build-protection flags |
-| `python3 tests/provisioning.py` | 5 passed: selective settings/SDDM/SSH/PF merges, ambiguous input rejection, idempotency and rollback preserving later edits |
+| `python3 tests/package-policy.py` | 16 passed: reported empty-list failure and actual resolver/query handling, kmods selection/catalogue, failure/signal cleanup, graph/identity/ABI/receipt validation, exact GNU roles/versions, stock conversion/cleanup, pkgbase separation, protected removal, native upgrade dispatch, pending versions and preserved automatic/build-protection flags |
+| `python3 tests/provisioning.py` | 8 passed: selective settings/SDDM/SSH/PF merges, ambiguous input rejection, idempotency, rollback preserving later edits, bounded legacy/current logs, signal cleanup, lock release and policy reuse/recovery |
 | `python3 tests/network-menus.py` | 9 passed: actual fuzzel managers, byte-safe SSIDs, masked secrets, cancellation, scan recovery, phone/open/OWE hotspots, unprivileged portal dispatch, Bluetooth initialization/pairing, persistent WireGuard selection and status without authentication |
 | `python3 tests/bootstrap.py` | 8 passed: actual console/helper transactions with simulated native commands; missing WPA profile, hidden input, failed-auth rollback, DNS-failure retention, later rc overrides, open/OWE profiles, unsupported security rejection, unsafe paths and supported Intel Bluetooth initialization |
 | `python3 tests/eda.py` | 3 passed: ERC/DRC before fabrication, failed-check stop, literal paths, fresh output directories, unchanged sources, preserved library tables and generated native CLI reference |
@@ -65,7 +78,7 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | HTML/start page | Actual QtWebEngine local page/font render and placeholder behavior checked; not a qutebrowser process |
 | Current artwork | Runtime logos/textures use PNG; native shared painters, idle bounce, QML login and browser page checked after conversion. Animated defaults and static/off overrides pass. Simulations are archived outside the source tree; regenerated previews stay in `.build/previews/` |
 
-The twelve Python suites total **91 passing cases**. They use real local code and
+The twelve Python suites total **98 passing cases**. They use real local code and
 small disposable command stand-ins where native devices/package managers are
 unavailable. They do not execute a root installer or alter this macOS machine.
 The console bootstrap suite uses a temporary controlling terminal; password masking
@@ -90,7 +103,7 @@ The source archive was extracted into a new temporary directory without `.git`,
 copy byte for byte; archive ownership, permissions, metadata exclusions and
 SHA256 were checked. Source-manifest validation and the installer preview passed.
 The nine suites that need no prebuilt cache passed from that extraction:
-**72 cases**, including the export and terminal-idle regressions. They require
+**79 cases**, including the export and terminal-idle regressions. They require
 host Python, Lua and a C compiler. The embedded suite retains
 its separate compiler-rt/cache requirements.
 

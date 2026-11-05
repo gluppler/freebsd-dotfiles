@@ -59,6 +59,133 @@ class Policy(unittest.TestCase):
         for graph in ("", "P|new|1|editors/new|FreeBSD:15:amd64|0\n", "surprise\n"):
             self.assertNotEqual(self.check_graph(policy, graph).returncode, 0)
 
+    def test_archive_queries_handle_empty_dependency_lists_without_hiding_errors(self):
+        source = (ROOT / 'scripts/packages.sh').read_text()
+        identity = 'identity() {' + source.split('identity() {', 1)[1].split('\nif [ "$action" = finish-bootstrap', 1)[0]
+        upstream = 'upstream_for() {' + source.split('upstream_for() {',1)[1].split('\nrecipe=',1)[0]
+        resolve = source.split('cp "$temp/request" "$temp/queue"', 1)[1].split('# Protect shared-library', 1)[0]
+        names = ['libedit', 'pkgconf', 'indexinfo', 'mpdecimal', 'expat']
+        origins = ['devel/libedit', 'devel/pkgconf', 'print/indexinfo', 'math/mpdecimal', 'textproc/expat2']
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path/'scripts').mkdir()
+            (path/'scripts/package-policy.awk').write_bytes((ROOT/'scripts/package-policy.awk').read_bytes())
+            (path/'packages.allowed').write_text('build-tool|devel/build-tool|*|stock\ndrm-612-kmod|graphics/drm-612-kmod|*|stock\n' + ''.join(
+                f'{name}|{origin}|*|stock\n' for name, origin in zip(names, origins)))
+            records = {'build-tool': {'origin': 'devel/build-tool', 'deps': names},
+                       'drm-612-kmod': {'origin': 'graphics/drm-612-kmod', 'deps': []}}
+            records.update({name: {'origin': origin, 'deps': []} for name, origin in zip(names, origins)})
+            (path/'packages.json').write_text(json.dumps(records))
+            stub = path/'pkg'
+            stub.write_text(f'#!{sys.executable}\n' + '''
+import json, os, sys
+from pathlib import Path
+root = Path(os.environ['TEST_ROOT']); args = sys.argv[1:]
+packages = json.loads((root/'packages.json').read_text())
+fault = os.environ['TEST_FAULT']
+if args[0] in ('fetch','rquery'):
+    expected = 'NostromoKmods' if args[-1].startswith('drm-612-kmod') else 'NostromoUpstream'
+    assert args[args.index('-r')+1] == expected, args
+if args[0] == 'fetch':
+    dest = Path(args[args.index('-o')+1]); dest.mkdir(exist_ok=True)
+    (dest/(args[-1]+'.pkg')).write_text(args[-1][:-2]); sys.exit(0)
+if args[0] == 'rquery': name=args[-1]; fmt=args[-2]
+elif args[:2] == ['query','-F']: name=Path(args[2]).read_text(); fmt=args[3]
+else: raise SystemExit('unexpected pkg call: '+repr(args))
+row=packages[name]; deps=row['deps']
+if fault=='query' and fmt.startswith('D|'): sys.exit(42)
+if fault=='annotation-query' and fmt.startswith('A|'): sys.exit(43)
+if fmt.startswith('P|'):
+    count=0 if args[0]=='rquery' else len(deps)
+    if fault=='missing-edge' and name=='libedit' and args[0]=='query': count=1
+    print(f'P|{name}|1|{row["origin"]}|FreeBSD:15:amd64|{count}')
+elif fmt=='%n|%v': print(name+'|1')
+elif fmt=='%dn':
+    for dep in deps: print(dep)
+elif fmt.startswith('D|'):
+    for dep in deps:
+        origin=packages[dep]['origin']
+        if fault=='wrong-origin' and dep=='libedit': origin='other/libedit'
+        print(f'D|{name}|{dep}|1|{origin}')
+    # pkg 2.8.4 print_query keeps %n when the multiline list is empty.
+    if not deps:
+        if fault=='partial' and name=='libedit': print('D|libedit||1|')
+        elif fault=='old-pkg': pass
+        else: print(f'D|{name}|||')
+elif fmt.startswith('A|'): print(f'A|{name}||')
+else: raise SystemExit('unexpected query format: '+fmt)
+''')
+            stub.chmod(0o755)
+            script = '''set -eu
+temp=$TEST_ROOT; policy=$TEST_ROOT; build=1; recipe=abc123
+pkgtool() { "$TEST_ROOT/pkg" "$@"; }
+remote() { pkgtool "$@"; }
+validate() { case $1 in '' | [!A-Za-z0-9]* | *[!A-Za-z0-9_+.-]*) exit 2 ;; esac; }
+''' + upstream + '\n' + identity + '\ncp "$temp/request" "$temp/queue"\n' + resolve
+            for fault, status in [('',0), ('old-pkg',0), ('missing-edge',1),
+                                  ('partial',1), ('wrong-origin',1), ('query',42), ('annotation-query',43)]:
+                with self.subTest(fault=fault):
+                    (path/'repo').mkdir(exist_ok=True)
+                    (path/'request').write_text('build-tool\ndrm-612-kmod\n')
+                    result = subprocess.run(['sh','-c',script], capture_output=True, text=True,
+                        env={**os.environ, 'TEST_ROOT':directory, 'TEST_FAULT':fault})
+                    self.assertEqual(result.returncode, status, result.stderr)
+                    if status==0:
+                        self.assertEqual(set((path/'seen').read_text().splitlines()), {'build-tool','drm-612-kmod',*names})
+                        self.assertNotIn('|||', (path/'records').read_text())
+
+    def test_raw_empty_dependency_rows_reproduce_the_reported_failure(self):
+        names = ['libedit', 'pkgconf', 'indexinfo', 'mpdecimal', 'expat']
+        policy = ''.join(f'{name}|devel/{name}|*|stock\n' for name in names)
+        graph = ''.join(f'P|{name}|1|devel/{name}|FreeBSD:15:amd64|0\nD|{name}|||\n' for name in names)
+        result = self.check_graph(policy, graph)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr.count('Unreviewed package:   ()'), 5)
+        for name in names:
+            self.assertIn('Incomplete dependency list: '+name, result.stderr)
+            self.assertIn('Unresolved dependency: '+name+' -> ', result.stderr)
+
+    def test_failed_package_operations_remove_private_downloads_and_release_lock(self):
+        source = (ROOT/'scripts/packages.sh').read_text()
+        lifecycle = 'lock=/var/run/nostromo-packages.lock\n' + source.split(
+            'lock=/var/run/nostromo-packages.lock\n',1)[1].split('recipe=$(cat',1)[0]
+        for body, status in [('exit 1',1), ('kill -TERM $$',143)]:
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory)
+                (path/'run').mkdir()
+                (path/'tmp').mkdir()
+                script = ('set -eu\numask 077\n' + lifecycle +
+                          'printf partial > "$temp/repo/download.pkg"\n'+body+'\n')
+                script = script.replace('/var/run/',str(path/'run')+'/').replace('/var/tmp/',str(path/'tmp')+'/')
+                result = subprocess.run(['sh','-c',script], capture_output=True, text=True)
+                self.assertEqual(result.returncode, status, result.stderr)
+                self.assertFalse(list((path/'tmp').iterdir()))
+                self.assertFalse(list((path/'run').iterdir()))
+
+    def test_catalog_uses_release_modules_and_ordinary_application_versions(self):
+        source = (ROOT/'scripts/packages.sh').read_text()
+        branch = source.split('if [ "$action" = catalog ]; then\n',1)[1].split('\nif [ "$action" = details ]; then',1)[0]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path/'packages.allowed').write_text('app|misc/app|*|stock\ndrm-612-kmod|graphics/drm-612-kmod|*|stock\n')
+            script = '''set -eu
+policy=$TEST_ROOT; temp=$TEST_ROOT
+remote() {
+    case $4 in
+    NostromoUpstream) printf '%s\\n' 'app|2|Manual for drm-kmod drivers' 'drm-612-kmod|old-kernel|Module' ;;
+    NostromoKmods) printf '%s\\n' 'drm-612-kmod|release-kernel|Module' 'app|wrong-repo|Ignore this duplicate' ;;
+    *) return 90 ;;
+    esac
+}
+if true; then
+''' + branch
+            result = subprocess.run(['sh','-c',script], capture_output=True, text=True,
+                                    env={**os.environ,'TEST_ROOT':directory})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.splitlines(), [
+                'app\t2\tstock\tManual for drm-kmod drivers',
+                'drm-612-kmod\trelease-kernel\tstock\tModule'])
+
     def test_repository_policy_has_no_unclassified_gnu(self):
         graph = "P|pkg|2|ports-mgmt/pkg|FreeBSD:15:amd64|0\n"
         result = self.check_graph((ROOT / "packages.allowed").read_text(), graph)

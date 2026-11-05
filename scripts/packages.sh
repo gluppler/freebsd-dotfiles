@@ -83,6 +83,12 @@ mkdir "$temp/remote" "$temp/db" "$temp/repo" "$temp/local"
 pkgtool() { env -i PATH="$PATH" HOME=/root LC_ALL=C /usr/local/sbin/pkg -C /dev/null "$@"; }
 remote() { pkgtool -R "$temp/remote" -o "PKG_DBDIR=$temp/db" "$@"; }
 localpkg() { pkgtool -R "$temp/local" "$@"; }
+upstream_for() {
+    case $1 in
+    *-kmod | *-kmod-*) printf 'NostromoKmods\n' ;;
+    *) printf 'NostromoUpstream\n' ;;
+    esac
+}
 recipe=$(cat "$policy/recipe.sha256")
 case $recipe in '' | *[!0-9a-f]*) exit 1 ;; esac
 [ "${#recipe}" = 64 ] || exit 1
@@ -92,8 +98,12 @@ known_recipe() {
 }
 identity() {
     pkgtool query -F "$1" 'P|%n|%v|%o|%q|%#d'
-    pkgtool query -F "$1" 'D|%n|%dn|%dv|%do'
-    pkgtool query -F "$1" 'A|%n|%At|%Av' | awk -F '|' '$3=="nostromo_recipe"'
+    pkgtool query -F "$1" 'D|%n|%dn|%dv|%do' >"$temp/dependencies"
+    # pkg prints D|owner||| for an empty list when %n is in the format.
+    # Keep partial records: the audit must still reject missing or malformed edges.
+    awk -F '|' '!(NF==5 && $1=="D" && $3=="" && $4=="" && $5=="")' "$temp/dependencies"
+    pkgtool query -F "$1" 'A|%n|%At|%Av' >"$temp/annotations"
+    awk -F '|' '$3=="nostromo_recipe"' "$temp/annotations"
 }
 if [ "$action" = finish-bootstrap ]; then
     # Stock Git's initial curl chain can leave automatic GNU dependencies after
@@ -139,7 +149,8 @@ if [ "$action" = import ]; then
 fi
 if [ "$action" = remove ] || [ "$action" = remove-check ]; then
     pkgtool query -a 'P|%n|%o|%k|%V|%#r' >"$temp/installed"
-    pkgtool query -a 'D|%n|%dn' >>"$temp/installed"
+    pkgtool query -a 'D|%n|%dn' >"$temp/dependencies"
+    awk -F '|' '!(NF==3 && $1=="D" && $3=="")' "$temp/dependencies" >>"$temp/installed"
     {
         awk '!/^#/ && NF {print $1}' "$policy/packages.txt"
         awk -F '|' '!/^#/ && NF {print $1}' "$policy/packages.local"
@@ -184,18 +195,27 @@ NostromoUpstream: {
     mirror_type: "srv", signature_type: "fingerprints",
     fingerprints: "/usr/share/keys/pkg", enabled: yes
 }
+NostromoKmods: {
+    url: "pkg+https://pkg.FreeBSD.org/FreeBSD:15:amd64/kmods_quarterly_${VERSION_MINOR}",
+    mirror_type: "srv", signature_type: "fingerprints",
+    fingerprints: "/usr/share/keys/pkg", enabled: yes
+}
 EOF
 remote update -f
 if [ "$action" = catalog ]; then
     remote rquery -U -r NostromoUpstream -a '%n|%v|%c' >"$temp/catalog"
+    remote rquery -U -r NostromoKmods -a '%n|%v|%c' >"$temp/kmods-catalog"
     awk -F '|' 'NR==FNR {if($0!~/^#/) approved[$1]=$4;next}
+        $1 ~ /-kmod($|-)/ && FILENAME!=ARGV[3] {next}
+        $1 !~ /-kmod($|-)/ && FILENAME!=ARGV[2] {next}
         {print $1 "\t" $2 "\t" ($1 in approved ? approved[$1] : "unreviewed") "\t" $3}' \
-        "$policy/packages.allowed" "$temp/catalog" | tr -d '\000-\010\013-\037\177'
+        "$policy/packages.allowed" "$temp/catalog" "$temp/kmods-catalog" | tr -d '\000-\010\013-\037\177'
     exit
 fi
 if [ "$action" = details ]; then
-    remote rquery -U -r NostromoUpstream '%n-%v\n%o\n%w\n%e' "$1"
-    remote rquery -U -r NostromoUpstream 'dependency: %dn-%dv' "$1"
+    upstream=$(upstream_for "$1")
+    remote rquery -U -r "$upstream" '%n-%v\n%o\n%w\n%e' "$1"
+    remote rquery -U -r "$upstream" 'dependency: %dn-%dv' "$1"
     exit
 fi
 cp "$temp/request" "$temp/queue"
@@ -223,11 +243,12 @@ while name=$(sed -n "${index}p" "$temp/queue") && [ -n "$name" ]; do
             echo "Build-only dependency requires a reviewed build transaction: $name" >&2
             exit 1
         }
-        remote rquery -U -r NostromoUpstream 'P|%n|%v|%o|%q|0' "$name" >"$temp/candidate"
+        upstream=$(upstream_for "$name")
+        remote rquery -U -r "$upstream" 'P|%n|%v|%o|%q|0' "$name" >"$temp/candidate"
         # Check origin/version/ABI before any download; full dependency graph below.
         awk -v build="$build" -f "$policy/scripts/package-policy.awk" "$policy/packages.allowed" "$temp/candidate"
         version=$(awk -F '|' '{print $3}' "$temp/candidate")
-        remote fetch -U -r NostromoUpstream -y -o "$temp/fetch" "$name-$version"
+        remote fetch -U -r "$upstream" -y -o "$temp/fetch" "$name-$version"
         # Fetch output paths are not an API: inspect the exact identity of regular archives.
         find "$temp/fetch" -type f -name '*.pkg' >"$temp/archives"
         found=0

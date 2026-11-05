@@ -84,8 +84,26 @@ See [VALIDATION](VALIDATION.md) before treating the candidate as laptop-tested.
 ## Logs, reruns and recovery
 
 Root stage logs are under `/var/log/nostromo/install-*`; native user build logs
-are under `.build/logs/`. Read the failing stage's log before rerunning the same
-command. Generated ports trees have an mtree receipt: preserve a modified/stale
+are under `.build/logs/`. Each finished run records `result`, `last-stage` and
+`exit-status`; `pkg-version` identifies the package manager used. Read the
+failing stage's log before rerunning the same command.
+
+On exit, the installer keeps the current run and two older diagnostic-only runs.
+It also recognizes older failed runs through their nonzero `*.status` files.
+Runs containing `system-backup/` or `policy-backup/` are always retained, along
+with unfamiliar, unsafe or unfinished directories. Cleanup runs under the
+installer lock and does not follow directory symlinks. An unchanged package
+policy is reused; a changed policy's previous version goes in that run's
+`policy-backup/`. Older `policy.previous.*` directories are left for manual review.
+Interrupted publication restores the old policy if the active path is missing.
+
+Temporary package downloads/private repositories and unpublished policy directories
+are removed on ordinary failures and handled signals. Successfully installed
+packages, manually installed Python, source caches and build work remain available
+for a retry. Removing them automatically could damage working software or discard
+hours of compilation. SIGKILL or power loss cannot run shell cleanup handlers.
+
+Generated ports trees have an mtree receipt: preserve a modified/stale
 `.build/ports` tree before rebuilding it, rather than resetting user edits.
 Do not remove an installation/package lock until confirming its process ended.
 
@@ -107,6 +125,38 @@ changes and keep the loader's boot-environment/recovery options available.
 Optional fingerprint/FIDO enrollment, WireGuard keys/peers, SSH authorized keys,
 Bluetooth PINs, printer/scanner models and board memory maps are local inputs.
 The installer creates none of these credentials and never invents device support.
+
+### Recover from the empty-dependency audit error
+
+An earlier installer stopped at `python312-dependencies` with empty
+`Unreviewed package: ... ()` messages and incomplete/unresolved dependencies for
+`libedit`, `pkgconf`, `indexinfo`, `mpdecimal` and `expat`. This was an installer
+parser error: pkg can print an owner-only row for a package with no dependencies.
+The corrected reader removes only those empty-list placeholders, then checks
+every actual dependency against the package's declared count and reviewed identity.
+Manually installing Python does not fix the reader; removing Python is unnecessary.
+
+Push the corrected checkout, then update the laptop copy **as gluppler**:
+
+```sh
+cd /home/gluppler/freebsd-dotfiles
+git pull --ff-only
+```
+
+From the laptop's root console:
+
+```sh
+sh /home/gluppler/freebsd-dotfiles/install.sh --check gluppler
+sh /home/gluppler/freebsd-dotfiles/install.sh --apply gluppler
+```
+
+Adjust the path if the checkout is elsewhere. Skip the optional Wi-Fi setup when
+the current connection works. This fix does not change the pinned ports recipe,
+so a matching `.build/ports` tree can be reused. The retry installs the corrected
+package helper before resolving dependencies. Existing `FreeBSD-ports`,
+`FreeBSD-ports-kmods` and disabled `FreeBSD-base` definitions need no edits for
+this error; the helper uses private signed upstream definitions without replacing
+those system files.
 
 ## Source exports
 

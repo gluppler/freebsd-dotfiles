@@ -5,6 +5,13 @@ in `openbsd-dotfiles/PLANS.md` and the older archived FreeBSD/X11 project.
 Earlier user requirements continue unless explicitly superseded below.
 All user-facing configuration, documentation and menus remain in English.
 
+The first native attempt reached `python312-dependencies` and exposed an empty-list
+parsing error in the package helper. That error is reproduced and fixed in source.
+Retries now retain bounded diagnostic logs, preserve recovery data and reuse an
+unchanged package policy. Kernel modules use FreeBSD's release-specific quarterly
+repository. The next native run must confirm these fixes before installation,
+login and reboot can be marked complete; see [recovery instructions](docs/INSTALL.md#recover-from-the-empty-dependency-audit-error).
+
 **Latest scope clarification:** migrate every implemented workflow **and every
 unfinished future plan** from the OpenBSD tree. The [coverage ledger](docs/MIGRATION-COVERAGE.md)
 maps that complete scope to the new platform and keeps missing implementation

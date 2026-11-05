@@ -143,12 +143,58 @@ mkdir "$lock" || {
     echo 'Another install or an interrupted install lock exists.' >&2
     exit 1
 }
-log=$(mktemp -d /var/log/nostromo/install-XXXXXXXX)
+log=
+policy=
 stage=preflight
+prune_logs() {
+    # Retain this run and two older diagnostic-only runs. Recovery data stays.
+    for previous in /var/log/nostromo/install-????????; do
+        [ -d "$previous" ] && [ ! -L "$previous" ] && [ "$previous" != "$log" ] || continue
+        case ${previous##*/install-} in *[!A-Za-z0-9]*) continue ;; esac
+        [ "$(stat -f '%u %Lp' "$previous")" = '0 700' ] || continue
+        [ ! -e "$previous/system-backup" ] && [ ! -L "$previous/system-backup" ] || continue
+        [ ! -e "$previous/policy-backup" ] && [ ! -L "$previous/policy-backup" ] || continue
+        [ -f "$previous/release-before" ] && [ -f "$previous/account-before" ] || continue
+        ended=no
+        if [ -f "$previous/result" ] && [ ! -L "$previous/result" ]; then
+            case $(cat "$previous/result") in completed | failed) ended=yes ;; esac
+        else
+            # Older installers have no result marker, but record stage failures.
+            for status in "$previous"/*.status; do
+                [ -f "$status" ] && [ ! -L "$status" ] || continue
+                case $(cat "$status") in '' | *[!0-9]* | 0) ;; *) ended=yes ;; esac
+            done
+        fi
+        [ "$ended" = yes ] || continue
+        modified=$(stat -f '%m' "$previous") || return 1
+        printf '%s %s\n' "$modified" "$previous" || return 1
+    done >"$log/retention" || return 1
+    sort -rn "$log/retention" >"$log/retention.sorted" || return 1
+    kept=0
+    while read -r _modified previous; do
+        kept=$((kept + 1))
+        [ "$kept" -le 2 ] || rm -rf "$previous" || return 1
+    done <"$log/retention.sorted"
+    rm -f "$log/retention" "$log/retention.sorted"
+}
 finish() {
     result=$?
     trap - 0
-    if [ "$result" != 0 ]; then
+    set +e
+    if [ -n "$log" ] && [ -d "$log/policy-backup" ] &&
+        [ ! -e /usr/local/share/nostromo/policy ] && [ ! -L /usr/local/share/nostromo/policy ]; then
+        mv "$log/policy-backup" /usr/local/share/nostromo/policy ||
+            echo "Restore the package policy from $log/policy-backup before retrying." >&2
+    fi
+    [ -z "$policy" ] || rm -rf "$policy"
+    if [ -n "$log" ]; then
+        printf '%s\n' "$stage" >"$log/last-stage"
+        printf '%s\n' "$result" >"$log/exit-status"
+        if [ "$result" = 0 ]; then outcome=completed; else outcome=failed; fi
+        printf '%s\n' "$outcome" >"$log/result"
+        prune_logs || echo "Log cleanup was incomplete; review $log." >&2
+    fi
+    if [ "$result" != 0 ] && [ -n "$log" ]; then
         printf 'Setup stopped at %s (exit %s). Logs: %s\n' "$stage" "$result" "$log" >&2
         echo 'No reboot was requested. Resolve the reported stage and rerun the same command.' >&2
     fi
@@ -158,6 +204,7 @@ finish() {
 trap finish 0
 trap 'exit 130' INT
 trap 'exit 143' HUP TERM
+log=$(mktemp -d /var/log/nostromo/install-XXXXXXXX)
 run() {
     stage=$1
     shift
@@ -177,6 +224,7 @@ stage=wifi-setup
 sh "$repo/scripts/setup-wifi.sh" --offer
 # Base pkg bootstrap verifies FreeBSD's repository signature. No doas/sudo bootstrap.
 run pkg-bootstrap env -i HOME=/root PATH="$PATH" /usr/sbin/pkg bootstrap -y
+pkg -v >"$log/pkg-version"
 stage=package-policy
 install -d -m 755 /usr/local/share/nostromo /usr/local/libexec
 policy=$(mktemp -d /usr/local/share/nostromo/.policy.XXXXXXXX)
@@ -192,19 +240,43 @@ chmod 644 "$policy/recipe.sha256" "$policy/managed"
 if [ -e /usr/local/share/nostromo/policy ]; then
     [ ! -L /usr/local/share/nostromo/policy ] &&
         [ "$(cat /usr/local/share/nostromo/policy/managed)" = 'Nostromo managed package policy' ] || exit 1
-    install -m 644 /usr/local/share/nostromo/policy/recipe.sha256 "$policy/previous-recipe.sha256"
-    {
-        for history in recipe.sha256 previous-recipe.sha256 accepted-recipes; do
-            [ ! -f "/usr/local/share/nostromo/policy/$history" ] || cat "/usr/local/share/nostromo/policy/$history"
+    unsafe_policy=$(find /usr/local/share/nostromo/policy \( ! -user root -o -type l -o -perm -0020 -o -perm -0002 \) -print -quit)
+    [ -z "$unsafe_policy" ] || {
+        echo 'Unsafe installed package policy ownership, permissions or symlinks; review it before retrying.' >&2
+        exit 1
+    }
+    if cmp -s "$policy/recipe.sha256" /usr/local/share/nostromo/policy/recipe.sha256; then
+        for history in previous-recipe.sha256 accepted-recipes; do
+            [ ! -f "/usr/local/share/nostromo/policy/$history" ] ||
+                install -m 644 "/usr/local/share/nostromo/policy/$history" "$policy/$history"
         done
-    } | sort -u >"$policy/accepted-recipes"
-    chmod 644 "$policy/accepted-recipes"
+    else
+        install -m 644 /usr/local/share/nostromo/policy/recipe.sha256 "$policy/previous-recipe.sha256"
+        {
+            for history in recipe.sha256 previous-recipe.sha256 accepted-recipes; do
+                [ ! -f "/usr/local/share/nostromo/policy/$history" ] || cat "/usr/local/share/nostromo/policy/$history"
+            done
+        } | sort -u >"$policy/accepted-recipes"
+        chmod 644 "$policy/accepted-recipes"
+    fi
     if [ -f /usr/local/share/nostromo/policy/local-libraries ]; then
         install -m 644 /usr/local/share/nostromo/policy/local-libraries "$policy/local-libraries"
     fi
-    mv /usr/local/share/nostromo/policy "/usr/local/share/nostromo/policy.previous.$(date +%Y%m%d-%H%M%S)-$$"
+    comparison=0
+    diff -r /usr/local/share/nostromo/policy "$policy" >/dev/null || comparison=$?
+    case $comparison in
+    0) rm -rf "$policy" ;;
+    1) mv /usr/local/share/nostromo/policy "$log/policy-backup" ;;
+    *) exit "$comparison" ;;
+    esac
 fi
-mv "$policy" /usr/local/share/nostromo/policy
+if [ -d "$policy" ]; then
+    mv "$policy" /usr/local/share/nostromo/policy || {
+        [ ! -d "$log/policy-backup" ] || mv "$log/policy-backup" /usr/local/share/nostromo/policy
+        exit 1
+    }
+fi
+policy=
 install -m 755 "$repo/scripts/packages.sh" /usr/local/libexec/nostromo-packages
 packages=/usr/local/libexec/nostromo-packages
 run prepare-ports as_user 'sh scripts/ports-variants.sh prepare'
