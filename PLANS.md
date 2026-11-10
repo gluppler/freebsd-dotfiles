@@ -29,13 +29,17 @@ variants out of install, preview and update requests. Commit `d8f1ac5` passed
 that stage, built five more variants and stopped at `ffmpeg-dependencies` on the
 unreviewed frei0r, a build dependency only the ports framework lists. It and
 the wheel tools py312-ecdsa needs are now reviewed, and the 15 dependency lists
-recorded on the T14 are checked on the host. The next native run must
+recorded on the T14 are checked on the host. `--check` on commit `26cb970` then
+stopped on the group-writable directories CUPS stages; the mode check now skips
+staged port trees. Reruns also clean up stale locks, workspaces and logs, and a
+final check precedes a reboot prompt. The next native run must
 confirm these fixes before installation, login and reboot can be marked
 complete; see the
 [dependency](docs/INSTALL.md#recover-from-a-stop-at-python312-dependencies),
 [build](docs/INSTALL.md#recover-from-a-stop-at-python312-build),
-[locked-variant](docs/INSTALL.md#recover-from-a-stop-at-libxslt-dependencies) and
-[unreviewed-dependency](docs/INSTALL.md#recover-from-a-stop-at-ffmpeg-dependencies)
+[locked-variant](docs/INSTALL.md#recover-from-a-stop-at-libxslt-dependencies),
+[unreviewed-dependency](docs/INSTALL.md#recover-from-a-stop-at-ffmpeg-dependencies) and
+[checkout-permission](docs/INSTALL.md#recover-from-a-groupworld-writable-checkout-stop)
 recovery instructions.
 
 **Latest scope clarification:** migrate every implemented workflow **and every

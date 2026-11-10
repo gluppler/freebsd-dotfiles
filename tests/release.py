@@ -3,6 +3,7 @@
 import hashlib
 import os
 from pathlib import Path
+import pwd
 import shutil
 import subprocess
 import tarfile
@@ -169,6 +170,38 @@ class Release(unittest.TestCase):
                 self.assertEqual(result.returncode, expected, result.stderr)
                 if mode == "check":
                     self.assertIn("No installation performed", result.stdout)
+
+    def test_preflight_mode_check_exempts_only_staged_ports(self):
+        script = (ROOT / "install.sh").read_text()
+        start = script.index("as_user '{ [") + len("as_user '")
+        command = script[start:script.index("'\numask 077\n", start)]
+        checkout = self.repo.parent.resolve() / "modes"
+        (checkout / "scripts").mkdir(parents=True)
+        tool = checkout / "scripts/tool.sh"
+        tool.write_text("#!/bin/sh\n")
+        port = checkout / ".build/ports-work" / str(checkout).lstrip("/") / ".build/ports/print/cups"
+        # CUPS stages these package modes; a flavored port stages under work-<flavor>.
+        for relative, mode in (("work/stage/var/spool/cups/tmp", 0o1770), ("work/stage/var/cache/cups", 0o770),
+                               ("work/stage/var/cache/cups/rss", 0o775), ("work-py312/stage/var/tmp", 0o1777)):
+            (port / relative).mkdir(parents=True)
+            (port / relative).chmod(mode)
+        env = {"PATH": os.environ["PATH"], "HOME": str(checkout), "USER": pwd.getpwuid(os.getuid()).pw_name,
+               "NOSTROMO_REPO": str(checkout), "NOSTROMO_UID": str(os.getuid())}
+        def check():
+            return subprocess.run(["sh", "-c", 'set -eu; umask 022; cd "$NOSTROMO_REPO"; ' + command],
+                                  env=env, text=True, capture_output=True)
+        result = check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        build = port / "work/cups-2.4.20"
+        build.mkdir()
+        for path, mode in ((tool, 0o664), (build, 0o775)):
+            with self.subTest(path=path):
+                path.chmod(mode)
+                result = check()
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("./" + str(path.relative_to(checkout)) + "\n", result.stderr)
+                self.assertIn("group/world-writable paths above", result.stderr)
+                path.chmod(mode & 0o755)
 
 
 if __name__ == "__main__":

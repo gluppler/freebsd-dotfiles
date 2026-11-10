@@ -30,6 +30,7 @@ if [ "$mode" = preview ]; then
     cat <<EOF
 FreeBSD 15.1-RELEASE amd64 / Wayland setup for $account:
   1. Check release, running kernel, account, permanent checkout and source files.
+     Remove stale locks, workspaces and old logs; keep recovery backups.
      Offer console Wi-Fi setup with a hidden password prompt before downloads.
   2. Bootstrap signed pkg; publish the reviewed package policy and preserve its prior version.
   3. Build the pinned native library variants as $account; audit every dependency before installation.
@@ -38,7 +39,8 @@ FreeBSD 15.1-RELEASE amd64 / Wayland setup for $account:
   6. Check every staged binary/configuration, then transactionally install user links.
   7. Back up and merge the listed system settings; configure mdo and the native login session.
   8. Verify the final configuration before enabling SDDM at boot. Keep console login/recovery.
-No partitioning, OS installation, server provisioning or automatic reboot.
+  9. Check the installed system again and clean up, then ask before rebooting into the desktop.
+No partitioning, OS installation or server provisioning.
 See docs/BASE-SETUP.md for the separate manual installation and docs/VALIDATION.md for readiness.
 Preview only. On the laptop, run --check first, then --apply from its root console.
 EOF
@@ -100,7 +102,7 @@ case $repo in *[[:space:]]* | *'|'*)
     ;;
 esac
 for script in scripts/configure-system.sh scripts/verify-stage.sh scripts/editor-plugins.sh \
-    scripts/development-tools.sh scripts/build-desktop.sh scripts/link-home.sh; do
+    scripts/development-tools.sh scripts/build-desktop.sh scripts/link-home.sh scripts/clean-build.sh; do
     [ -f "$repo/$script" ] || {
         echo "Incomplete checkout: $script. No system changes made." >&2
         exit 1
@@ -114,11 +116,18 @@ as_user() {
         NOSTROMO_COMMAND='set -eu; umask 022; cd "$NOSTROMO_REPO"; '"$1" \
         /usr/bin/su -f "$account" -c 'exec /bin/sh -c "$NOSTROMO_COMMAND"'
 }
-as_user '[ "$(id -u)" = "$NOSTROMO_UID" ] && [ -w "$HOME" ] && [ -w "$NOSTROMO_REPO" ];
-    [ -z "$(find "$NOSTROMO_REPO" ! -user "$USER" -print -quit)" ] || {
-        echo "The checkout must belong to the desktop account. Check its ownership before installing." >&2; exit 1; }
-    [ -z "$(find "$NOSTROMO_REPO" \( -perm -0020 -o -perm -0002 \) -print -quit)" ] || {
-        echo "The checkout has group/world-writable files. Review their permissions before installing." >&2; exit 1; }'
+# A staged port keeps its package's modes: CUPS stages group-writable spool directories.
+as_user '{ [ "$(id -u)" = "$NOSTROMO_UID" ] && [ -w "$HOME" ] && [ -w "$NOSTROMO_REPO" ]; } || {
+        echo "The desktop account must be able to write its home and the checkout." >&2; exit 1; }
+    foreign=$(find . ! -user "$USER")
+    [ -z "$foreign" ] || {
+        printf "%s\n" "$foreign" | head -n 20 >&2
+        echo "The checkout must belong to the desktop account. Check the ownership of the paths above before installing." >&2; exit 1; }
+    writable=$(find . \( -path "./.build/ports-work/*/work/stage" -o -path "./.build/ports-work/*/work-*/stage" \) -prune -o \
+        \( -perm -0020 -o -perm -0002 \) -print)
+    [ -z "$writable" ] || {
+        printf "%s\n" "$writable" | head -n 20 >&2
+        echo "The checkout has the group/world-writable paths above. Review their permissions before installing." >&2; exit 1; }'
 umask 077
 for path in /var/log/nostromo /usr/local/share/nostromo; do
     parent=$path
@@ -139,53 +148,105 @@ if [ "$mode" = check ]; then
 fi
 mkdir -p /var/log/nostromo
 lock=/var/run/nostromo-install.lock
-mkdir "$lock" || {
-    echo 'Another install or an interrupted install lock exists.' >&2
-    exit 1
+boot=$(sysctl -n kern.boottime | sed -n 's/^{ sec = \([0-9][0-9]*\),.*/\1/p')
+# Boot cleanup keeps directories in /var/run, and SIGKILL or power loss skips the
+# exit trap. A lock from an earlier boot is stale unless its recorded owner runs.
+stale_lock() {
+    [ -d "$1" ] && [ ! -L "$1" ] && [ -n "$boot" ] || return 1
+    birth=$(stat -f %B "$1") && [ "$birth" -lt "$boot" ] || return 1
+    owner=$(cat "$1/pid" 2>/dev/null) || return 0
+    case $owner in '' | *[!0-9]*) return 0 ;; esac
+    ! kill -0 "$owner" 2>/dev/null
 }
+if ! mkdir "$lock" 2>/dev/null; then
+    if ! { stale_lock "$lock" && rm -f "$lock/pid" && rmdir "$lock" && mkdir "$lock"; }; then
+        printf 'Another install holds %s. If none is running, reboot or remove that directory.\n' "$lock" >&2
+        exit 1
+    fi
+    echo 'Removed the lock of an install interrupted before the last boot.'
+fi
+printf '%s\n' "$$" >"$lock/pid"
 log=
 policy=
 stage=preflight
+archive() {
+    recovery=/var/log/nostromo/recovery
+    [ ! -L "$recovery" ] || return 1
+    mkdir -p "$recovery" || return 1
+    [ "$(stat -f '%u %Lp' "$recovery")" = '0 700' ] || return 1
+    destination=$recovery/${1##*/}
+    [ ! -e "$destination" ] && [ ! -L "$destination" ] || return 1
+    mv "$1" "$destination" || return 1
+    printf 'Archived recovery data: %s\n' "$destination"
+}
+recoverable() {
+    if [ -e "$1/policy-backup" ] || [ -L "$1/policy-backup" ]; then return 0; fi
+    [ -e "$1/system-backup" ] || [ -L "$1/system-backup" ] || return 1
+    [ -d "$1/system-backup" ] && [ ! -L "$1/system-backup" ] || return 0
+    # A run that changed no system file leaves only an empty journal.
+    found=$(find "$1/system-backup" -mindepth 1 ! \( -type f -empty \( -name journal -o -name reverse \) \) -print) ||
+        return 0
+    [ -n "$found" ]
+}
 prune_logs() {
-    # Keep only this diagnostic run. Move recovery-bearing runs out of the log
-    # directory instead of deleting their journals and original system files.
+    # The lock is held, so every other run has ended, including one that power
+    # loss left without a result. Keep only this diagnostic run. Move runs with
+    # recovery data out of the log directory instead of deleting them.
     for previous in /var/log/nostromo/install-????????; do
         [ -d "$previous" ] && [ ! -L "$previous" ] && [ "$previous" != "$log" ] || continue
         case ${previous##*/install-} in *[!A-Za-z0-9]*) continue ;; esac
         if [ "$(stat -f '%u %Lp' "$previous")" != '0 700' ] ||
             [ ! -f "$previous/release-before" ] || [ ! -f "$previous/account-before" ]; then
             printf 'Retained unrecognized or unsafe log directory: %s\n' "$previous"
-            continue
-        fi
-        ended=no
-        if [ -f "$previous/result" ] && [ ! -L "$previous/result" ]; then
-            case $(cat "$previous/result") in completed | failed) ended=yes ;; esac
-        else
-            # Older installers have no result marker, but record stage failures.
-            for status in "$previous"/*.status; do
-                [ -f "$status" ] && [ ! -L "$status" ] || continue
-                case $(cat "$status") in '' | *[!0-9]* | 0) ;; *) ended=yes ;; esac
-            done
-        fi
-        if [ "$ended" != yes ]; then
-            printf 'Retained unfinished log directory: %s\n' "$previous"
-            continue
-        fi
-        if [ -e "$previous/system-backup" ] || [ -L "$previous/system-backup" ] ||
-            [ -e "$previous/policy-backup" ] || [ -L "$previous/policy-backup" ]; then
-            recovery=/var/log/nostromo/recovery
-            [ ! -L "$recovery" ] || return 1
-            mkdir -p "$recovery" || return 1
-            [ "$(stat -f '%u %Lp' "$recovery")" = '0 700' ] || return 1
-            destination=$recovery/${previous##*/}
-            [ ! -e "$destination" ] && [ ! -L "$destination" ] || return 1
-            mv "$previous" "$destination" || return 1
-            printf 'Archived recovery data: %s\n' "$destination"
+        elif recoverable "$previous"; then
+            archive "$previous" || return 1
         else
             rm -rf "$previous" || return 1
             printf 'Removed old install log: %s\n' "$previous"
         fi
     done
+}
+sweep() {
+    # Under the lock, another run's workspace was left by SIGKILL or power loss.
+    for stale in /usr/local/share/nostromo/.policy.???????? /var/tmp/nostromo-system.????????; do
+        [ -d "$stale" ] && [ ! -L "$stale" ] && [ "$(stat -f %u "$stale")" = 0 ] || continue
+        rm -rf "$stale" || return 1
+        printf 'Removed stale workspace: %s\n' "$stale"
+    done
+    for stale in /var/run/nostromo-*.lock; do
+        [ "$stale" != "$lock" ] || continue
+        stale_lock "$stale" || continue
+        rm -rf "$stale" || return 1
+        printf 'Removed a lock left by an earlier boot: %s\n' "$stale"
+    done
+    # Earlier installers kept each replaced package policy beside the active one.
+    for previous in /usr/local/share/nostromo/policy.previous.*; do
+        [ -d "$previous" ] && [ ! -L "$previous" ] && [ "$(stat -f %u "$previous")" = 0 ] || continue
+        archive "$previous" || return 1
+    done
+    prune_logs || return 1
+    as_user 'sh scripts/clean-build.sh'
+}
+final_check() {
+    as_user 'sh scripts/verify-stage.sh --installed' || return 1
+    [ "$(pw usershow "$account" -7 | cut -d: -f7)" = /usr/local/bin/oksh ] || {
+        echo 'The login shell is not oksh.' >&2
+        return 1
+    }
+    [ "$(sysrc -n sddm_enable)" = YES ] || {
+        echo 'SDDM is not enabled at boot.' >&2
+        return 1
+    }
+    recipe=$(cat /usr/local/share/nostromo/policy/recipe.sha256) || return 1
+    while IFS='|' read -r name _origin version; do
+        case $name in '' | '#'*) continue ;; esac
+        [ "$(pkg query '%v|%k' "$name")" = "$version|1" ] &&
+            [ "$(pkg query '%At|%Av' "$name" | awk -F '|' '$1=="nostromo_recipe" {print $2}')" = "$recipe" ] || {
+            printf 'The %s variant is not installed, locked and built from the current recipe.\n' "$name" >&2
+            return 1
+        }
+    done <"$repo/packages.local"
+    printf 'Final checks passed for %s.\n' "$account"
 }
 finish() {
     result=$?
@@ -208,7 +269,17 @@ finish() {
         printf 'Setup stopped at %s (exit %s). Logs: %s\n' "$stage" "$result" "$log" >&2
         echo 'No reboot was requested. Resolve the reported stage and rerun the same command.' >&2
     fi
+    rm -f "$lock/pid"
     rmdir "$lock"
+    if [ "$result" = 0 ] && [ "$stage" = reboot ]; then
+        # The log and lock are final. Like the Wi-Fi offer, this reads the console.
+        { printf 'Reboot into the new desktop now? [Y/n] ' >/dev/tty; } 2>/dev/null &&
+            IFS= read -r answer </dev/tty || answer=n
+        case $answer in
+        '' | y | Y | yes | YES) shutdown -r now || echo 'Reboot when ready; keep console recovery available.' >&2 ;;
+        *) echo 'Reboot when ready; keep console recovery available.' ;;
+        esac
+    fi
     exit "$result"
 }
 trap finish 0
@@ -229,11 +300,7 @@ run() {
 }
 freebsd-version -kru >"$log/release-before"
 id "$account" >"$log/account-before"
-prune_logs >"$log/cleanup.log" 2>&1 || {
-    cat "$log/cleanup.log" >&2
-    exit 1
-}
-cat "$log/cleanup.log"
+run cleanup sweep
 # Prompts bypass tee/logging; the password is read only from the console.
 stage=wifi-setup
 sh "$repo/scripts/setup-wifi.sh" --offer
@@ -332,6 +399,10 @@ run staged-validation as_user 'sh scripts/verify-stage.sh'
 run user-files as_user 'sh scripts/link-home.sh --apply'
 run system-configuration sh "$repo/scripts/configure-system.sh" "$account" "$log"
 run login-shell pw usermod "$account" -s /usr/local/bin/oksh
-# Activation is last; the current console/desktop stays running until user reboot.
+# Activation is the last change; the current console/desktop keeps running until reboot.
 run enable-login sysrc sddm_enable=YES
-printf 'Setup completed for %s. Logs: %s\nReboot when ready; keep console recovery available.\n' "$account" "$log"
+run final-check final_check
+run final-cleanup sweep
+printf 'Setup completed for %s. Logs: %s\n' "$account" "$log"
+# The exit handler offers the reboot after recording the result and releasing the lock.
+stage=reboot

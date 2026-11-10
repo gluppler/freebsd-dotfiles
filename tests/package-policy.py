@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -173,6 +174,46 @@ validate() { case $1 in '' | [!A-Za-z0-9]* | *[!A-Za-z0-9_+.-]*) exit 2 ;; esac;
                 self.assertEqual(result.returncode, status, result.stderr)
                 self.assertFalse(list((path/'tmp').iterdir()))
                 self.assertFalse(list((path/'run').iterdir()))
+
+    def test_lock_from_an_earlier_boot_and_stale_workspaces_are_reclaimed(self):
+        source = (ROOT/'scripts/packages.sh').read_text()
+        lifecycle = 'lock=/var/run/nostromo-packages.lock\n' + source.split(
+            'lock=/var/run/nostromo-packages.lock\n',1)[1].split('recipe=$(cat',1)[0]
+        dead = subprocess.Popen(['true'])
+        dead.wait()
+        later = int(time.time()) + 3600
+        for boot, owner, status in [(later, None, 0), (later, dead.pid, 0), (later, os.getpid(), 1), (1, None, 1)]:
+            with self.subTest(boot=boot, owner=owner), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory)
+                lock = path/'run/nostromo-packages.lock'
+                lock.mkdir(parents=True)
+                if owner: (lock/'pid').write_text(f'{owner}\n')
+                stale = path/'tmp/nostromo-packages.AbCd1234'
+                (stale/'repo').mkdir(parents=True)
+                (stale/'repo/download.pkg').write_text('partial')
+                (path/'bin').mkdir()
+                # Root ownership is modeled; the boot time comes from the fixture.
+                (path/'bin/stat').write_text(f'#!{sys.executable}\n' + '''import os, sys
+s=os.stat(sys.argv[-1])
+print(sys.argv[-2].replace('%u','0').replace('%B',str(int(getattr(s,'st_birthtime',s.st_mtime)))))
+''')
+                (path/'bin/sysctl').write_text(f"#!/bin/sh\necho '{{ sec = {boot}, usec = 0 }} Thu Jan  1 00:00:01 1970'\n")
+                for stub in ('stat','sysctl'): (path/'bin'/stub).chmod(0o755)
+                script = ('set -eu\numask 077\n' + lifecycle + '[ "$(cat "$lock/pid")" = "$$" ]\n')
+                script = script.replace('/var/run/',str(path/'run')+'/').replace('/var/tmp/',str(path/'tmp')+'/')
+                result = subprocess.run(['sh','-c',script], capture_output=True, text=True,
+                                        env={**os.environ, 'PATH':str(path/'bin')+':'+os.environ['PATH']})
+                self.assertEqual(result.returncode, status, result.stderr)
+                if status:
+                    self.assertIn('Another package operation holds', result.stderr)
+                    self.assertTrue((stale/'repo/download.pkg').is_file())
+                    self.assertTrue(lock.is_dir())
+                else:
+                    self.assertIn('interrupted before the last boot', result.stderr)
+                    self.assertIn('Removed a stale package workspace: '+str(stale), result.stderr)
+                    self.assertEqual(result.stdout, '')
+                    self.assertFalse(list((path/'tmp').iterdir()))
+                    self.assertFalse(list((path/'run').iterdir()))
 
     def test_catalog_uses_release_modules_and_ordinary_application_versions(self):
         source = (ROOT/'scripts/packages.sh').read_text()

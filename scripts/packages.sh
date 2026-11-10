@@ -60,10 +60,24 @@ for dir in /var/db/nostromo "$store" "$store/local"; do
     }
 done
 lock=/var/run/nostromo-packages.lock
-mkdir "$lock" || {
-    echo 'A package operation is already running.' >&2
-    exit 1
+boot=$(sysctl -n kern.boottime | sed -n 's/^{ sec = \([0-9][0-9]*\),.*/\1/p')
+# Boot cleanup keeps directories in /var/run, and SIGKILL or power loss skips the
+# exit trap. A lock from an earlier boot is stale unless its recorded owner runs.
+stale_lock() {
+    [ -d "$1" ] && [ ! -L "$1" ] && [ -n "$boot" ] || return 1
+    birth=$(stat -f %B "$1") && [ "$birth" -lt "$boot" ] || return 1
+    owner=$(cat "$1/pid" 2>/dev/null) || return 0
+    case $owner in '' | *[!0-9]*) return 0 ;; esac
+    ! kill -0 "$owner" 2>/dev/null
 }
+if ! mkdir "$lock" 2>/dev/null; then
+    if ! { stale_lock "$lock" && rm -f "$lock/pid" && rmdir "$lock" && mkdir "$lock"; }; then
+        printf 'Another package operation holds %s. If none is running, reboot or remove that directory.\n' "$lock" >&2
+        exit 1
+    fi
+    echo 'Removed the lock of a package operation interrupted before the last boot.' >&2
+fi
+printf '%s\n' "$$" >"$lock/pid"
 temp=
 relock=
 finish() {
@@ -71,12 +85,20 @@ finish() {
     trap - 0
     [ -z "$relock" ] || pkgtool lock -y "$relock" || :
     [ -z "$temp" ] || rm -rf "$temp"
+    rm -f "$lock/pid"
     rmdir "$lock"
     exit "$result"
 }
 trap finish 0
 trap 'exit 130' INT
 trap 'exit 143' HUP TERM
+# With the lock held, an existing workspace belongs to an operation that ended
+# without its exit handler. Callers parse standard output, so report on stderr.
+for stale in /var/tmp/nostromo-packages.????????; do
+    [ -d "$stale" ] && [ ! -L "$stale" ] && [ "$(stat -f %u "$stale")" = 0 ] || continue
+    rm -rf "$stale"
+    printf 'Removed a stale package workspace: %s\n' "$stale" >&2
+done
 temp=$(mktemp -d /var/tmp/nostromo-packages.XXXXXXXX)
 mkdir "$temp/remote" "$temp/db" "$temp/repo" "$temp/local"
 # Ignore injected pkg configuration/environment; preserve all system repo files.

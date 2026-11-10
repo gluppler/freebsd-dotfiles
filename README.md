@@ -39,7 +39,8 @@ standalone console Wi-Fi setup; `--apply` offers it before downloads.
 builds as the ordinary user, backs up replaced files and enables login after
 validation. Base `mdo` grants limited ACPI access; administrative changes use
 base `su`/PAM authentication. No existing privilege wrapper is needed.
-It does not partition disks or reboot. Read the [installation and recovery
+It does not partition disks; after a final check it asks before rebooting.
+Read the [installation and recovery
 guide](docs/INSTALL.md) before applying it. Keep this checkout in place: installed
 user files and built programs link into it.
 

@@ -44,14 +44,18 @@ compile software or exercise hardware.
 
 Check and apply require native FreeBSD 15.1 amd64, matching installed/running kernels,
 base mdo, an ordinary UID of at least 1000, a user-owned permanent checkout and
-writable system filesystems, running devd and all source files. The checkout must not contain group/world-writable files.
-Initial installation needs neither an existing mdo rule nor doas.
+writable system filesystems, running devd and all source files. Nothing in the
+checkout may be group/world-writable except staged port trees under
+`.build/ports-work`, which keep their packages' modes; the check lists any path
+it rejects. Initial installation needs neither an existing mdo rule nor doas.
 The installer refuses an SSH session so network policy cannot strand its operator.
 
 ## What happens
 
-1. Offer console Wi-Fi setup before package downloads. Password entry bypasses
-   the install log. Skip this when the current connection already works.
+1. Remove stale locks, workspaces and old logs that earlier runs left (see
+   below), keeping recovery backups. Offer console Wi-Fi setup before package
+   downloads. Password entry bypasses the install log. Skip this when the
+   current connection already works.
    Bootstrap pkg with FreeBSD's signature verification and publish the root-owned
    package policy. Resolve and audit the complete requested dependency closure.
 2. Build the 15 pinned library/package variants as the ordinary user, run ports
@@ -74,7 +78,13 @@ The installer refuses an SSH session so network policy cannot strand its operato
    merger and SSID decoder along with the suspend guard.
 7. Select actual oksh and enable SDDM **last**. Provisioning leaves the current
    firewall and desktop running; only the explicit Wi-Fi setup changes its chosen
-   radio during installation. No automatic reboot.
+   radio during installation.
+8. Check the installed system again: user links, staged binaries, mdo policy,
+   helpers and fonts, the oksh login shell, SDDM at boot, and all 15 variants
+   installed, locked and built from the current recipe. Clean up again, record
+   the result and release the lock, then ask at the console
+   `Reboot into the new desktop now? [Y/n]`. Enter reboots; `n` keeps the
+   console running.
 
 The first native build may reveal a release/port/API issue that macOS cannot
 exercise. Unknown dependencies, stale recipes, missing devices and invalid files
@@ -88,28 +98,44 @@ are under `.build/logs/`. Each finished run records `result`, `last-stage` and
 `exit-status`; `pkg-version` identifies the package manager used. Read the
 failing stage's log before rerunning the same command.
 
-When `--apply` starts and again on exit, the installer removes earlier finished
-diagnostic-only runs, so only the current run's logs remain: read or copy a failed
-run's logs before rerunning. It recognizes older failed runs through their nonzero
-`*.status` files. Finished runs containing `system-backup/` or `policy-backup/`
-move to `/var/log/nostromo/recovery/` instead. Unfamiliar, unsafe or unfinished
-directories are retained and reported. Cleanup runs under the
-installer lock and does not follow directory symlinks. An unchanged package
-policy is reused; a changed policy's previous version goes in that run's
-`policy-backup/`. Older `policy.previous.*` directories are left for manual review.
+The `cleanup` stage at the start of `--apply`, `final-cleanup` at its end and
+the exit handler prune logs under the installer lock. No other run can be active
+then, so every earlier run has ended, including one that power loss left
+without a result. Diagnostic-only runs are removed, so only the current run's
+logs remain: read or copy a failed run's logs before rerunning. A run that kept a
+`policy-backup/`, or whose `system-backup/` journal records a changed file, moves
+to `/var/log/nostromo/recovery/` instead. A run that changed no system file
+leaves only an empty journal and is removed. The policy copies earlier installers
+kept as `/usr/local/share/nostromo/policy.previous.*` move to the recovery
+directory too. Unfamiliar or unsafe directories are retained and reported.
+Cleanup does not follow directory symlinks. An unchanged package policy is
+reused; a changed policy's previous version goes in that run's `policy-backup/`.
 Interrupted publication restores the old policy if the active path is missing.
 
 Temporary package downloads/private repositories and unpublished policy directories
-are removed on ordinary failures and handled signals. Successfully installed
-packages, manually installed Python, source caches and build work remain available
-for a retry. Removing them automatically could damage working software or discard
-hours of compilation. SIGKILL or power loss cannot run shell cleanup handlers.
+are removed on ordinary failures and handled signals. SIGKILL or power loss cannot
+run shell cleanup handlers, so later runs remove what they leave. The package
+helper removes its stale workspaces under its own lock. The installer's cleanup
+stages remove unpublished policies, system-configuration workspaces and project
+lock directories from an earlier boot. As the desktop user, they also remove
+build workspaces and partial downloads from an earlier boot; during the boot that
+created them, these may belong to a software-menu build that is still running.
+They also keep the three newest desktop build logs and remove variant archives
+whose name and version are no longer in `packages.local`. Successfully installed
+packages, manually installed Python, source caches and port build work remain
+available for a retry. Removing them automatically could damage working software
+or discard hours of compilation.
 
 Generated ports trees have an mtree receipt. After a recipe change,
 `prepare-ports` regenerates an unedited `.build/ports` tree from the cached,
 checksum-verified archive and discards the old recipe's build work. A changed,
 added or missing file stops the stage instead: edits are never reset.
-Do not remove an installation/package lock until confirming its process ended.
+
+Install and package locks record their process ID. A lock from an earlier boot
+is removed automatically unless a process with that ID is running. A lock from
+the current boot stops the run even after its process has ended, because a stage
+it started may still be running. Reboot, or confirm with `ps -ax` that no install
+or build remains, then remove the directory the message names.
 
 User-file backups are under `~/.local/state/freebsd-dotfiles/backups/`, and
 `~/.local/state/freebsd-dotfiles/links` lists the links last applied. A later run
@@ -252,6 +278,30 @@ reviewed stock packages. The 15 dependency lists recorded on the T14 are in
 Pull and rerun `--check` and `--apply` as above. The ports recipe is unchanged,
 so the eight finished variants are not rebuilt. The package policy changed: the
 retry publishes it and keeps the previous copy in that run's `policy-backup/`.
+
+### Recover from a group/world-writable checkout stop
+
+`--check` on commit `26cb970` stopped before installing anything:
+
+```text
+The checkout has group/world-writable files. Review their permissions before installing.
+```
+
+Your own files were not the problem. The check also scanned `.build/ports-work`,
+where the CUPS build staged three directories with the modes its package
+installs: `var/spool/cups/tmp` (1770), `var/cache/cups` (770) and
+`var/cache/cups/rss` (775). CUPS is the first variant to stage group-writable
+modes, so the stop appeared on the first check after it was built. Leave those
+modes alone; the staged tree matches what its package records. The check now
+skips staged port trees and still covers port build directories and the rest of
+the checkout. It lists every path it rejects. The ownership check still covers
+the whole checkout.
+
+Pull and rerun `--check` and `--apply` as above. The ports recipe is unchanged,
+so the eight finished variants are not rebuilt; the frei0r policy change above
+is published as described there. This update also adds the cleanup, final check
+and reboot prompt described above. Its first cleanup moves the earlier
+`policy.previous.*` copies into `/var/log/nostromo/recovery/`.
 
 ## Source exports
 

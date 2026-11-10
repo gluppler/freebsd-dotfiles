@@ -2,9 +2,11 @@
 from pathlib import Path
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,7 +58,7 @@ sf_put() {
             for relative in expected:
                 self.assertTrue((path/relative).is_file(),relative)
 
-    def installer_run(self, path, body, *, setup=''):
+    def installer_run(self, path, body, *, setup='', boot=1):
         source = (ROOT/'install.sh').read_text()
         lifecycle = source.split('mkdir -p /var/log/nostromo\n',1)[1].split('freebsd-version -kru',1)[0]
         script = 'set -eu\numask 077\n' + setup + '\nmkdir -p /var/log/nostromo\n' + lifecycle
@@ -64,9 +66,12 @@ sf_put() {
 printf '15.1-RELEASE\\n' > "$log/release-before"
 printf 'uid=1000(fixture)\\n' > "$log/account-before"
 ''' + body
-        for original, local in [('/var/log/nostromo','logs'), ('/var/run/','run/'),
+        for original, local in [('/var/log/nostromo','logs'), ('/var/run/','run/'), ('/var/tmp/','tmp/'),
                                 ('/usr/local/share/nostromo','share'), ('/usr/local/libexec','libexec')]:
-            script = script.replace(original, str(path/local))
+            # pathlib drops a trailing slash; keep it so run/<lock> stays inside run/.
+            script = script.replace(original, str(path/local) + ('/' if local.endswith('/') else ''))
+        # The console prompt writes and reads separate fixture files.
+        script = script.replace('>/dev/tty', '>'+str(path/'tty-prompt')).replace('</dev/tty', '<'+str(path/'tty-answer'))
         # Root identity is modeled; filesystem modes and symlinks stay real.
         script = script.replace('-user root', '-user '+str(os.getuid()))
         (path/'run').mkdir(exist_ok=True)
@@ -74,9 +79,14 @@ printf 'uid=1000(fixture)\\n' > "$log/account-before"
         stat = path/'bin/stat'
         stat.write_text(f'#!{sys.executable}\n' + '''
 import os, sys
-s=os.stat(sys.argv[-1]); print(sys.argv[-2].replace('%u','0').replace('%Lp',oct(s.st_mode & 0o777)[2:]).replace('%m',str(int(s.st_mtime))))
+s=os.stat(sys.argv[-1]); birth=getattr(s, 'st_birthtime', s.st_mtime)
+print(sys.argv[-2].replace('%u','0').replace('%Lp',oct(s.st_mode & 0o777)[2:]).replace('%m',str(int(s.st_mtime))).replace('%B',str(int(birth))))
 ''')
         stat.chmod(0o755)
+        # The boot time decides whether a lock directory predates this boot.
+        sysctl = path/'bin/sysctl'
+        sysctl.write_text(f"#!/bin/sh\necho '{{ sec = {boot}, usec = 0 }} Thu Jan  1 00:00:01 1970'\n")
+        sysctl.chmod(0o755)
         return subprocess.run(['sh','-c',script], capture_output=True, text=True,
             env={**os.environ, 'PATH':str(path/'bin')+':'+os.environ['PATH'], 'REPO':str(ROOT)})
 
@@ -92,8 +102,14 @@ s=os.stat(sys.argv[-1]); print(sys.argv[-2].replace('%u','0').replace('%Lp',oct(
                 (previous/'account-before').write_text('fixture\n')
                 # Legacy runs have no result marker, only stage statuses.
                 (previous/'python312-dependencies.status').write_text('1\n')
-                if number==6: (previous/'system-backup').mkdir()
+                if number in (5,6):
+                    (previous/'system-backup').mkdir()
+                    (previous/'system-backup/journal').touch()
+                if number==6:
+                    (previous/'system-backup/journal').write_text('1|/etc/rc.conf|644|digest|yes\n')
+                    (previous/'system-backup/1.before').write_text('original\n')
                 if number==7: (previous/'policy-backup').mkdir()
+                # The lock is held, so a run without a result ended without its handler.
                 if number==8: (previous/'python312-dependencies.status').write_text('0\n')
                 if number==9: previous.chmod(0o777)
                 os.utime(previous, (number+1,number+1))
@@ -108,13 +124,16 @@ s=os.stat(sys.argv[-1]); print(sys.argv[-2].replace('%u','0').replace('%Lp',oct(
             self.assertEqual(result.returncode, 7, result.stderr)
             self.assertFalse((path/'run/nostromo-install.lock').exists())
             retained = {p.name for p in logs.iterdir()}
-            self.assertTrue({f'install-{n:08d}' for n in (8,9)} <= retained)
-            self.assertFalse({f'install-{n:08d}' for n in range(8)} & retained)
-            self.assertTrue((logs/'recovery/install-00000006/system-backup').is_dir())
+            self.assertIn('install-00000009', retained)
+            self.assertFalse({f'install-{n:08d}' for n in range(9)} & retained)
+            self.assertEqual((logs/'recovery/install-00000006/system-backup/1.before').read_text(), 'original\n')
             self.assertTrue((logs/'recovery/install-00000007/policy-backup').is_dir())
+            # A backup with an empty journal holds no original file.
+            self.assertEqual(sorted(p.name for p in (logs/'recovery').iterdir()),
+                             ['install-00000006', 'install-00000007'])
             self.assertIn('Removed old install log:', result.stdout)
             self.assertIn('Archived recovery data:', result.stdout)
-            self.assertIn('Retained unfinished log directory:', result.stdout)
+            self.assertNotIn('unfinished', result.stdout)
             self.assertIn('Retained unrecognized or unsafe log directory:', result.stdout)
             self.assertTrue((logs/'install-symlink1').is_symlink())
             self.assertEqual((outside/'keep').read_text(), 'keep\n')
@@ -136,6 +155,164 @@ s=os.stat(sys.argv[-1]); print(sys.argv[-2].replace('%u','0').replace('%Lp',oct(
                 self.assertEqual(result.returncode, code, result.stderr)
                 self.assertFalse(list(path.glob('.policy.*')))
                 self.assertFalse((path/'run/nostromo-install.lock').exists())
+
+    def test_install_lock_is_reclaimed_only_after_its_boot(self):
+        dead = subprocess.Popen(['true'])
+        dead.wait()
+        later = int(time.time()) + 3600
+        # Power loss leaves the lock directory; its owner cannot survive a reboot.
+        for boot, owner, code in [(later, None, 0), (later, dead.pid, 0), (later, os.getpid(), 1),
+                                  (1, None, 1), (1, dead.pid, 1)]:
+            with self.subTest(boot=boot, owner=owner), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory).resolve()
+                lock = path/'run/nostromo-install.lock'
+                lock.mkdir(parents=True)
+                if owner: (lock/'pid').write_text(f'{owner}\n')
+                result = self.installer_run(path, '[ "$(cat "$lock/pid")" = "$$" ]\n', boot=boot)
+                self.assertEqual(result.returncode, code, result.stderr)
+                if code:
+                    self.assertIn('Another install holds', result.stderr)
+                    self.assertEqual(sorted(p.name for p in lock.iterdir()), ['pid'] if owner else [])
+                    self.assertFalse(list((path/'logs').glob('install-*')))
+                else:
+                    self.assertIn('Removed the lock of an install interrupted before the last boot.', result.stdout)
+                    self.assertFalse(lock.exists())
+
+    def test_install_cleanup_removes_stale_workspaces_and_locks_and_archives_old_policies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory).resolve()
+            for name in ('share/.policy.AbCd1234', 'share/policy', 'share/policy.previous.20261105-140800-34264',
+                         'tmp/nostromo-system.AbCd1234', 'tmp/nostromo-maintenance.AbCd1234',
+                         'run/nostromo-wifi-setup.lock', 'run/nostromo-packages.lock'):
+                (path/name).mkdir(parents=True)
+            (path/'share/.policy.AbCd1234/packages.allowed').write_text('partial\n')
+            (path/'share/policy.previous.20261105-140800-34264/managed').write_text('earlier policy\n')
+            (path/'run/nostromo-packages.lock/pid').write_text(f'{os.getpid()}\n')
+            setup = 'as_user() { printf "as_user: %s\\n" "$1"; }\n'
+            result = self.installer_run(path, 'run cleanup sweep\n', setup=setup, boot=int(time.time()) + 3600)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for removed in ('share/.policy.AbCd1234', 'tmp/nostromo-system.AbCd1234', 'run/nostromo-wifi-setup.lock'):
+                self.assertFalse((path/removed).exists(), removed)
+            # A running owner keeps its lock; the active policy and other tools' workspaces stay.
+            for kept in ('run/nostromo-packages.lock/pid', 'share/policy', 'tmp/nostromo-maintenance.AbCd1234'):
+                self.assertTrue((path/kept).exists(), kept)
+            self.assertEqual((path/'logs/recovery/policy.previous.20261105-140800-34264/managed').read_text(),
+                             'earlier policy\n')
+            self.assertFalse(list((path/'share').glob('policy.previous.*')))
+            self.assertIn('as_user: sh scripts/clean-build.sh', result.stdout)
+            log = next((path/'logs').glob('install-*'))
+            self.assertIn('Removed a lock left by an earlier boot:', (log/'cleanup.log').read_text())
+            self.assertEqual((log/'cleanup.status').read_text(), '0\n')
+            # A lock taken during this boot may still have a running owner.
+            (path/'run/nostromo-bluetooth.lock').mkdir()
+            again = self.installer_run(path, 'run cleanup sweep\n', setup=setup)
+            self.assertEqual(again.returncode, 0, again.stderr)
+            self.assertTrue((path/'run/nostromo-bluetooth.lock').is_dir())
+
+    def test_final_check_requires_login_shell_sddm_and_current_locked_variants(self):
+        def setup(shell='/usr/local/bin/oksh', sddm='YES', lock='1', recipe='current', verified='0'):
+            return f'''repo=$REPO
+account=fixture
+as_user() {{ printf 'as_user: %s\\n' "$1"; return {verified}; }}
+pw() {{ printf 'fixture:*:1000:1000::/home/fixture:{shell}\\n'; }}
+sysrc() {{ printf '{sddm}\\n'; }}
+pkg() {{
+    case $2 in
+    '%v|%k') awk -F '|' -v name="$3" '$1==name {{print $3 "|" (name=="cups" ? "{lock}" : "1")}}' "$repo/packages.local" ;;
+    *) if [ "$3" = cups ]; then echo 'nostromo_recipe|{recipe}'; else echo 'nostromo_recipe|current'; fi ;;
+    esac
+}}
+'''
+        for options, message in [({}, None), ({'verified': '1'}, ''), ({'shell': '/bin/sh'}, 'The login shell is not oksh.'),
+                                 ({'sddm': 'NO'}, 'SDDM is not enabled at boot.'),
+                                 ({'lock': '0'}, 'The cups variant is not installed'),
+                                 ({'recipe': 'earlier'}, 'The cups variant is not installed')]:
+            with self.subTest(options=options), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory).resolve()
+                (path/'share/policy').mkdir(parents=True)
+                (path/'share/policy/recipe.sha256').write_text('current\n')
+                result = self.installer_run(path, 'run final-check final_check\n', setup=setup(**options))
+                self.assertIn("as_user: sh scripts/verify-stage.sh --installed", result.stdout)
+                if message is None:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn('Final checks passed for fixture.', result.stdout)
+                else:
+                    self.assertEqual(result.returncode, 1, result.stdout)
+                    self.assertIn(message, result.stdout)
+                    self.assertIn('Setup stopped at final-check', result.stderr)
+
+    def test_completed_install_offers_reboot_after_releasing_its_lock(self):
+        for answer, rebooted in [('\n', True), ('y\n', True), ('n\n', False), ('', False)]:
+            with self.subTest(answer=answer), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory).resolve()
+                (path/'tty-answer').write_text(answer)
+                setup = f'shutdown() {{ [ ! -e "{path}/run/nostromo-install.lock" ] && echo "$*" > "{path}/shutdown"; }}\n'
+                result = self.installer_run(path, 'stage=reboot\n', setup=setup)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual((path/'tty-prompt').read_text(), 'Reboot into the new desktop now? [Y/n] ')
+                self.assertEqual((path/'shutdown').read_text() if rebooted else (path/'shutdown').exists(),
+                                 '-r now\n' if rebooted else False)
+                if not rebooted: self.assertIn('Reboot when ready', result.stdout)
+                log = next((path/'logs').glob('install-*'))
+                self.assertEqual((log/'result').read_text(), 'completed\n')
+                self.assertEqual((log/'last-stage').read_text(), 'reboot\n')
+        # A failed run never asks.
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory).resolve()
+            (path/'tty-answer').write_text('y\n')
+            result = self.installer_run(path, 'stage=reboot\nexit 3\n', setup='shutdown() { exit 99; }\n')
+            self.assertEqual(result.returncode, 3, result.stderr)
+            self.assertFalse((path/'tty-prompt').exists())
+
+    def test_build_cleanup_removes_only_stale_leftovers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory).resolve()
+            repo = path/'repo'
+            (repo/'scripts').mkdir(parents=True)
+            shutil.copy(ROOT/'scripts/clean-build.sh', repo/'scripts/clean-build.sh')
+            shutil.copy(ROOT/'packages.local', repo/'packages.local')
+            build = repo/'.build'
+            workspaces = ['work/dwl.AbCd1234', 'validation.AbCd1234', 'ports.AbCd1234/previous']
+            for name in workspaces: (build/name).mkdir(parents=True)
+            (build/'downloads').mkdir()
+            (build/'downloads/.download.AbCd1234').write_text('partial\n')
+            for name in ('downloads/ports.tar.gz', 'ports.mtree', 'ports.recipe'): (build/name).write_text('keep\n')
+            (build/'ports').mkdir()
+            outside = path/'outside'
+            outside.mkdir()
+            (outside/'keep').write_text('keep\n')
+            (build/'work/link.AbCd1234').symlink_to(outside)
+            logs = [f'2026110{day}-120000-{100+day}' for day in range(1, 6)]
+            for name in logs: (build/'logs'/name).mkdir(parents=True)
+            archives = build/'ports-packages/All'
+            archives.mkdir(parents=True)
+            for name in ('python312-3.12.15.pkg', 'python312-3.12.14.pkg', 'ffmpeg-9.0.2,1.pkg', 'kicad-9.0.pkg'):
+                (archives/name).write_text(name)
+            (path/'bin').mkdir()
+            def clean(boot):
+                sysctl = path/'bin/sysctl'
+                sysctl.write_text(f"#!/bin/sh\necho '{{ sec = {boot}, usec = 0 }} Thu Jan  1 00:00:01 1970'\n")
+                sysctl.chmod(0o755)
+                return subprocess.run(['sh', str(repo/'scripts/clean-build.sh')], capture_output=True, text=True,
+                                      env={**os.environ, 'PATH': str(path/'bin')+':'+os.environ['PATH']})
+            # This boot's workspaces may belong to a running build.
+            first = clean(1)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            for name in workspaces: self.assertTrue((build/name).is_dir(), name)
+            self.assertTrue((build/'downloads/.download.AbCd1234').is_file())
+            self.assertEqual(sorted(p.name for p in (build/'logs').iterdir()), logs[2:])
+            self.assertEqual(sorted(p.name for p in archives.iterdir()), ['ffmpeg-9.0.2,1.pkg', 'python312-3.12.15.pkg'])
+            # An earlier boot's leftovers are stale; links are not followed.
+            second = clean(int(time.time()) + 3600)
+            self.assertEqual(second.returncode, 0, second.stderr)
+            for name in ('work/dwl.AbCd1234', 'validation.AbCd1234', 'ports.AbCd1234', 'downloads/.download.AbCd1234'):
+                self.assertFalse((build/name).exists(), name)
+            for name in ('downloads/ports.tar.gz', 'ports.mtree', 'ports.recipe', 'ports'):
+                self.assertTrue((build/name).exists(), name)
+            self.assertTrue((build/'work/link.AbCd1234').is_symlink())
+            self.assertEqual((outside/'keep').read_text(), 'keep\n')
+            self.assertIn('Removed a stale build workspace:', second.stdout)
+            self.assertEqual(len(list((build/'logs').iterdir())), 3)
 
     def test_package_policy_is_reused_and_failed_publication_restores_previous(self):
         source = (ROOT/'install.sh').read_text()

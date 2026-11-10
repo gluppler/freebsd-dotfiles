@@ -2,8 +2,9 @@
 
 The configured path is **UEFI → FreeBSD Lua loader → kernel/services → SDDM
 Wayland login → authenticated dwl session**. SDDM is enabled only after the root
-installer's build/configuration gates pass. Installation does not reboot or start
-the display manager over the current console. Automatic startup is not autologin.
+installer's build/configuration gates pass. Installation does not start the
+display manager over the current console; after its final check it asks before
+rebooting. Automatic startup is not autologin.
 
 ## Loader
 

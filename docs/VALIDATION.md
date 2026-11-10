@@ -8,9 +8,11 @@ including real pkg 2.8.4 transactions on this host. Commit `15bb0b4` then passed
 that stage on the T14 and stopped in `python312-build`. With that fixed, commit
 `7f3f3ee` built, installed and locked python312, cmake-core and libxml2 natively,
 then stopped at `libxslt-dependencies`. Commit `d8f1ac5` passed that stage, built
-five more variants and stopped at `ffmpeg-dependencies`; the
-[native evidence](#native-evidence-from-the-t14) records the three causes and fixes.
-A native rerun of the third fix is pending. The KiCad PCB workflow has since been removed because PCB design
+five more variants and stopped at `ffmpeg-dependencies`. With that fixed,
+`--check` on commit `26cb970` stopped on the group-writable directories CUPS
+stages; the check now skips staged port trees. The
+[native evidence](#native-evidence-from-the-t14) records each cause and fix.
+A native run of the last two fixes is pending. The KiCad PCB workflow has since been removed because PCB design
 runs on a separate server: its packages, six native variants, ports patch, plugin,
 helper, guide and tests are gone. Host checks pass for the listed scopes. The full native
 FreeBSD package build/install, first login/reboot and hardware acceptance remain
@@ -21,6 +23,31 @@ measured battery-performance claim is made.
 
 ## Audit fixes
 
+- The checkout mode check scanned staged port trees. CUPS stages its spool and
+  cache directories group-writable, as its package installs them, so the first
+  `--check` after CUPS was built stopped. The check now skips
+  `.build/ports-work/*/work/stage` and `work-*/stage` and lists each path it
+  rejects. Port build directories and the rest of the checkout are still checked,
+  and so is ownership of everything. A find failure now stops the check instead
+  of passing it, and the account/write test, which never stopped on its first
+  two conditions, now does.
+- Reruns clean up what SIGKILL or power loss leaves. Install and package locks
+  record their process ID. A lock from an earlier boot is reclaimed unless that
+  ID is running; one from the current boot still stops the run. Under its lock,
+  the package helper removes stale workspaces. The installer's `cleanup` and
+  `final-cleanup` stages remove unpublished policies, configuration workspaces,
+  project lock directories from an earlier boot and, as the desktop user, build
+  workspaces and partial downloads from an earlier boot. They also keep the three
+  newest desktop build logs and remove superseded variant archives. Interrupted runs no longer
+  accumulate as unfinished log directories, a backup with an empty journal is no
+  longer archived, and earlier `policy.previous.*` copies move to the recovery
+  directory.
+- After SDDM is enabled, a final check reruns the installed-stage verification
+  and confirms the oksh login shell, SDDM at boot and all 15 variants installed,
+  locked and built from the current recipe. With the result recorded and the
+  lock released, the installer asks before rebooting. The host harness for these
+  tests had written its lock outside the fixture's `run/` directory, so earlier
+  lock-release assertions passed without checking anything; that is fixed.
 - Variant dependency lists come from the ports framework on FreeBSD and name
   packages that no other reviewed package depends on. `ffmpeg-dependencies` stopped on
   the unreviewed frei0r, whose header FFmpeg's default frei0r effects build
@@ -69,7 +96,7 @@ measured battery-performance claim is made.
 - Retries bound diagnostic-only logs and preserve recovery backups. Unchanged
   package policies are reused; failed publication restores the previous policy.
   Failure/signal tests cover temporary downloads, unpublished policy cleanup and
-  lock release, including log allocation failure and legacy failed-run retention.
+  lock release, including log allocation failure and legacy failed-run cleanup.
 - A recipe change no longer stops `prepare-ports` with an unedited tree from the
   previous recipe. The tree is regenerated, and that recipe's build work is
   discarded, because port cookies would otherwise package objects built from the
@@ -111,19 +138,19 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | --- | --- |
 | `python3 tests/check.py` | 24 passed: links/assets/fonts, manifest coverage, every declared home destination, browser arguments/schema, CWD encoding, shell syntax, user-link preflight/rollback/idempotency, former-link removal/restoration/directory conversion/mid-run change, receipt-checked plugin pins and dkjson checksum stops |
 | `python3 tests/helpers.py` | 8 passed: display-mode/scale rollback and last-output protection, SSID bytes/managed blocks, USB CAM filtering, unsafe argument rejection and default fallback for a saved wallpaper whose exports were removed |
-| `python3 tests/package-policy.py` | 24 passed: reported empty-list failure and actual resolver/query handling, kmods selection/catalogue, failure/signal cleanup, graph/identity/ABI/receipt validation including only the FreeBSD 15 `*` ABI, exact GNU roles/versions, stock conversion/cleanup, pkgbase separation, protected removal, transaction-guard dispatch, separate pkg self-upgrade, named origin/ABI mismatches, pending versions, preserved automatic/build-protection flags, stale ports-tree replacement that stops on changed, added or missing files, all six ports patches on the cached pinned archive with search paths kept where Readline is dropped, listed advisories reported without stopping a variant build, the 15 dependency lists recorded on the T14 naming only reviewed packages and earlier variants, and the cached catalogue's dependencies of every installer request reviewed with matching origins and pinned versions |
+| `python3 tests/package-policy.py` | 25 passed: reported empty-list failure and actual resolver/query handling, kmods selection/catalogue, failure/signal cleanup, a lock reclaimed only after its boot with stale workspaces removed, graph/identity/ABI/receipt validation including only the FreeBSD 15 `*` ABI, exact GNU roles/versions, stock conversion/cleanup, pkgbase separation, protected removal, transaction-guard dispatch, separate pkg self-upgrade, named origin/ABI mismatches, pending versions, preserved automatic/build-protection flags, stale ports-tree replacement that stops on changed, added or missing files, all six ports patches on the cached pinned archive with search paths kept where Readline is dropped, listed advisories reported without stopping a variant build, the 15 dependency lists recorded on the T14 naming only reviewed packages and earlier variants, and the cached catalogue's dependencies of every installer request reviewed with matching origins and pinned versions |
 | `PKG=… python3 tests/pkg-integration.py` | 10 passed against pkg 2.8.4 built from source on this host, with disposable signed repositories: the native locked-variant stop reproduced, then install/preview/update requests that keep a locked variant while stock packages and an unlocked variant still change and reinstall unlocks its own, `--no-remove` rejected as unrecognized, the five reported leaf dependencies installed twice, preview/reinstall/upgrade, existing automatic dependencies, a file conflict denied a second approval, real removal plans rejected, a `FreeBSD:15:*` archive audited and installed, an older dependency pkg keeps, and pkg's restart failing under one approval but passing as its own transaction |
-| `python3 tests/provisioning.py` | 9 passed: selective settings/SDDM/SSH/PF merges, helper/font/login/loader destinations, ambiguous input rejection, idempotency, rollback preserving later edits, legacy/current log pruning with archived recovery runs, signal cleanup, lock release and policy reuse/recovery |
+| `python3 tests/provisioning.py` | 14 passed: selective settings/SDDM/SSH/PF merges, helper/font/login/loader destinations, ambiguous input rejection, idempotency, rollback preserving later edits, legacy/current/interrupted log pruning with archived recovery runs and empty journals removed, signal cleanup, lock release, a lock reclaimed only after its boot, stale workspaces/locks/policy copies cleaned, build leftovers cleaned only from an earlier boot, the final login/SDDM/variant check, the reboot prompt after the lock is released, and policy reuse/recovery |
 | `python3 tests/network-menus.py` | 9 passed: actual fuzzel managers, byte-safe SSIDs, masked secrets, cancellation, scan recovery, phone/open/OWE hotspots, unprivileged portal dispatch, Bluetooth initialization/pairing, persistent WireGuard selection and status without authentication |
 | `python3 tests/bootstrap.py` | 8 passed: actual console/helper transactions with simulated native commands; missing WPA profile, hidden input, failed-auth rollback, DNS-failure retention, later rc overrides, open/OWE profiles, unsupported security rejection, unsafe paths and supported Intel Bluetooth initialization |
 | `python3 tests/security.py` | 8 passed: mdo migration, terminal/GUI authenticated command transport, failure/cancellation, all-socket lock checks, suspend cancellation/deadline, installed mergers/SSID decoder and native event dispatch/resume debounce |
 | `python3 tests/embedded.py` | 3 passed: scoped Rust dispatch, Zephyr architecture/word-size/float-ABI guards, real ARM compiler-rt bare-metal ELF link |
 | `python3 tests/offline-docs.py` | 7 passed: literal/invalid topics, Go offline environment, pager cleanup, Python text lookup, encoded local language-book URLs, examples, cancellation and separate-window dispatch |
-| `python3 tests/release.py` | 7 passed: complete home dotfiles in exports, private/generated file exclusions even when tracked, credential-pattern rejection without disclosure, file modes, symlink parents, installer host guards and the read-only preflight stop point |
+| `python3 tests/release.py` | 8 passed: complete home dotfiles in exports, private/generated file exclusions even when tracked, credential-pattern rejection without disclosure, file modes, symlink parents, installer host guards, the read-only preflight stop point and its mode check skipping only staged port trees |
 | `python3 tests/terminal-idle.py` | 4 passed: clock cleanup/static mode, actual PTY viewer scrolling/resizing/control filtering/signal restoration, bounded vis pages with pending-key/edit guards, and unchanged plain/JSON fetch dispatch |
 | `python3 tests/reference-examples.py` | C syntax, C++/Rust compilation and execution, Go example test, Python/shell/Lua syntax, x86-64/Thumb/AArch64 assembly passed with host tools; this host Clang lacks MIPS, and Zephyr requires a real board build |
 | Offline package contents | Checked quarterly stdman archive renders its C++ examples through mandoc; Python pathlib text retains example blocks; the four added documentation packages have no dependencies |
-| POSIX shfmt + ShellCheck | 98 operational/build/source scripts and the two shell configuration files they source are clean at style severity; interactive oksh checked separately with ksh mode and `/bin/ksh -n` |
+| POSIX shfmt + ShellCheck | 99 operational/build/source scripts and the two shell configuration files they source are clean at style severity; interactive oksh checked separately with ksh mode and `/bin/ksh -n` |
 | Fastfetch | Exact 2.69.0 parser accepts the detailed configuration; plain-output CLI flags checked with the host build. This does not verify FreeBSD sensor detection |
 | Ports recipes | `tests/package-policy.py` applies all six ports patches to the checksum-verified pinned archive with zero fuzz. Eight of the 15 variants have built natively; see [native evidence](#native-evidence-from-the-t14) |
 | Reference sources | cppreference snapshot matches its pinned hash; extraction confines files to its declared directory |
@@ -141,7 +168,7 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | HTML/start page | Actual QtWebEngine local page/font render and placeholder behavior checked; not a qutebrowser process |
 | Current artwork | Runtime logos/textures use PNG; native shared painters, idle bounce, QML login and browser page checked after conversion. Animated defaults and static/off overrides pass. Simulations are archived outside the source tree; regenerated previews stay in `.build/previews/` |
 
-The eleven Python suites total **111 passing cases**. Two package-policy cases
+The eleven Python suites total **118 passing cases**. Two package-policy cases
 read caches and skip without them: the checksum-verified ports archive and the
 quarterly catalogue. They use real local code and
 small disposable command stand-ins where native devices/package managers are
@@ -312,6 +339,24 @@ desktop user found:
   `packages.local`, an accepted license, a valid option set and no ignore,
   broken or forbidden mark. The fetched catalogue satisfies all 49 versioned
   dependency requirements in the 15 lists.
+
+`--check` on commit `26cb970` then stopped with `The checkout has
+group/world-writable files.` A read-only search as the desktop user found three
+such directories, all in CUPS's staged package tree under `.build/ports-work` and
+created when CUPS was built: `var/spool/cups/tmp` (1770), `var/cache/cups` (770)
+and `var/cache/cups/rss` (775), owned by gluppler. Nothing else in the checkout,
+including `.git`, is group/world-writable, and the login umask is 0022:
+
+- Run as the desktop user against the T14's checkout, the previous check
+  reproduces the stop. The corrected check passes in two seconds and skips the
+  eight staged trees.
+- In a private `/tmp` copy, ZFS birth times and `kern.boottime` give the
+  expected lock decisions. An ownerless lock from before the boot is reclaimed,
+  and so is one whose recorded process has ended. A lock from before the boot
+  whose process is running is kept, as is any lock from the current boot.
+- The build cleanup removed only backdated workspaces and partial downloads,
+  kept the three newest desktop build logs and kept the current variant
+  archives, including `ffmpeg-9.0.2,1`.
 
 No package was built, installed or removed during any diagnosis. A native rerun
 must still build, install and accept the remaining 7 variants; these checks do
