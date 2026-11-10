@@ -18,8 +18,10 @@ function identity(name, ver, src) {
         fail("Unreviewed package: " name " " ver " (" src ")")
 }
 $1=="P" {
+    # Architecture-independent packages carry pkg's FreeBSD:15:* ABI.
     if (NF!=6 || $6 !~ /^[0-9]+$/ || $2 in present ||
-        ($5!="FreeBSD:15:amd64" && $5!="freebsd:15:x86:64")) {
+        ($5!="FreeBSD:15:amd64" && $5!="freebsd:15:x86:64" &&
+         $5!="FreeBSD:15:*" && $5!="freebsd:15:*")) {
         fail("Invalid/duplicate package identity: " $0); next
     }
     identity($2,$3,$4); present[$2]=$3; expected[$2]=$6; count++

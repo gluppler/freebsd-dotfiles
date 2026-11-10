@@ -3,6 +3,7 @@
 from pathlib import Path
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -35,6 +36,15 @@ class Policy(unittest.TestCase):
                        graph + "P|lib|3|devel/lib|FreeBSD:15:amd64|0\n"):
             with self.subTest(graph=broken):
                 self.assertNotEqual(self.check_graph(policy, broken).returncode, 0)
+
+    def test_architecture_independent_packages_keep_the_release_check(self):
+        policy = "font|x11-fonts/font|*|stock\n"
+        for abi, okay in [("FreeBSD:15:*", True), ("freebsd:15:*", True),
+                          ("FreeBSD:14:*", False), ("FreeBSD:*", False), ("*", False),
+                          ("FreeBSD:15:aarch64", False), ("freebsd:15:*:*", False)]:
+            with self.subTest(abi=abi):
+                result = self.check_graph(policy, f"P|font|1|x11-fonts/font|{abi}|0\n")
+                self.assertEqual(result.returncode == 0, okay, result.stderr)
 
     def test_local_variant_must_have_matching_recipe(self):
         policy = "wlroots020|x11-toolkits/wlroots020|0.20.2_1|local\n"
@@ -252,7 +262,7 @@ else: raise SystemExit('unexpected pkg call: '+repr(args))
 
     def test_stock_variant_conversion_requires_exact_identity_and_no_lock(self):
         source = (ROOT / 'scripts/packages.sh').read_text()
-        branch = source.split('if [ "$action" = reinstall ]; then\n',1)[1].split('    localpkg install -U -f -n',1)[0]
+        branch = source.split('if [ "$action" = reinstall ]; then\n',1)[1].split('    transact install -f',1)[0]
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary)
             (path/'packages.local').write_text('curl|ftp/curl|8.19.0\n')
@@ -339,18 +349,62 @@ if true; then
                     self.assertEqual(result.returncode == 0, okay, result.stderr)
                     self.assertEqual('deleted' in result.stdout, okay)
 
-    def test_upgrade_uses_native_upgrade_and_stops_on_failure(self):
+    def test_upgrade_dispatches_through_the_transaction_guard(self):
         source = (ROOT / 'scripts/packages.sh').read_text()
         branch = source.split('elif [ "$action" = update ]; then\n', 1)[1].split('\nelse\n', 1)[0]
         for status in (0, 1):
             result = subprocess.run(['sh','-c', '''set -eu
-localpkg() { printf '%s\n' "$*"; return "$TEST_STATUS"; }
+transact() { printf '%s\n' "$*"; return "$TEST_STATUS"; }
 set -- pkg app library
 ''' + branch], capture_output=True, text=True, env={**os.environ,'TEST_STATUS':str(status)})
             self.assertEqual(result.returncode, status)
-            self.assertEqual(result.stdout.splitlines(), [
-                'upgrade -U -n --no-remove -r NostromoTransaction pkg app library',
-                *(['upgrade -U -y --no-remove -r NostromoTransaction pkg app library'] if status==0 else [])])
+            self.assertEqual(result.stdout.splitlines(), ['upgrade pkg app library'])
+
+    def test_pkg_upgrades_itself_before_the_requested_transaction(self):
+        source = (ROOT / 'scripts/packages.sh').read_text()
+        step = source.split('# Review that step separately', 1)[1].split('\n', 1)[1]
+        step = step.split('if [ "$action" = reinstall ]; then', 1)[0]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            for action, record, expected in [
+                ('install', 'P|pkg|2|ports-mgmt/pkg|FreeBSD:15:amd64|0', ['upgrade pkg']),
+                ('reinstall', 'P|pkg|2|ports-mgmt/pkg|FreeBSD:15:amd64|0', ['upgrade pkg']),
+                ('update', 'P|pkg|2|ports-mgmt/pkg|FreeBSD:15:amd64|0', ['upgrade pkg']),
+                ('preview', 'P|pkg|2|ports-mgmt/pkg|FreeBSD:15:amd64|0', []),
+                ('install', 'P|pkg-devel|2|ports-mgmt/pkg-devel|FreeBSD:15:amd64|0', []),
+                ('install', 'D|cmake-core|pkg|2|ports-mgmt/pkg', []),
+            ]:
+                with self.subTest(action=action, record=record):
+                    (path/'records').write_text(record + '\n')
+                    result = subprocess.run(['sh','-c', 'set -eu\ntemp=$TEST_ROOT; action=$TEST_ACTION\n'
+                        'transact() { printf "%s\\n" "$*"; }\n' + step], capture_output=True, text=True,
+                        env={**os.environ,'TEST_ROOT':directory,'TEST_ACTION':action})
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout.splitlines(), expected)
+
+    def test_installed_identity_reports_each_mismatch(self):
+        source = (ROOT / 'scripts/packages.sh').read_text()
+        marker = "pkgtool query -a '%n|%v|%o|%q|%a' >\"$receipt/after\"\n"
+        check = marker + source.split(marker, 1)[1].split('\nif [ "$action" = update ]', 1)[0]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path/'records').write_text('P|app|1|misc/app|FreeBSD:15:*|1\nP|lib|2|devel/lib|FreeBSD:15:amd64|0\n')
+            for installed, message in [
+                # pkg keeps an installed dependency the new package does not need replaced.
+                ('app|1|misc/app|FreeBSD:15:*|0\nlib|1|devel/lib|FreeBSD:15:amd64|1\n', None),
+                ('app|1|misc/app|FreeBSD:15:*|0\nlib|2|other/lib|FreeBSD:15:amd64|1\n',
+                 'Installed origin/ABI differs from the audited package: lib'),
+                ('app|1|misc/app|FreeBSD:15:amd64|0\nlib|2|devel/lib|FreeBSD:15:amd64|1\n',
+                 'Installed origin/ABI differs from the audited package: app'),
+                ('app|1|misc/app|FreeBSD:15:*|0\n', 'Missing transaction package: lib'),
+            ]:
+                with self.subTest(installed=installed):
+                    result = subprocess.run(['sh','-c', 'set -eu\ntemp=$TEST_ROOT; receipt=$TEST_ROOT\n'
+                        'pkgtool() { printf "%s" "$TEST_INSTALLED"; }\n' + check], capture_output=True, text=True,
+                        env={**os.environ,'TEST_ROOT':directory,'TEST_INSTALLED':installed})
+                    self.assertEqual(result.returncode == 0, message is None, result.stderr)
+                    if message:
+                        self.assertIn(message, result.stderr)
 
     def test_update_checks_pending_versions_and_preserves_dependency_flags(self):
         source = (ROOT / 'scripts/packages.sh').read_text()
@@ -386,6 +440,120 @@ pkgtool() { printf '%s|%s\n' "$TEST_ID" "$TEST_AUTO"; }
                          'TEST_AUTO':str(automatic),'TEST_ID':identity})
                 self.assertEqual(result.returncode == 0, okay, result.stderr)
                 self.assertEqual((path/'protected-build').read_text(), 'gmake\n')
+
+    def test_prepare_replaces_only_an_unedited_ports_tree_from_an_earlier_recipe(self):
+        # The script runs unchanged with modeled tools. FreeBSD's NetBSD mtree exits 2
+        # for changed content but only reports missing and extra files.
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            repo, tools = base/'repo', base/'bin'
+            for path in (repo/'scripts', repo/'src/ports', tools):
+                path.mkdir(parents=True)
+            source = (ROOT/'scripts/ports-variants.sh').read_text()
+            native = 'PATH=/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin:/usr/local/sbin\n'
+            self.assertIn(native, source)
+            (repo/'scripts/ports-variants.sh').write_text(source.replace(native, f'PATH={tools}:/bin:/usr/bin\n'))
+            (repo/'ports.lock').write_text('92ed857ab5f20e13114a4c01193751e7f0866a36\n')
+            (repo/'scripts/fetch-source.sh').write_text(
+                'mkdir -p "$2/devel/app"\nprintf "PORTNAME=app\\n" >"$2/devel/app/Makefile"\n'
+                'printf x >>"$(dirname "$0")/../fetches"\n')
+            (repo/'scripts/recipe-hash.sh').write_text('cat "$(dirname "$0")/../recipe"\n')
+            (tools/'uname').write_text('#!/bin/sh\necho FreeBSD\n')
+            (tools/'mtree').write_text(f'#!{sys.executable}\n' + r'''
+import hashlib, os, sys
+args = sys.argv[1:]
+root = args[args.index('-p') + 1]
+def walk():
+    found = {}
+    for directory, dirs, files in os.walk(root):
+        for name in dirs + files:
+            path = os.path.join(directory, name)
+            found[os.path.relpath(path, root)] = 'dir' if os.path.isdir(path) else \
+                hashlib.sha256(open(path, 'rb').read()).hexdigest()
+    return found
+if '-c' in args:
+    print('#\t   tree: ' + root)
+    for name, value in sorted(walk().items()): print(name + '\t' + value)
+    sys.exit()
+spec = dict(line.rstrip('\n').split('\t') for line in open(args[args.index('-f') + 1]) if line[0] != '#')
+found, status = walk(), 0
+for name, value in spec.items():
+    if name not in found: print(name + ' missing')
+    elif found[name] != value: print(name + ': sha256digest changed'); status = 2
+for name in sorted(found.keys() - spec.keys()): print('extra: ' + name)
+sys.exit(status)
+''')
+            for tool in ('uname', 'mtree'):
+                (tools/tool).chmod(0o755)
+            build, ports = repo/'.build', repo/'.build/ports'
+            makefile, cookie = ports/'devel/app/Makefile', build/'ports-work/app/.build_done.app'
+            extra, moved = ports/'devel/app/files/patch-local', base/'Makefile'
+
+            def recipe(name, option):
+                (repo/'recipe').write_text(name + '\n')
+                (repo/'src/ports/app.patch').write_text('--- a/devel/app/Makefile\n+++ b/devel/app/Makefile\n'
+                                                        f'@@ -1 +1,2 @@\n PORTNAME=app\n+OPTIONS_UNSET={option}\n')
+
+            def run(*args):
+                result = subprocess.run(['sh', str(repo/'scripts/ports-variants.sh'), *args],
+                                        capture_output=True, text=True)
+                self.assertEqual([p.name for p in build.iterdir() if p.is_dir() and p.name.startswith('ports.')], [])
+                return result
+
+            recipe('one', 'GNU')
+            result = run('prepare')
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(makefile.read_text(), 'PORTNAME=app\nOPTIONS_UNSET=GNU\n')
+            cookie.parent.mkdir(parents=True)
+            cookie.touch()
+            # A retry under the same recipe keeps the tree and its build work.
+            self.assertEqual(run('prepare').returncode, 0)
+            self.assertEqual((repo/'fetches').read_text(), 'x')
+            self.assertTrue(cookie.exists())
+            edits = {
+                'extra: devel/app/files': (lambda: (extra.parent.mkdir(), extra.write_text('local\n')),
+                                           lambda: shutil.rmtree(extra.parent)),
+                'devel/app/Makefile missing': (lambda: makefile.rename(moved), lambda: moved.rename(makefile)),
+                'devel/app/Makefile: sha256digest changed': (
+                    lambda: makefile.write_text('PORTNAME=edited\n'),
+                    lambda: makefile.write_text('PORTNAME=app\nOPTIONS_UNSET=GNU\n')),
+            }
+            for report, (edit, undo) in edits.items():
+                edit()
+                for name, option in (('one', 'GNU'), ('two', 'X11')):
+                    with self.subTest(report=report, recipe=name):
+                        recipe(name, option)
+                        result = run('prepare')
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn(report, result.stdout)
+                        self.assertIn('has the edits listed above', result.stderr)
+                        self.assertTrue(ports.is_dir() and cookie.exists())
+                        self.assertEqual((build/'ports.recipe').read_text(), 'one\n')
+                undo()
+            self.assertEqual((repo/'fetches').read_text(), 'x')
+            # Builds never use a stale tree; prepare replaces it with its build work.
+            result = run('deps', 'app')
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('Recipe changed: prepare the ports tree again.', result.stderr)
+            result = run('prepare')
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn('replacing the unedited generated ports tree', result.stdout)
+            self.assertIn('Discarding build work', result.stdout)
+            self.assertEqual(makefile.read_text(), 'PORTNAME=app\nOPTIONS_UNSET=X11\n')
+            self.assertEqual((build/'ports.recipe').read_text(), 'two\n')
+            self.assertFalse((build/'ports-work').exists())
+            self.assertEqual((repo/'fetches').read_text(), 'xx')
+            # An interrupted replacement leaves receipts without a tree.
+            shutil.rmtree(ports)
+            self.assertEqual(run('prepare').returncode, 0)
+            self.assertEqual((repo/'fetches').read_text(), 'xxx')
+            # Without its receipt, a tree cannot be shown to be generated, so it stays.
+            (build/'ports.mtree').unlink()
+            recipe('three', 'NLS')
+            result = run('prepare')
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('Incomplete generated ports tree', result.stderr)
+            self.assertEqual(makefile.read_text(), 'PORTNAME=app\nOPTIONS_UNSET=X11\n')
 
 
 if __name__ == "__main__":

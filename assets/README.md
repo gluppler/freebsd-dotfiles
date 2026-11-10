@@ -1,16 +1,15 @@
 # Retained Nostromo assets
 
 Copied from the current OpenBSD project on 2026-11-01, preserving the default
-hybrid orb, compact terminal forms, fonts/licenses and all
-retained wallpaper variants/resolutions. This is a standalone asset collection;
-runtime installation must not reach into the older checkout.
+hybrid orb, compact terminal forms and fonts/licenses. This is a standalone
+asset collection; runtime installation must not reach into the older checkout.
 
 `fonts/` contains Michroma and Azeret Mono with their OFL licenses and SHA256
-record. `wallpapers/` retains the PNG exports; `wallpaper-sources/` records
-their attribution. SVG originals are archived
-outside this repository. The installed logo and login textures use PNG too.
-XBM/XPM versions are
-historical derivatives, not an instruction to install an X server.
+record. `wallpapers/` holds only the default orb wallpaper, exported at 1080p,
+1440p, 4K and 8K. The other wallpaper variants, all SVG originals and the
+variants' attribution are archived outside this repository. The installed logo
+and login textures use PNG too. XBM/XPM versions are historical derivatives,
+not an instruction to install an X server.
 
 `references/space-dots-original.frag` is the inspected MIT-licensed reference
 shader with its original copyright header. It is not a working dwl effect.

@@ -139,5 +139,65 @@ scbus4 on nvme0 bus 0:
                 self.assertNotEqual(subprocess.run(args, input=bad, text=True, capture_output=True).returncode, 0)
 
 
+class Wallpaper(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.work = Path(self.temp.name)
+        self.directory = self.work / "data/nostromo/assets/wallpapers"
+        self.directory.mkdir(parents=True)
+        for prefix in ("nostromo", "nostromo-ship"):
+            for size in ("1920x1080", "2560x1440", "3840x2160", "7680x4320"):
+                (self.directory / f"{prefix}-{size}.png").touch()
+        self.state = self.work / "state/nostromo"
+        tools = self.work / "bin"
+        tools.mkdir()
+        output = [{"name": "eDP-1", "enabled": True, "modes": [{"width": 1920, "height": 1080, "current": True}]}]
+        (tools / "wlr-randr").write_text(f"#!/bin/sh\nprintf '%s\\n' '{json.dumps(output)}'\n")
+        # swaybg records its arguments, then stays alive like a running background.
+        # It releases the captured output so each run returns without waiting for it.
+        (tools / "swaybg").write_text('#!/bin/sh\nprintf "%s\\n" "$@" >"$TEST_ROOT/swaybg"\n'
+                                      'echo $$ >>"$TEST_ROOT/pids"\nexec sleep 30 >/dev/null 2>&1\n')
+        for tool in tools.iterdir():
+            tool.chmod(0o755)
+        self.addCleanup(self.stop_backgrounds)
+        self.env = {**os.environ, "PATH": str(tools) + ":/opt/homebrew/bin:/usr/bin:/bin",
+                    "TEST_ROOT": str(self.work), "XDG_DATA_HOME": str(self.work / "data"),
+                    "XDG_STATE_HOME": str(self.work / "state")}
+
+    def stop_backgrounds(self):
+        pids = self.work / "pids"
+        for pid in pids.read_text().split() if pids.exists() else []:
+            try:
+                os.kill(int(pid), 15)
+            except ProcessLookupError:
+                pass
+
+    def wallpaper(self, *args):
+        return subprocess.run(["sh", str(ROOT / "home/.local/bin/nostromo-wallpaper"), *args],
+                              env=self.env, text=True, capture_output=True)
+
+    def test_saved_selection_without_exports_falls_back_to_the_default(self):
+        result = self.wallpaper("ship")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(str(self.directory / "nostromo-ship-1920x1080.png"), (self.work / "swaybg").read_text())
+        self.assertEqual((self.state / "wallpaper").read_text(), "ship\n")
+        # Archiving a variant leaves the saved selection without exports.
+        for path in self.directory.glob("nostromo-ship-*"):
+            path.unlink()
+        result = self.wallpaper()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Saved wallpaper is unavailable; using the default.", result.stderr)
+        arguments = (self.work / "swaybg").read_text().splitlines()
+        self.assertEqual(arguments.count(str(self.directory / "nostromo-1920x1080.png")), 2)
+        self.assertEqual((self.state / "wallpaper").read_text(), "default\n")
+        # An explicit request still names only an available wallpaper.
+        result = self.wallpaper("ship")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Unknown wallpaper selection.", result.stderr)
+        self.assertEqual((self.state / "wallpaper").read_text(), "default\n")
+        self.assertEqual(sorted(path.name for path in self.state.iterdir()), ["wallpaper", "wallpaper.pid"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

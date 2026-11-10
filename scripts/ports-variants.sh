@@ -11,37 +11,64 @@ case $revision in *[!0-9a-f]* | '') exit 1 ;; esac
 ports=$repo/.build/ports
 receipt=$repo/.build/ports.mtree
 recipe_file=$repo/.build/ports.recipe
+work=$repo/.build/ports-work
 action=${1:-prepare}
 case $action in prepare) [ "$#" = 1 ] || exit 2 ;; deps | build) [ "$#" = 2 ] || exit 2 ;; *) exit 2 ;; esac
+recipe=$(sh "$repo/scripts/recipe-hash.sh")
+# Native mtree exits 0 for missing and extra files, so any report is an edit.
+unedited() {
+    report=$(mtree -f "$receipt" -p "$ports") && [ -z "$report" ] && return
+    [ -z "$report" ] || printf '%s\n' "$report"
+    return 1
+}
 if [ "$action" = prepare ]; then
     mkdir -p "$repo/.build"
+    pending=$(mktemp -d "$repo/.build/ports.XXXXXXXX")
+    trap 'rm -rf "$pending"' 0
+    trap 'exit 130' INT
+    trap 'exit 143' HUP TERM
+    if [ -d "$ports" ] && [ ! -L "$ports" ] && [ -f "$recipe_file" ] && [ -f "$receipt" ] &&
+        [ "$(cat "$recipe_file")" != "$recipe" ]; then
+        # A tree that matches its receipt holds only generated files.
+        unedited || {
+            echo 'Recipe changed and .build/ports has the edits listed above: preserve them, then prepare again.' >&2
+            exit 1
+        }
+        echo 'Recipe changed: replacing the unedited generated ports tree.'
+        mv "$ports" "$pending/previous"
+    fi
     if [ ! -e "$ports" ]; then
-        pending=$(mktemp -d "$repo/.build/ports.XXXXXXXX")
-        trap 'rm -rf "$pending"' 0
-        trap 'exit 130' INT
-        trap 'exit 143' HUP TERM
+        # Port cookies would reuse objects built from an earlier tree's patches and options.
+        if [ -e "$work" ] || [ -L "$work" ]; then
+            echo 'Discarding build work from the previous ports tree.'
+            mv "$work" "$pending/previous-work"
+        fi
+        rm -rf "$pending/previous" "$pending/previous-work"
         sh "$repo/scripts/fetch-source.sh" ports "$pending/tree"
         for patchfile in "$repo"/src/ports/*.patch; do
             (cd "$pending/tree" && patch -s -F 0 -p1 <"$patchfile")
         done
         mtree -c -k type,link,sha256digest -p "$pending/tree" >"$pending/ports.mtree"
-        sh "$repo/scripts/recipe-hash.sh" >"$pending/ports.recipe"
-        mv "$pending/tree" "$ports"
+        printf '%s\n' "$recipe" >"$pending/ports.recipe"
         mv "$pending/ports.mtree" "$receipt"
         mv "$pending/ports.recipe" "$recipe_file"
+        # The tree moves last: an interrupted run leaves no tree, which prepare regenerates.
+        mv "$pending/tree" "$ports"
     fi
 fi
 [ -d "$ports" ] && [ ! -L "$ports" ] && [ -f "$recipe_file" ] && [ -f "$receipt" ] || {
     echo 'Incomplete generated ports tree: preserve it before preparing a fresh tree.' >&2
     exit 1
 }
-[ "$(cat "$recipe_file")" = "$(sh "$repo/scripts/recipe-hash.sh")" ] || {
-    echo 'Recipe changed: preserve the generated .build/ports tree, then prepare again.' >&2
+[ "$(cat "$recipe_file")" = "$recipe" ] || {
+    echo 'Recipe changed: prepare the ports tree again.' >&2
     exit 1
 }
 if [ "$action" = prepare ]; then
-    # Native mtree checks content, symlinks, missing and extra files; never resets edits.
-    mtree -f "$receipt" -p "$ports"
+    unedited || {
+        echo 'Generated .build/ports has the edits listed above: preserve them, then prepare again.' >&2
+        exit 1
+    }
     exit
 fi
 record=$(awk -F '|' -v name="$2" '$1==name {print;n++} END{exit n!=1}' "$repo/packages.local")
@@ -49,7 +76,6 @@ IFS='|' read -r name origin version <<EOF
 $record
 EOF
 case $origin in *[!a-zA-Z0-9_./-]* | */../* | ../* | /*) exit 1 ;; esac
-work=$repo/.build/ports-work
 dist=$repo/.build/ports-distfiles
 packages=$repo/.build/ports-packages
 mkdir -p "$work" "$dist" "$packages"

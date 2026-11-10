@@ -16,6 +16,32 @@ from urllib.parse import unquote, urlsplit
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+# FreeBSD's NetBSD mtree exits 2 for changed content but only reports missing and
+# extra files. Receipt checks must therefore treat any report as a change.
+NETBSD_MTREE = f'#!{sys.executable}\n' + r'''
+import hashlib, os, sys
+args = sys.argv[1:]
+root = args[args.index('-p') + 1]
+def walk():
+    found = {}
+    for directory, dirs, files in os.walk(root):
+        for name in dirs + files:
+            path = os.path.join(directory, name)
+            found[os.path.relpath(path, root)] = 'dir' if os.path.isdir(path) else \
+                hashlib.sha256(open(path, 'rb').read()).hexdigest()
+    return found
+if '-c' in args:
+    print('#\t   tree: ' + root)
+    for name, value in sorted(walk().items()): print(name + '\t' + value)
+    sys.exit()
+spec = dict(line.rstrip('\n').split('\t') for line in open(args[args.index('-f') + 1]) if line[0] != '#')
+found, status = walk(), 0
+for name, value in spec.items():
+    if name not in found: print(name + ' missing')
+    elif found[name] != value: print(name + ': sha256digest changed'); status = 2
+for name in sorted(found.keys() - spec.keys()): print('extra: ' + name)
+sys.exit(status)
+'''
 
 
 class Migration(unittest.TestCase):
@@ -223,6 +249,30 @@ class UserInstaller(unittest.TestCase):
         self.assertEqual(self.install("--apply").returncode, 0)
         self.assertEqual(len(list(self.home.glob(".local/state/freebsd-dotfiles/backups/*/.profile"))), 1)
 
+    def test_complete_home_manifest_lands_at_each_declared_destination(self):
+        rows = [line.split('|') for line in (ROOT/'links.txt').read_text().splitlines()
+                if line and not line.startswith('#')]
+        for source, _destination in rows:
+            staged = self.repo/source
+            staged.parent.mkdir(parents=True,exist_ok=True)
+            if source.startswith('.build/'):
+                # Build products are placeholders here; native ELF checks are
+                # performed separately before the installer links them.
+                staged.write_text('build-product fixture\n')
+            elif (ROOT/source).is_dir():
+                shutil.copytree(ROOT/source,staged,dirs_exist_ok=True)
+            else:
+                shutil.copy2(ROOT/source,staged)
+        shutil.copy2(ROOT/'links.txt',self.repo/'links.txt')
+        for _ in range(2):
+            result = self.install('--apply')
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            for source,destination in rows:
+                target = self.home/destination
+                self.assertTrue(target.is_symlink(),destination)
+                self.assertEqual(os.readlink(target),str(self.repo.resolve()/source))
+                self.assertEqual(target.resolve(),(self.repo/source).resolve())
+
     def test_preflight_stops_before_any_writes(self):
         (self.repo / "links.txt").write_text("new|.profile\nmissing|.config/fail\n")
         self.assertNotEqual(self.install("--apply").returncode, 0)
@@ -242,6 +292,140 @@ class UserInstaller(unittest.TestCase):
         self.assertEqual(result.returncode, 23, result.stderr)
         self.assertEqual((self.home / ".profile").read_text(), "keep my original")
         self.assertFalse((self.home / ".profile").is_symlink())
+
+    def test_links_that_leave_the_manifest_are_removed_only_while_unchanged(self):
+        record = self.home / ".local/state/freebsd-dotfiles/links"
+        (self.repo / "links.txt").write_text("new|.profile\nnew|.config/old\nnew|.config/kept\n")
+        self.assertEqual(self.install("--apply").returncode, 0)
+        self.assertEqual(record.read_text(), "new|.profile\nnew|.config/old\nnew|.config/kept\n")
+        # A link the user replaced is no longer the project's file.
+        (self.home / ".config/kept").unlink()
+        (self.home / ".config/kept").write_text("mine")
+        (self.repo / "links.txt").write_text("new|.profile\n")
+        preview = self.install()
+        self.assertIn("Remove former link: " + str(self.home.resolve() / ".config/old"), preview.stdout)
+        self.assertTrue((self.home / ".config/old").is_symlink())
+        result = self.install("--apply")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.home / ".config/old").is_symlink())
+        self.assertEqual((self.home / ".config/kept").read_text(), "mine")
+        self.assertIn("Retained a changed former link", result.stderr)
+        self.assertTrue((self.home / ".profile").is_symlink())
+        self.assertEqual(record.read_text(), "new|.profile\n")
+
+    def test_failed_run_restores_removed_former_links(self):
+        record = self.home / ".local/state/freebsd-dotfiles/links"
+        (self.repo / "links.txt").write_text("new|.profile\nnew|.config/old\n")
+        self.assertEqual(self.install("--apply").returncode, 0)
+        tools = self.base / "tools"
+        tools.mkdir()
+        (tools / "ln").write_text('#!/bin/sh\ncase "$*" in *.config/new*) exit 23 ;; esac\nexec /bin/ln "$@"\n')
+        (tools / "ln").chmod(0o755)
+        (self.repo / "links.txt").write_text("new|.profile\nnew|.config/new\n")
+        result = self.install("--apply", PATH=str(tools) + ":/usr/bin:/bin")
+        self.assertEqual(result.returncode, 23, result.stderr)
+        self.assertEqual(os.readlink(self.home / ".config/old"), str(self.repo.resolve() / "new"))
+        self.assertFalse((self.home / ".config/new").is_symlink())
+        self.assertEqual(record.read_text(), "new|.profile\nnew|.config/old\n")
+        self.assertEqual(sorted(p.name for p in record.parent.iterdir()), ["backups", "links"])
+
+    def test_a_former_directory_link_can_become_a_directory_of_links(self):
+        (self.repo / "tree").mkdir()
+        (self.repo / "tree/rc").write_text("rc")
+        (self.repo / "links.txt").write_text("tree|.config/tool\n")
+        self.assertEqual(self.install("--apply").returncode, 0)
+        (self.repo / "links.txt").write_text("tree/rc|.config/tool/rc\n")
+        result = self.install("--apply")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse((self.home / ".config/tool").is_symlink())
+        self.assertEqual(os.readlink(self.home / ".config/tool/rc"), str(self.repo.resolve() / "tree/rc"))
+        self.assertEqual((self.repo / "tree/rc").read_text(), "rc")
+
+    def test_a_former_link_changed_after_preflight_is_never_linked_through(self):
+        (self.repo / "tree").mkdir()
+        (self.repo / "tree/rc").write_text("rc")
+        (self.repo / "links.txt").write_text("tree|.config/tool\n")
+        self.assertEqual(self.install("--apply").returncode, 0)
+        # The second lookup reports another target, as if the link changed after preflight.
+        tools, seen = self.base / "tools", self.base / "seen"
+        tools.mkdir()
+        (tools / "readlink").write_text(
+            "#!/bin/sh\n"
+            f'case $1 in */.config/tool) [ -e "{seen}" ] && {{ echo /elsewhere; exit; }}; : >"{seen}" ;; esac\n'
+            'exec /usr/bin/readlink "$@"\n')
+        (tools / "readlink").chmod(0o755)
+        (self.repo / "links.txt").write_text("tree/rc|.config/tool/rc\n")
+        result = self.install("--apply", PATH=str(tools) + ":/usr/bin:/bin")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("Former link changed during this run", result.stderr)
+        self.assertTrue((self.home / ".config/tool").is_symlink())
+        self.assertFalse((self.repo / "tree/rc").is_symlink())
+        self.assertEqual((self.repo / "tree/rc").read_text(), "rc")
+
+
+class EditorPlugins(unittest.TestCase):
+    def test_new_pins_replace_only_unedited_plugins(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            repo, tools = base / "repo", base / "bin"
+            for path in (repo / "scripts", tools):
+                path.mkdir(parents=True)
+            shutil.copy(ROOT / "scripts/stage-licenses.sh", repo / "scripts")
+            source = (ROOT / "scripts/editor-plugins.sh").read_text()
+            pinned = "197cb50834c642f84b4cf99fe724932c50e6d9c92faec7ad89aa25e91df4d481"
+            self.assertIn(pinned, source)
+            tools.joinpath("uname").write_text("#!/bin/sh\necho FreeBSD\n")
+            tools.joinpath("fetch").write_text(f'#!/bin/sh\ncp "{base}/dkjson" "$2"\n')
+            tools.joinpath("sha256").write_text('#!/bin/sh\nshasum -a 256 "$2" | cut -d " " -f 1\n')
+            tools.joinpath("mtree").write_text(NETBSD_MTREE)
+            for tool in tools.iterdir():
+                tool.chmod(0o755)
+            editor = repo / ".build/editor"
+            plugin, library = editor / "vis-lspc/init.lua", editor / "dkjson.lua"
+
+            def pin(version, served=None):
+                # Each version stands in for a new sources.lock or dkjson pin.
+                (repo / "scripts/fetch-source.sh").write_text(
+                    f'mkdir -p "$2"\nprintf "MIT\\n" >"$2/LICENSE"\nprintf -- "-- {version}\\n" >"$2/init.lua"\n')
+                (base / "dkjson").write_text(served or f"-- dkjson {version}\n")
+                digest = hashlib.sha256(f"-- dkjson {version}\n".encode()).hexdigest()
+                (repo / "scripts/editor-plugins.sh").write_text(source.replace(pinned, digest))
+                result = subprocess.run(["sh", str(repo / "scripts/editor-plugins.sh")], capture_output=True,
+                                        text=True, env={**os.environ, "PATH": f"{tools}:/usr/bin:/bin"})
+                self.assertEqual(list((repo / ".build/work").iterdir()), [])
+                return result
+
+            for version in ("1", "1"):
+                result = pin(version)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual((plugin.read_text(), library.read_text()), ("-- 1\n", "-- dkjson 1\n"))
+            result = pin("2")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("Replacing the unedited vis-lspc plugin", result.stdout)
+            self.assertIn("Replacing the unedited dkjson.lua", result.stdout)
+            self.assertEqual((plugin.read_text(), library.read_text()), ("-- 2\n", "-- dkjson 2\n"))
+            # Changed and added files are both edits, under the same or a new pin.
+            for edit, report in ((lambda: plugin.write_text("-- mine\n"), "init.lua: sha256digest changed"),
+                                 (lambda: (editor / "vis-lspc/extra.lua").write_text("x"), "extra: extra.lua")):
+                edit()
+                for version in ("2", "3"):
+                    result = pin(version)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(report, result.stdout)
+                    self.assertIn("Staged vis-lspc has local changes", result.stderr)
+                self.assertNotEqual(plugin.read_text(), "-- 3\n")
+                plugin.write_text("-- 2\n")
+                (editor / "vis-lspc/extra.lua").unlink(missing_ok=True)
+            library.write_text("-- my dkjson\n")
+            result = pin("3")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Staged dkjson.lua has local changes", result.stderr)
+            self.assertEqual((plugin.read_text(), library.read_text()), ("-- 3\n", "-- my dkjson\n"))
+            # A download that does not match its pin stops before anything staged changes.
+            result = pin("4", served="-- dkjson tampered\n")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Checksum mismatch: dkjson", result.stderr)
+            self.assertEqual((plugin.read_text(), library.read_text()), ("-- 3\n", "-- my dkjson\n"))
 
 
 if __name__ == "__main__":

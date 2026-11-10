@@ -16,7 +16,9 @@ disable movement. Small panes keep the menu without an animation process.
 The configuration includes project/recent/open-file pickers, working-file
 bookmarks, saved filename/cursor sessions, lazygit, nnn, fuzzy completion and LSP
 navigation, hover, rename, symbols and diagnostics. Plugins are pinned vis-lspc
-and dkjson; language tool startup does not fetch arbitrary plugins.
+and dkjson; language tool startup does not fetch arbitrary plugins. A new pin
+replaces a staged copy that still matches its receipt; local edits stop the
+stage instead.
 
 Build/test/lint tasks save modified files first and stop if saving fails. The
 configuration supports format, selected/repeated tests and an LLDB entry point.

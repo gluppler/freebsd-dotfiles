@@ -96,7 +96,7 @@ case $action in menu | --check | llvm | freebsd | versions) [ "$#" = 0 ] || exit
 if [ "$action" = menu ]; then
     choice=$(printf '%s\n' 'C FUNCTIONS' 'C LANGUAGE' 'C++ LIBRARY' 'C++ LANGUAGE' 'RUST BOOK' 'RUST API' \
         'GO PACKAGES' 'GO LANGUAGE' 'GO EXAMPLES' 'PYTHON LIBRARY' 'PYTHON BOOK' 'EXAMPLE TEMPLATES' \
-        'SHELL AND TOOLS' 'LLVM ASSEMBLER' 'KICAD MANUALS' 'KICAD CLI' 'FREEBSD HANDBOOK' 'PROJECT GUIDES' 'REFERENCE VERSIONS' |
+        'SHELL AND TOOLS' 'LLVM ASSEMBLER' 'FREEBSD HANDBOOK' 'PROJECT GUIDES' 'REFERENCE VERSIONS' |
         choose DOCS) || exit 0
     case $choice in
     'C FUNCTIONS') set -- c "$(ask 'C function, e.g. malloc')" ;;
@@ -126,15 +126,10 @@ if [ "$action" = menu ]; then
         ;;
     'LLVM ASSEMBLER') set -- llvm ;;
     'FREEBSD HANDBOOK') set -- freebsd ;;
-    'KICAD MANUALS')
-        topic=$(printf '%s\n' kicad getting_started_in_kicad eeschema pcbnew gerbview pcb_calculator pl_editor | choose KICAD) || exit 0
-        set -- kicad "$topic"
-        ;;
-    'KICAD CLI') set -- kicad-cli ;;
     'REFERENCE VERSIONS') set -- versions ;;
     'PROJECT GUIDES')
         topic=$(printf '%s\n' OFFLINE-DOCS KEYBINDINGS DEVELOPMENT EMBEDDED PACKAGES \
-            BASE-SETUP INSTALL FIRST-RUN HARDWARE AUTHENTICATION WIREGUARD WIFI BLUETOOTH PASSWORDS EDA SYSTEM-INFO | choose GUIDE) || exit 0
+            BASE-SETUP INSTALL FIRST-RUN HARDWARE AUTHENTICATION WIREGUARD WIFI BLUETOOTH PASSWORDS SYSTEM-INFO | choose GUIDE) || exit 0
         set -- guide "$topic"
         ;;
     *) exit 0 ;;
@@ -143,7 +138,7 @@ if [ "$action" = menu ]; then
     if [ "$gui" = yes ]; then
         (
             case $1 in
-            rust | freebsd | language | go-language | python-book | kicad) "$0" "$@" ;;
+            rust | freebsd | language | go-language | python-book) "$0" "$@" ;;
             *) foot -e "$0" --hold "$@" ;;
             esac || notify-send 'DOCS' 'Could not open the reference. Run nostromo-docs in a terminal for details.'
         ) </dev/null >/dev/null 2>&1 &
@@ -172,7 +167,6 @@ if [ "$action" = --check ]; then
     test -s "$cppreference/en/cpp.html"
     test -s "$(go env GOROOT)/doc/go_spec.html"
     package_file en-freebsd-doc /en/books/handbook/index.html >/dev/null
-    package_file kicad-doc /help/en/kicad.html >/dev/null
     for topic in c cpp rust go python shell assembly vis zephyr; do test -s "$reference/$topic.md"; done
     GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off go doc fmt.Printf >/dev/null
     printf 'Offline manuals, examples and language references are available.\n'
@@ -216,15 +210,6 @@ python-book)
     book "$(package_file python-doc-html "/$topic/index.html")"
     ;;
 versions) page versions ;;
-kicad)
-    topic=${topic:-kicad}
-    case $topic in kicad | getting_started_in_kicad | eeschema | pcbnew | gerbview | pcb_calculator | pl_editor) ;; *) exit 2 ;; esac
-    book "$(package_file kicad-doc "/help/en/$topic.html")"
-    ;;
-kicad-cli)
-    [ -z "$topic" ] || exit 2
-    markdown "${XDG_DATA_HOME:-$HOME/.local/share}/nostromo/kicad-cli.md"
-    ;;
 go | go-examples)
     [ -n "$topic" ] || exit 2
     export GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off
@@ -256,7 +241,7 @@ freebsd) book "$(package_file en-freebsd-doc /en/books/handbook/index.html)" ;;
 guide)
     topic=${topic:-OFFLINE-DOCS}
     case $topic in OFFLINE-DOCS | KEYBINDINGS | DEVELOPMENT | EMBEDDED | PACKAGES | \
-        BASE-SETUP | INSTALL | FIRST-RUN | HARDWARE | AUTHENTICATION | WIREGUARD | WIFI | BLUETOOTH | PASSWORDS | EDA | SYSTEM-INFO) ;; *) exit 2 ;; esac
+        BASE-SETUP | INSTALL | FIRST-RUN | HARDWARE | AUTHENTICATION | WIREGUARD | WIFI | BLUETOOTH | PASSWORDS | SYSTEM-INFO) ;; *) exit 2 ;; esac
     markdown "${reference%/reference}/$topic.md"
     ;;
 *)

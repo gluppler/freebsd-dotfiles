@@ -1,7 +1,7 @@
 # Packages, dependency policy and maintenance
 
 The executable manifests are `packages.txt` (desktop/development roots),
-`packages.local` (21 ordered native variants), and `packages.allowed` (reviewed
+`packages.local` (15 ordered native variants), and `packages.allowed` (reviewed
 names, origins, version constraints and roles). The installer resolves the actual
 FreeBSD quarterly dependency graph and checks every archive before installation.
 These rules are implemented; a complete native build/install has not run on the
@@ -18,7 +18,6 @@ does not by itself make a project GNU. The exact added GNU exceptions are:
 | Runtime | gettext-runtime 1.0_1 | Translation ABI used by required packaged clients/libraries; removing it requires rebuilding their consumers |
 | Runtime | libiconv 1.18_1 | Required encoding ABI in the native packaged desktop closure; base iconv is not a drop-in package ABI replacement |
 | Runtime | gmp 6.3.0 | Packaged ShellCheck/Haskell runtime dependency; LLVM does not replace the Haskell integer runtime |
-| Runtime | libgcrypt 1.12.4; libgpg-error 1.61 | libsecret encrypted credential backend required by KiCad/wxWidgets; disabling encryption is not a replacement |
 | Build | gmake 4.4.1 | Required upstream build recipes in the native ports dependency chain |
 | Build | gettext-tools 1.0; libtextstyle 1.0; libunistring 1.4.2 | Required translation/build-tool chain; these do not authorize unrelated GNU runtime libraries |
 | Build | gperf 3.3 | Zephyr kernel-object table generation |
@@ -34,25 +33,20 @@ build scripts are GNU-free. No Bash/GCC/GnuPG toolchain is added by default.
 `ports.lock` pins the FreeBSD ports archive to commit
 `92ed857ab5f20e13114a4c01193751e7f0866a36`, with SHA256 verification. The variants
 are Python 3.12, CMake, libxml2, libxslt, libpsl, curl, CUPS, Imath, FFmpeg,
-wlroots 0.20, Hunspell, fcitx5, PipeWire, PyQt6, Python ECDSA, ngspice shared
-library, wxGTK, OpenCASCADE, Poppler, Poppler GLib and KiCad.
+wlroots 0.20, Hunspell, fcitx5, PipeWire, PyQt6 and Python ECDSA.
 `system/ports.conf` and `src/ports/` are the reviewed options/patches: libedit in
 place of Readline where supported, ICU/OpenSSL where appropriate, reduced Qt
 bindings and disabled optional GNU-heavy or X11 features. ECDSA uses its native
-Python implementation without optional GMPY/GMPY2. The [KiCad workflow](EDA.md)
-omits optional wxPython/WebKit, Draw/VTK/Qt examples and PDF-signature engines.
-The ngspice shared build uses the release configure script, with no Readline or
-X11 frontend. Its old-release download path is corrected without changing the
-pinned checksum. Poppler uses its supplied generated lookup tables, avoiding
-GNU sed regeneration. OpenCASCADE packages the files its selected CMake modules
-actually install; the normal stage/QA and dependency gates still apply.
+Python implementation without optional GMPY/GMPY2.
 
 Builds run as the desktop user, using the pinned ports framework, native Clang,
 ordinary-user staging and `check-plist`. Dependency lists pass through the same
 root package gate. A recipe hash covers the manifests/options/patches and is
-attached to each local archive. Local variants are locked after installation;
-a normal update cannot silently replace them with stock binaries. Rebuild through
-the PORTS menu, or rerun the installer after a reviewed recipe change.
+attached to each local archive. When the hash changes, preparation replaces an
+unedited generated ports tree and its build work; an edited tree stops for review.
+Local variants are locked after installation; a normal update cannot silently
+replace them with stock binaries. Rebuild through the PORTS menu, or rerun the
+installer after a reviewed recipe change.
 
 The initial manual Git install can bring stock variants and automatic GNU
 libraries. Bootstrap conversion accepts only an unlocked stock package with the
@@ -69,9 +63,13 @@ with kernel-module packages selected from `kmods_quarterly_${VERSION_MINOR}`
 (`kmods_quarterly_1` on FreeBSD 15.1),
 checks each package identity/ABI/dependency edge and rejects unknown origins,
 missing receipts or unreviewed GNU versions. It copies the checked archives into
-a private locally signed transaction repository, previews the operation, then
-installs with `--no-remove`. It records the exact graph and archive hashes under
-`/var/db/nostromo/packages/`. Existing system repository files are preserved.
+a private locally signed transaction repository and records pkg's dry-run plan.
+A plan that removes any package, or that the helper does not recognize, stops
+the transaction. pkg 2.8.4 has no option that forbids removal, so the reviewed
+command receives exactly one approval: a conflict that makes pkg propose a second
+solution reads end-of-input and stops instead of being approved again. It records
+the exact graph, plans and archive hashes under `/var/db/nostromo/packages/`.
+Existing system repository files are preserved.
 The private upstream names do not depend on the system repositories being named
 `FreeBSD`, `FreeBSD-ports` or `FreeBSD-ports-kmods`. Disabled pkgbase repositories
 are not enabled by an application transaction. The kmods URL follows the
@@ -83,6 +81,16 @@ fully empty dependency placeholder is removed. Declared dependency counts,
 nonempty identities, origins, ABI, versions and local-build receipts still have
 to pass the unchanged audit. Query failures stop the transaction before package
 installation. See [pkg's query implementation](https://github.com/freebsd/pkg/blob/2.8.4/src/query.c).
+
+Architecture-independent packages, such as fonts, headers and Python modules,
+carry pkg's `FreeBSD:15:*` ABI; 128 of the 507 reviewed repository packages do in
+the cached 2026Q4 catalogue. The audit accepts that exact FreeBSD 15 wildcard, as
+pkg does, and still rejects any other release, architecture or broader pattern.
+After installation, every audited package must be present with its reviewed
+origin and ABI. That check does not
+require the transaction's version: pkg leaves an older installed dependency in
+place when a new package does not need it replaced. UPDATE reports any version
+still behind the audited repository.
 
 The menu's **UPDATE** refreshes the catalogue, audits the installed application
 set and its dependencies, then uses `pkg upgrade` against that private repository.
@@ -113,8 +121,12 @@ installed software. `pkg upgrade` performs that upgrade. They are different
 operations, rather than two passes of the same update.
 
 The reviewed pkg **2.8.4** source handles its own upgrade first when necessary,
-then restarts the original command with the newly installed binary. The wrapper
-keeps the private signed repository available throughout that restart. Afterward,
+then restarts the original command with the newly installed binary, which solves
+the remaining plan again. Because each plan receives one approval, the wrapper
+upgrades pkg as its own reviewed transaction whenever the transaction repository
+contains pkg. The restarted command then has nothing left to approve, and the
+remaining plan is reviewed and approved separately. The wrapper keeps the private
+signed repository available throughout. Afterward,
 it checks dependency health without installing repairs, checks installed package
 identities and reports versions still behind the audited repository. It also
 verifies that existing automatic flags were preserved. A lock, failed script or

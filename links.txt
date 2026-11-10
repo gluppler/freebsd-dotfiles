@@ -138,15 +138,11 @@ home/.local/share/nostromo/network-menu.sh|.local/share/nostromo/network-menu.sh
 home/.local/bin/nostromo-docs|.local/bin/nostromo-docs
 docs/reference|.local/share/nostromo/reference
 .build/docs/cppreference-20250209|.local/share/nostromo/cppreference
-home/.local/bin/nostromo-eda|.local/bin/nostromo-eda
-.build/eda/ibom-d1eb5b79a52a2ddc1ce270b63920346463c19b05|.local/share/nostromo/ibom
-.build/docs/kicad-cli.md|.local/share/nostromo/kicad-cli.md
 docs/OFFLINE-DOCS.md|.local/share/nostromo/OFFLINE-DOCS.md
 docs/BASE-SETUP.md|.local/share/nostromo/BASE-SETUP.md
 docs/INSTALL.md|.local/share/nostromo/INSTALL.md
 docs/DEVELOPMENT.md|.local/share/nostromo/DEVELOPMENT.md
 docs/PACKAGES.md|.local/share/nostromo/PACKAGES.md
 docs/FIRST-RUN.md|.local/share/nostromo/FIRST-RUN.md
-docs/EDA.md|.local/share/nostromo/EDA.md
 docs/SYSTEM-INFO.md|.local/share/nostromo/SYSTEM-INFO.md
 .build/prefix/share/man|.local/share/man

@@ -11,4 +11,3 @@ system/rc.d/* text eol=lf
 *.gif binary
 *.ttf binary
 docs/research/** -text
-assets/wallpaper-sources/REFERENCE-NOTICE.txt -text

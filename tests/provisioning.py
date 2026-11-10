@@ -1,6 +1,7 @@
 """Selective merges and file rollback, in disposable files without root access."""
 from pathlib import Path
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -10,6 +11,51 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class Provisioning(unittest.TestCase):
+    def test_system_helpers_fonts_login_and_loader_assets_reach_declared_paths(self):
+        source = (ROOT/'scripts/configure-system.sh').read_text()
+        helpers = 'sf_directory 755 /usr/local/etc/nostromo\n' + source.split(
+            'sf_directory 755 /usr/local/etc/nostromo\n',1)[1].split('# This group grants',1)[0]
+        assets = 'sf_put "$repo/system/nostromo-ac.conf"' + source.split(
+            'sf_put "$repo/system/nostromo-ac.conf"',1)[1].split('# Keep the package',1)[0]
+        block = (helpers+assets).replace('"$repo/.build/prefix/bin/wg"','"$stage/wg-fixture"')
+        block = block.replace('/usr/local','$stage/usr/local').replace('/boot/','$stage/boot/')
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory).resolve()
+            (path/'work').mkdir()
+            (path/'wg-fixture').write_text('compiled binary placeholder\n')
+            script = 'set -eu\nrepo='+shlex.quote(str(ROOT))+'\nstage='+shlex.quote(str(path))+'\n'
+            script += '''work=$stage/work
+sf_safe() { case $1 in "$stage"/*) return 0 ;; *) return 1 ;; esac; }
+sf_directory() { sf_safe "$2"; mkdir -p "$2"; chmod "$1" "$2"; }
+sf_put() {
+    sf_safe "$2"
+    mkdir -p "${2%/*}"
+    cp "$1" "$2"
+    chmod "$3" "$2"
+    printf '%s|%s|%s\\n' "$1" "$2" "$3" >> "$stage/copied"
+}
+''' + block
+            result = subprocess.run(['sh','-c',script],capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            for row in (path/'copied').read_text().splitlines():
+                original,target,mode = row.split('|')
+                self.assertEqual(Path(target).read_bytes(),Path(original).read_bytes(),target)
+                self.assertEqual(Path(target).stat().st_mode & 0o777,int(mode,8),target)
+            expected = [
+                *('usr/local/libexec/nostromo-'+name for name in
+                  ('session','sddm-session','performance','wifi','wireguard','bluetooth','maintenance','device','suspend','lock-session','wg')),
+                *('usr/local/etc/rc.d/'+name for name in ('nostromo_mdo','nostromo_performance','nostromo_wireguard')),
+                *('usr/local/share/nostromo/'+name+'.awk' for name in ('merge-mdo','merge-block','ssid-hex')),
+                'usr/local/etc/devd/nostromo-ac.conf','usr/local/etc/devd/nostromo-suspend.conf',
+                'usr/local/etc/pam.d/gtklock','usr/local/etc/sddm.conf',
+                'usr/local/share/nostromo/nostromo-orb.png','boot/images/nostromo-orb.png',
+                'boot/lua/gfx-nostromo.lua','usr/local/share/nostromo/wayland-sessions/nostromo.desktop',
+                *('usr/local/share/fonts/nostromo/'+font.name for font in (ROOT/'assets/fonts').iterdir() if font.is_file()),
+                *('usr/local/share/sddm/themes/nostromo/'+file.name for file in (ROOT/'system/sddm/theme').iterdir()),
+            ]
+            for relative in expected:
+                self.assertTrue((path/relative).is_file(),relative)
+
     def installer_run(self, path, body, *, setup=''):
         source = (ROOT/'install.sh').read_text()
         lifecycle = source.split('mkdir -p /var/log/nostromo\n',1)[1].split('freebsd-version -kru',1)[0]
@@ -62,8 +108,14 @@ s=os.stat(sys.argv[-1]); print(sys.argv[-2].replace('%u','0').replace('%Lp',oct(
             self.assertEqual(result.returncode, 7, result.stderr)
             self.assertFalse((path/'run/nostromo-install.lock').exists())
             retained = {p.name for p in logs.iterdir()}
-            self.assertTrue({f'install-{n:08d}' for n in range(4,10)} <= retained)
-            self.assertFalse({f'install-{n:08d}' for n in range(4)} & retained)
+            self.assertTrue({f'install-{n:08d}' for n in (8,9)} <= retained)
+            self.assertFalse({f'install-{n:08d}' for n in range(8)} & retained)
+            self.assertTrue((logs/'recovery/install-00000006/system-backup').is_dir())
+            self.assertTrue((logs/'recovery/install-00000007/policy-backup').is_dir())
+            self.assertIn('Removed old install log:', result.stdout)
+            self.assertIn('Archived recovery data:', result.stdout)
+            self.assertIn('Retained unfinished log directory:', result.stdout)
+            self.assertIn('Retained unrecognized or unsafe log directory:', result.stdout)
             self.assertTrue((logs/'install-symlink1').is_symlink())
             self.assertEqual((outside/'keep').read_text(), 'keep\n')
             current = next(p for p in logs.iterdir() if (p/'result').is_file())
@@ -127,8 +179,10 @@ mv() { case $1 in */.policy.*) return 29 ;; *) command mv "$@" ;; esac; }
             for _ in range(3):
                 retry = self.installer_run(path, publish, setup=setup)
                 self.assertEqual(retry.returncode, 0, retry.stderr)
-            self.assertTrue(backups[0].is_dir())
-            self.assertEqual(len(list((path/'logs').glob('install-*'))), 4)
+            archived = path/'logs/recovery'/backups[0].parent.name/'policy-backup'
+            self.assertTrue(archived.is_dir())
+            self.assertEqual((archived/'packages.allowed').read_text(), original)
+            self.assertEqual(len(list((path/'logs').glob('install-*'))), 1)
 
     def merge(self, script, original, policy=None, *options):
         with tempfile.TemporaryDirectory() as work:

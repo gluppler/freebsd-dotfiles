@@ -7,7 +7,13 @@ selection=default
 [ ! -f "$state/wallpaper" ] || IFS= read -r selection <"$state/wallpaper" || selection=default
 [ "$#" -le 1 ] || exit 2
 case ${1:-apply} in
-apply) ;;
+apply)
+    # A saved selection whose exports were removed falls back to the default.
+    if [ "$selection" != default ] && [ ! -f "$directory/nostromo-$selection-1920x1080.png" ]; then
+        echo 'Saved wallpaper is unavailable; using the default.' >&2
+        selection=default
+    fi
+    ;;
 menu)
     selection=$({
         printf '%s\n' default

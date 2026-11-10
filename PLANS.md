@@ -1,16 +1,25 @@
 # Nostromo — active FreeBSD / Wayland plan
 
-Updated **2026-11-05**. This document supersedes the active platform decisions
+Updated **2026-11-10**. This document supersedes the active platform decisions
 in `openbsd-dotfiles/PLANS.md` and the older archived FreeBSD/X11 project.
 Earlier user requirements continue unless explicitly superseded below.
 All user-facing configuration, documentation and menus remain in English.
 
-The first native attempt reached `python312-dependencies` and exposed an empty-list
-parsing error in the package helper. That error is reproduced and fixed in source.
+Native attempts stop at `python312-dependencies`, the first package transaction.
+The first exposed an empty-list parsing error. With that fixed, the stage reaches
+its transaction, where `pkg install --no-remove` fails: pkg 2.8.4 has no such
+option. Both are reproduced and fixed in source; the transaction failure was
+reproduced with the real pkg 2.8.4 binary. The helper now reviews pkg's dry-run plan and
+approves it once. The audit also accepts architecture-independent `FreeBSD:15:*`
+packages that later stages need, and pkg's own upgrade is approved separately.
 Retries now retain bounded diagnostic logs, preserve recovery data and reuse an
 unchanged package policy. Kernel modules use FreeBSD's release-specific quarterly
-repository. The next native run must confirm these fixes before installation,
-login and reboot can be marked complete; see [recovery instructions](docs/INSTALL.md#recover-from-the-empty-dependency-audit-error).
+repository. The KiCad PCB workflow is removed: PCB design runs on a separate
+server. That changes the pinned ports recipe; `prepare-ports` now replaces an
+unedited generated tree from an earlier recipe and stops on edits. The next
+native run must confirm these fixes before installation, login and reboot can
+be marked complete; see
+[recovery instructions](docs/INSTALL.md#recover-from-a-stop-at-python312-dependencies).
 
 **Latest scope clarification:** migrate every implemented workflow **and every
 unfinished future plan** from the OpenBSD tree. The [coverage ledger](docs/MIGRATION-COVERAGE.md)
@@ -113,10 +122,10 @@ window rails require compositor work, not renamed X11 configuration.
 
 1. Keep Michroma GUI and Azeret Mono terminal/code; preserve fallback glyphs and
    plain console recovery. No switch back to red or decorative text/slogans.
-2. Default wallpaper remains the centered hybrid orb only. Keep all currently
-   retained monochrome reference ports and NOSTROMO ship/abstract wordmark
-   variants. Do not resurrect the removed Arasaka texture. Keep sources/licenses
-   and 1080p, 1440p, 4K, 8K exports; center per physical output without stretching.
+2. The centered hybrid orb is the only wallpaper. The monochrome reference ports
+   and NOSTROMO ship/abstract wordmark variants are archived outside this
+   repository. Do not resurrect the removed Arasaka texture. Keep 1080p, 1440p,
+   4K and 8K exports; center per physical output without stretching.
 3. Workspace tabs: **only bottom-left corner cut**; active tab filled white with
    black text. The selected tag, not the entire workspace, is inverted.
 4. Statuses: **no angular frames**, 10.5-point Michroma (the accepted 5% increase),
@@ -242,10 +251,7 @@ The installer checks the reference library before enabling graphical login.
 The full cppreference snapshot supplies C/C++ syntax and standard-library pages;
 Go's installed specification, expanded Rust books and Python's complete HTML
 manual tree are selectable too. Report actual versions and snapshot dates.
-Vendor-neutral KiCad includes the suite, official libraries, 3D models, templates,
-offline help and pinned InteractiveHtmlBom. Native ERC/DRC gate fresh fabrication
-exports. Preserve user library tables; use the supported terminal plugin path
-to avoid optional wxPython/NumPy/GCC dependencies. See [EDA](docs/EDA.md).
+PCB design (KiCad) runs on a separate server and is not part of this laptop setup.
 Keep uv project Python, LLVM C/C++, Rust, Go, POSIX shell and cross-architecture
 assembly (ARM/Thumb/AArch64, x86/x86-64, MIPS variants). No Mason binary downloads.
 
@@ -296,17 +302,17 @@ add no email client, Tuta integration or account placeholders.
 - Shell syntax, shellcheck, meaningful host regressions and real FreeBSD checks
   are separate evidence. No promise of zero errors before hardware testing.
 
-## Implementation status — 2026-11-05
+## Implementation status — 2026-11-10
 
 | Area | Repository state | Remaining native evidence |
 | --- | --- | --- |
-| Source/package policy | Pinned 2026Q4 ports tree, 21 variants, complete closure gate, signed transaction repo and protected removal/update paths | Actual FreeBSD ports stage/check-plist/link results and repository changes |
+| Source/package policy | Pinned 2026Q4 ports tree, 15 variants, complete closure gate, signed transaction repo and protected removal/update paths | Actual FreeBSD ports stage/check-plist/link results and repository changes |
 | dwl/dwlb/foot | Placement, layouts, full bindings, IPC, scaling, frames/CWD, CRT GPU pass, brief map fade and foot opacity/line picker implemented | GPU rendering, output scale/hotplug and input latency |
 | Login/lock/notifications | SDDM/cage QML, FreeBSD PAM, acknowledged gtklock, splash/idle, native Dunst drawing implemented | Login/logout, actual PAM, every-output lock, suspend/resume |
 | Daily helpers | Menus, Wi-Fi, WireGuard, Bluetooth, IME, audio/display/lid, files/media/probe access, packages and tpass implemented | Detected hardware, supported profiles and real connectivity |
 | Editor/development | Pinned vis plugins, dashboard, Markdown, LSP/tool workflows, dvtm CWD/dividers, native west and project Rust | Native project execution and exact board build/flash/debug |
 | Installer | Root entry point, user build stages, selective file merges/backups/rollback and final activation gate implemented | Full native provisioning/reboot/repeat run |
-| Visual assets | Current QML and code-derived host compositions, splash/idle GIFs, retained wallpapers/fonts | Native screenshots and GPU CRT capture |
+| Visual assets | Current QML and code-derived host compositions, splash/idle GIFs, default wallpaper/fonts | Native screenshots and GPU CRT capture |
 | Documentation/audit | Current install instructions, dependency exceptions, keyboard map and source/host checks | Hardware acceptance is recorded separately in VALIDATION |
 
 [Coverage](docs/MIGRATION-COVERAGE.md) preserves all prior and unfinished workflows.

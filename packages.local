@@ -14,9 +14,3 @@ fcitx5|textproc/fcitx5|5.1.21_1
 pipewire|multimedia/pipewire|1.6.9
 py312-qt6-pyqt|devel/py-qt6-pyqt|6.11.0
 py312-ecdsa|security/py-ecdsa|0.19.2
-ngspice_rework-shlib|cad/ngspice_rework|44.2
-wx32-gtk3|x11-toolkits/wxgtk32|3.2.8.1_1
-opencascade|cad/opencascade|8.0.1_1
-poppler|graphics/poppler|26.04.0_1
-poppler-glib|graphics/poppler-glib|26.04.0_1
-kicad|cad/kicad|10.0.6_1,2

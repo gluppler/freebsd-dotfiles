@@ -1,8 +1,8 @@
 # Current design and effects references
 
 The full acceptance list is in [PLANS](../PLANS.md). This migration preserves
-black/white, Michroma UI, Azeret Mono terminal/code, the hybrid orb, existing
-wallpapers and the exact later corrections to corners, rails and highlights.
+black/white, Michroma UI, Azeret Mono terminal/code, the hybrid orb, its default
+wallpaper and the exact later corrections to corners, rails and highlights.
 It does not revive the earlier red palette or add decorative text.
 
 ## Shape and layout contract
@@ -57,10 +57,10 @@ and [Dunst Wayland color alpha](https://dunst-project.org/documentation/).
   Its MIT attribution is retained under assets/licenses.
 - Cyberpunk 2077's site informs motion and border treatment, not a font change,
   yellow palette or additional labels.
-- The user's supplied monochrome logo/reference wallpapers remain alternatives;
-  the default centered orb stays. The removed Arasaka texture stays removed.
-- The custom abstract insignia must still include the **NOSTROMO** wordmark;
-  the default orb wallpaper must not gain a name. These are distinct designs.
+- The default centered orb is the only wallpaper. The user's supplied monochrome
+  logo/reference wallpapers and the NOSTROMO ship/abstract wordmark variants are
+  archived outside this repository. The removed Arasaka texture stays removed.
+- The default orb wallpaper must not gain a name.
 
 ## New reference: space_dots / Golden Era
 

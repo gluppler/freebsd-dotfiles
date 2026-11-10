@@ -94,11 +94,3 @@ xdg-desktop-portal-wlr
 zathura
 zathura-pdf-mupdf
 zoxide
-
-# PCB design, official libraries and matching offline manuals
-kicad
-kicad-doc
-kicad-library-symbols
-kicad-library-footprints
-kicad-library-packages3d
-kicad-library-tmpl

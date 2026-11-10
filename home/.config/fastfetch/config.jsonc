@@ -74,7 +74,7 @@
     {
       "type": "command",
       "key": "INSTALLED TOOLS",
-      "text": "pkg query '%n %v' llvm21 rust go126 python312 uv git-lite kicad",
+      "text": "pkg query '%n %v' llvm21 rust go126 python312 uv git-lite",
       "splitLines": true
     },
     {

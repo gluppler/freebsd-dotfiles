@@ -5,7 +5,7 @@ repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
 mode=${1:---stage}
 case $mode in --sources | --stage | --installed) ;; *) exit 2 ;; esac
 [ "$#" -le 1 ] || exit 2
-for script in configure-system configure-security configure-devices setup-wifi setup-eda editor-plugins development-tools build-desktop link-home; do
+for script in configure-system configure-security configure-devices setup-wifi editor-plugins development-tools build-desktop link-home; do
     [ -s "$repo/scripts/$script.sh" ] || {
         echo "Missing implementation: $script" >&2
         exit 1
@@ -71,8 +71,7 @@ done
 sort -u "$work/local-libraries" >"$repo/.build/local-libraries"
 for tool in vise vis-menu oksh foot qutebrowser fcitx5 uv rustc cargo rustfmt cargo-clippy \
     rust-analyzer go gofmt gopls python3 ruff asm-lsp shellcheck shfmt cmake ninja dbus-run-session \
-    seatd cage sddm swayidle swaybg wlr-randr wl-copy wl-paste grim slurp zathura mpv \
-    kicad kicad-cli pcbnew eeschema gerbview pcb_calculator; do
+    seatd cage sddm swayidle swaybg wlr-randr wl-copy wl-paste grim slurp zathura mpv; do
     command -v "$tool" >/dev/null || {
         echo "Missing runtime tool: $tool" >&2
         exit 1
@@ -88,11 +87,6 @@ oksh -n "$repo/home/.config/oksh/okshrc"
 "$repo/.build/embedded-python/bin/python" -c 'import yaml, jsonschema, pykwalify, elftools, serial, intelhex, esptool'
 test -s "$repo/.build/editor/vis-lspc/init.lua"
 test -s "$repo/.build/editor/dkjson.lua"
-kicad-cli version
-test -s "$repo/.build/docs/kicad-cli.md"
-python3.12 -c 'import pcbnew; print(pcbnew.GetBuildVersion())'
-INTERACTIVE_HTML_BOM_NO_DISPLAY=1 python3.12 \
-    "$repo/.build/eda/ibom-d1eb5b79a52a2ddc1ce270b63920346463c19b05/InteractiveHtmlBom/generate_interactive_bom.py" --help >/dev/null
 NOSTROMO_DOCS_ROOT="$repo/docs/reference" NOSTROMO_CPPREFERENCE_ROOT="$repo/.build/docs/cppreference-20250209" \
     MANPATH="$prefix/share/man:" nostromo-docs --check
 if [ "$mode" = --installed ]; then

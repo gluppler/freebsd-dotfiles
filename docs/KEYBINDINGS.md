@@ -190,9 +190,9 @@ The image's own colours are preserved; only the surrounding interface is monochr
 
 Foot's opacity actions come from our pinned patch; its line picker uses the
 configured `pipe-visible` binding. See [the actual config](../home/.config/foot/foot.ini).
-WALLPAPER retains the committed variants and updates connected outputs. DEVICES
-provides explicit USB mount/unmount and debug-probe grants; no automount daemon
-or hibernation action is added.
+WALLPAPER applies the default orb, or another set added to `assets/wallpapers/`,
+to connected outputs. DEVICES provides explicit USB mount/unmount and
+debug-probe grants; no automount daemon or hibernation action is added.
 
 Wi-Fi, VPN and Bluetooth use the same fuzzel panel as the launcher. Enter selects;
 Up/Down, Ctrl+P/N or Alt+K/J navigate; Esc cancels. Wi-Fi supports scan, hidden and

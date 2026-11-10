@@ -147,14 +147,16 @@ log=
 policy=
 stage=preflight
 prune_logs() {
-    # Retain this run and two older diagnostic-only runs. Recovery data stays.
+    # Keep only this diagnostic run. Move recovery-bearing runs out of the log
+    # directory instead of deleting their journals and original system files.
     for previous in /var/log/nostromo/install-????????; do
         [ -d "$previous" ] && [ ! -L "$previous" ] && [ "$previous" != "$log" ] || continue
         case ${previous##*/install-} in *[!A-Za-z0-9]*) continue ;; esac
-        [ "$(stat -f '%u %Lp' "$previous")" = '0 700' ] || continue
-        [ ! -e "$previous/system-backup" ] && [ ! -L "$previous/system-backup" ] || continue
-        [ ! -e "$previous/policy-backup" ] && [ ! -L "$previous/policy-backup" ] || continue
-        [ -f "$previous/release-before" ] && [ -f "$previous/account-before" ] || continue
+        if [ "$(stat -f '%u %Lp' "$previous")" != '0 700' ] ||
+            [ ! -f "$previous/release-before" ] || [ ! -f "$previous/account-before" ]; then
+            printf 'Retained unrecognized or unsafe log directory: %s\n' "$previous"
+            continue
+        fi
         ended=no
         if [ -f "$previous/result" ] && [ ! -L "$previous/result" ]; then
             case $(cat "$previous/result") in completed | failed) ended=yes ;; esac
@@ -165,17 +167,25 @@ prune_logs() {
                 case $(cat "$status") in '' | *[!0-9]* | 0) ;; *) ended=yes ;; esac
             done
         fi
-        [ "$ended" = yes ] || continue
-        modified=$(stat -f '%m' "$previous") || return 1
-        printf '%s %s\n' "$modified" "$previous" || return 1
-    done >"$log/retention" || return 1
-    sort -rn "$log/retention" >"$log/retention.sorted" || return 1
-    kept=0
-    while read -r _modified previous; do
-        kept=$((kept + 1))
-        [ "$kept" -le 2 ] || rm -rf "$previous" || return 1
-    done <"$log/retention.sorted"
-    rm -f "$log/retention" "$log/retention.sorted"
+        if [ "$ended" != yes ]; then
+            printf 'Retained unfinished log directory: %s\n' "$previous"
+            continue
+        fi
+        if [ -e "$previous/system-backup" ] || [ -L "$previous/system-backup" ] ||
+            [ -e "$previous/policy-backup" ] || [ -L "$previous/policy-backup" ]; then
+            recovery=/var/log/nostromo/recovery
+            [ ! -L "$recovery" ] || return 1
+            mkdir -p "$recovery" || return 1
+            [ "$(stat -f '%u %Lp' "$recovery")" = '0 700' ] || return 1
+            destination=$recovery/${previous##*/}
+            [ ! -e "$destination" ] && [ ! -L "$destination" ] || return 1
+            mv "$previous" "$destination" || return 1
+            printf 'Archived recovery data: %s\n' "$destination"
+        else
+            rm -rf "$previous" || return 1
+            printf 'Removed old install log: %s\n' "$previous"
+        fi
+    done
 }
 finish() {
     result=$?
@@ -219,6 +229,11 @@ run() {
 }
 freebsd-version -kru >"$log/release-before"
 id "$account" >"$log/account-before"
+prune_logs >"$log/cleanup.log" 2>&1 || {
+    cat "$log/cleanup.log" >&2
+    exit 1
+}
+cat "$log/cleanup.log"
 # Prompts bypass tee/logging; the password is read only from the console.
 stage=wifi-setup
 sh "$repo/scripts/setup-wifi.sh" --offer
@@ -313,7 +328,6 @@ run firmware "$packages" install "$@"
 run desktop-build as_user 'sh scripts/build-desktop.sh'
 run editor-plugins as_user 'sh scripts/editor-plugins.sh'
 run development-tools as_user 'sh scripts/development-tools.sh'
-run pcb-workflow as_user 'sh scripts/setup-eda.sh'
 run staged-validation as_user 'sh scripts/verify-stage.sh'
 run user-files as_user 'sh scripts/link-home.sh --apply'
 run system-configuration sh "$repo/scripts/configure-system.sh" "$account" "$log"

@@ -54,15 +54,15 @@ The installer refuses an SSH session so network policy cannot strand its operato
    the install log. Skip this when the current connection already works.
    Bootstrap pkg with FreeBSD's signature verification and publish the root-owned
    package policy. Resolve and audit the complete requested dependency closure.
-2. Build the 21 pinned library/package variants as the ordinary user, run ports
+2. Build the 15 pinned library/package variants as the ordinary user, run ports
    staging checks, import their archives into a private signed transaction repo,
    and retain matching recipe receipts and locks. Build jobs use detected RAM/CPUs.
 3. Install desktop/development roots and detected firmware/DRM through the same
    gate. Remove only listed, automatic, unlocked GNU bootstrap leftovers with no
    consumers; preserve manually installed/locked packages and report conflicts.
 4. Build patched native desktop programs, tpass and rustup; install pinned editor
-   plugins, native Go/Python tooling, KiCad libraries/assembly workflow and offline
-   C/C++ references. No source build runs as root.
+   plugins, native Go/Python tooling and offline C/C++ references. No source build
+   runs as root.
 5. Validate staged ELF binaries, linked libraries, configuration syntax, helper
    availability, plugins and offline documentation. `nostromo-docs --check`
    requires the installed language manuals, books and examples before proceeding.
@@ -88,10 +88,12 @@ are under `.build/logs/`. Each finished run records `result`, `last-stage` and
 `exit-status`; `pkg-version` identifies the package manager used. Read the
 failing stage's log before rerunning the same command.
 
-On exit, the installer keeps the current run and two older diagnostic-only runs.
-It also recognizes older failed runs through their nonzero `*.status` files.
-Runs containing `system-backup/` or `policy-backup/` are always retained, along
-with unfamiliar, unsafe or unfinished directories. Cleanup runs under the
+When `--apply` starts and again on exit, the installer removes earlier finished
+diagnostic-only runs, so only the current run's logs remain: read or copy a failed
+run's logs before rerunning. It recognizes older failed runs through their nonzero
+`*.status` files. Finished runs containing `system-backup/` or `policy-backup/`
+move to `/var/log/nostromo/recovery/` instead. Unfamiliar, unsafe or unfinished
+directories are retained and reported. Cleanup runs under the
 installer lock and does not follow directory symlinks. An unchanged package
 policy is reused; a changed policy's previous version goes in that run's
 `policy-backup/`. Older `policy.previous.*` directories are left for manual review.
@@ -103,13 +105,19 @@ packages, manually installed Python, source caches and build work remain availab
 for a retry. Removing them automatically could damage working software or discard
 hours of compilation. SIGKILL or power loss cannot run shell cleanup handlers.
 
-Generated ports trees have an mtree receipt: preserve a modified/stale
-`.build/ports` tree before rebuilding it, rather than resetting user edits.
+Generated ports trees have an mtree receipt. After a recipe change,
+`prepare-ports` regenerates an unedited `.build/ports` tree from the cached,
+checksum-verified archive and discards the old recipe's build work. A changed,
+added or missing file stops the stage instead: edits are never reset.
 Do not remove an installation/package lock until confirming its process ended.
 
-User-file backups are under `~/.local/state/freebsd-dotfiles/backups/`.
+User-file backups are under `~/.local/state/freebsd-dotfiles/backups/`, and
+`~/.local/state/freebsd-dotfiles/links` lists the links last applied. A later run
+removes a listed link that has left `links.txt` if it still points to the same
+checkout file; anything you changed is kept.
 System backups and a file/mode/hash journal are in the install log's
-`system-backup/`. Failed system-file provisioning restores files only if they
+`system-backup/`, under `/var/log/nostromo/recovery/` after a later run. Failed
+system-file provisioning restores files only if they
 still match what that transaction wrote; later administrator edits are retained.
 Group memberships, ACPI settings and active mdo policy introduced by that failed stage are
 restored where safe. Package transactions, previously completed user links,
@@ -126,15 +134,35 @@ Optional fingerprint/FIDO enrollment, WireGuard keys/peers, SSH authorized keys,
 Bluetooth PINs, printer/scanner models and board memory maps are local inputs.
 The installer creates none of these credentials and never invents device support.
 
-### Recover from the empty-dependency audit error
+### Recover from a stop at python312-dependencies
 
-An earlier installer stopped at `python312-dependencies` with empty
-`Unreviewed package: ... ()` messages and incomplete/unresolved dependencies for
-`libedit`, `pkgconf`, `indexinfo`, `mpdecimal` and `expat`. This was an installer
-parser error: pkg can print an owner-only row for a package with no dependencies.
-The corrected reader removes only those empty-list placeholders, then checks
-every actual dependency against the package's declared count and reviewed identity.
-Manually installing Python does not fix the reader; removing Python is unnecessary.
+This is the first stage that runs the package helper, so its errors appear here.
+Neither error below installs or removes a package before stopping.
+
+- The first installer printed empty `Unreviewed package: ... ()` messages and
+  incomplete/unresolved dependencies for `libedit`, `pkgconf`, `indexinfo`,
+  `mpdecimal` and `expat`. pkg prints an owner-only row for a package with no
+  dependencies. The corrected reader removes only those empty-list placeholders,
+  then checks every actual dependency against its declared count and identity.
+- Commit `faef848` passes that audit, then previews and installs with
+  `--no-remove`. pkg 2.8.4 has no such option, so the stage stops with
+  `pkg: unrecognized option` for it; that dry run also lacked the `-y` pkg needs
+  to report success. The helper now reviews pkg's dry-run plan, stops on any
+  removal or unrecognized plan, and approves that command exactly once.
+
+Later stages needed two related corrections. The audit now accepts
+architecture-independent packages (`FreeBSD:15:*`), such as `public_suffix_list`
+for the libpsl build and Python modules. When a transaction contains pkg itself,
+pkg's own upgrade is reviewed and approved before the rest; `cmake-core` links
+pkg's library.
+Manually installing Python fixes none of these; removing Python is unnecessary.
+
+To confirm the second error, run this from the root console before rerunning
+`--apply`, which removes earlier diagnostic-only logs:
+
+```sh
+grep -h -e '--no-remove' /var/log/nostromo/install-*/python312-dependencies.log
+```
 
 Push the corrected checkout, then update the laptop copy **as gluppler**:
 
@@ -151,12 +179,15 @@ sh /home/gluppler/freebsd-dotfiles/install.sh --apply gluppler
 ```
 
 Adjust the path if the checkout is elsewhere. Skip the optional Wi-Fi setup when
-the current connection works. This fix does not change the pinned ports recipe,
-so a matching `.build/ports` tree can be reused. The retry installs the corrected
-package helper before resolving dependencies. Existing `FreeBSD-ports`,
-`FreeBSD-ports-kmods` and disabled `FreeBSD-base` definitions need no edits for
-this error; the helper uses private signed upstream definitions without replacing
-those system files.
+the current connection works. The retry installs the corrected package helper.
+This update also removes the KiCad workflow, which changes the pinned ports
+recipe, so `prepare-ports` replaces the failed run's unedited tree from the
+cached archive; no manual cleanup is needed. A fresh clone downloads the archive
+and prepares its first tree instead. The package policy changes too: the retry
+publishes it and keeps the previous copy in that run's `policy-backup/`.
+Existing `FreeBSD-ports`, `FreeBSD-ports-kmods` and disabled `FreeBSD-base`
+definitions need no edits for these errors; the helper uses private signed
+upstream definitions without replacing those system files.
 
 ## Source exports
 

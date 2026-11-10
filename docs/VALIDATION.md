@@ -1,9 +1,13 @@
 # Validation and native acceptance
 
-Updated **2026-11-05**. The first reported native attempt stopped at
-`python312-dependencies`: the installer misread pkg's empty dependency rows.
-The error has a source fix and regression coverage below; a native rerun of that
-fix is still pending. Host checks pass for the listed scopes. The full native
+Updated **2026-11-10**. Native attempts stopped at `python312-dependencies`, the
+first package transaction. The first misread pkg's empty dependency rows. With
+that fixed, commit `faef848` reaches the transaction and passes pkg an option that
+pkg 2.8.4 does not have. Both have source fixes and regression coverage below,
+including real pkg 2.8.4 transactions on this host; a native rerun of these fixes
+is still pending. The KiCad PCB workflow has since been removed because PCB design
+runs on a separate server: its packages, six native variants, ports patch, plugin,
+helper, guide and tests are gone. Host checks pass for the listed scopes. The full native
 FreeBSD package build/install, first login/reboot and hardware acceptance remain
 **incomplete**. The installer performs
 additional native stage/ABI/configuration checks before enabling SDDM; that is
@@ -12,6 +16,20 @@ measured battery-performance claim is made.
 
 ## Audit fixes
 
+- The package transaction no longer passes `--no-remove`, which pkg 2.8.4 rejects
+  as an unrecognized option, so `faef848` stopped at its first transaction. That
+  dry run also lacked the `-y` pkg needs to return success for a nonempty plan.
+  The helper now records pkg's dry-run plan, rejects removals and unrecognized
+  plans, and approves the same command once; a conflict re-solve reads
+  end-of-input and stops. When the transaction repository contains pkg, pkg's own
+  upgrade and restart are approved as a separate reviewed transaction.
+- The audit accepts pkg's `FreeBSD:15:*` ABI for architecture-independent packages,
+  128 of the 507 reviewed repository packages in the cached 2026Q4 catalogue. Later
+  variant and desktop stages would otherwise stop on fonts, headers and Python
+  modules. Other releases, architectures and broader patterns still fail.
+- The post-install check compares origin and ABI, not version: pkg 2.8.4 keeps an
+  older installed dependency when a new package does not require its upgrade.
+  A mismatch now names the package instead of failing without a message.
 - Dependency records now handle pkg's owner-only rows for packages without
   dependencies. Regression inputs reproduce all five reported leaf-package
   errors; the corrected resolver accepts empty lists while still rejecting
@@ -22,6 +40,21 @@ measured battery-performance claim is made.
   package policies are reused; failed publication restores the previous policy.
   Failure/signal tests cover temporary downloads, unpublished policy cleanup and
   lock release, including log allocation failure and legacy failed-run retention.
+- A recipe change no longer stops `prepare-ports` with an unedited tree from the
+  previous recipe. The tree is regenerated, and that recipe's build work is
+  discarded, because port cookies would otherwise package objects built from the
+  old patches and options. FreeBSD's mtree, built from NetBSD's sources, exits 0 for
+  missing and extra files, so any receipt report now counts as an edit. Edited
+  trees stop for review and are never reset.
+- Reruns after an update no longer leave removed links behind or stop on an
+  earlier editor-plugin pin. The link stage records the links it applied and
+  removes one that leaves `links.txt` while it still points to the same checkout
+  file; a failed run restores it. A new vis-lspc or dkjson pin replaces an
+  unedited staged copy, checked against its receipt. Edits stop the stage. dkjson
+  now explains each stop, including a download that fails its checksum.
+- Only the default orb wallpaper ships; the other variants are archived outside
+  this repository. A saved selection whose exports are gone now falls back to the
+  default, because session startup stops when the wallpaper helper fails.
 - Sleep-button events now use the session's acknowledged lock path, with automatic
   ACPI lid/button actions disabled. The devd Suspend guard checks the existing
   Wayland sockets and cancels with `acpiconf -k 1` on failure or timeout before
@@ -46,13 +79,13 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 
 | Check | Result and scope |
 | --- | --- |
-| `python3 tests/check.py` | 18 passed: links/assets/fonts, manifest coverage, browser arguments/schema, CWD encoding, shell syntax, user-link preflight/rollback/idempotency |
-| `python3 tests/helpers.py` | 7 passed: display-mode/scale rollback and last-output protection, SSID bytes/managed blocks, USB CAM filtering and unsafe argument rejection |
-| `python3 tests/package-policy.py` | 16 passed: reported empty-list failure and actual resolver/query handling, kmods selection/catalogue, failure/signal cleanup, graph/identity/ABI/receipt validation, exact GNU roles/versions, stock conversion/cleanup, pkgbase separation, protected removal, native upgrade dispatch, pending versions and preserved automatic/build-protection flags |
-| `python3 tests/provisioning.py` | 8 passed: selective settings/SDDM/SSH/PF merges, ambiguous input rejection, idempotency, rollback preserving later edits, bounded legacy/current logs, signal cleanup, lock release and policy reuse/recovery |
+| `python3 tests/check.py` | 24 passed: links/assets/fonts, manifest coverage, every declared home destination, browser arguments/schema, CWD encoding, shell syntax, user-link preflight/rollback/idempotency, former-link removal/restoration/directory conversion/mid-run change, receipt-checked plugin pins and dkjson checksum stops |
+| `python3 tests/helpers.py` | 8 passed: display-mode/scale rollback and last-output protection, SSID bytes/managed blocks, USB CAM filtering, unsafe argument rejection and default fallback for a saved wallpaper whose exports were removed |
+| `python3 tests/package-policy.py` | 20 passed: reported empty-list failure and actual resolver/query handling, kmods selection/catalogue, failure/signal cleanup, graph/identity/ABI/receipt validation including only the FreeBSD 15 `*` ABI, exact GNU roles/versions, stock conversion/cleanup, pkgbase separation, protected removal, transaction-guard dispatch, separate pkg self-upgrade, named origin/ABI mismatches, pending versions, preserved automatic/build-protection flags and stale ports-tree replacement that stops on changed, added or missing files |
+| `PKG=… python3 tests/pkg-integration.py` | 9 passed against pkg 2.8.4 built from source on this host, with disposable signed repositories: `--no-remove` rejected as unrecognized, the five reported leaf dependencies installed twice, preview/reinstall/upgrade, existing automatic dependencies, a file conflict denied a second approval, real removal plans rejected, a `FreeBSD:15:*` archive audited and installed, an older dependency pkg keeps, and pkg's restart failing under one approval but passing as its own transaction |
+| `python3 tests/provisioning.py` | 9 passed: selective settings/SDDM/SSH/PF merges, helper/font/login/loader destinations, ambiguous input rejection, idempotency, rollback preserving later edits, legacy/current log pruning with archived recovery runs, signal cleanup, lock release and policy reuse/recovery |
 | `python3 tests/network-menus.py` | 9 passed: actual fuzzel managers, byte-safe SSIDs, masked secrets, cancellation, scan recovery, phone/open/OWE hotspots, unprivileged portal dispatch, Bluetooth initialization/pairing, persistent WireGuard selection and status without authentication |
 | `python3 tests/bootstrap.py` | 8 passed: actual console/helper transactions with simulated native commands; missing WPA profile, hidden input, failed-auth rollback, DNS-failure retention, later rc overrides, open/OWE profiles, unsupported security rejection, unsafe paths and supported Intel Bluetooth initialization |
-| `python3 tests/eda.py` | 3 passed: ERC/DRC before fabrication, failed-check stop, literal paths, fresh output directories, unchanged sources, preserved library tables and generated native CLI reference |
 | `python3 tests/security.py` | 8 passed: mdo migration, terminal/GUI authenticated command transport, failure/cancellation, all-socket lock checks, suspend cancellation/deadline, installed mergers/SSID decoder and native event dispatch/resume debounce |
 | `python3 tests/embedded.py` | 3 passed: scoped Rust dispatch, Zephyr architecture/word-size/float-ABI guards, real ARM compiler-rt bare-metal ELF link |
 | `python3 tests/offline-docs.py` | 7 passed: literal/invalid topics, Go offline environment, pager cleanup, Python text lookup, encoded local language-book URLs, examples, cancellation and separate-window dispatch |
@@ -60,10 +93,10 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | `python3 tests/terminal-idle.py` | 4 passed: clock cleanup/static mode, actual PTY viewer scrolling/resizing/control filtering/signal restoration, bounded vis pages with pending-key/edit guards, and unchanged plain/JSON fetch dispatch |
 | `python3 tests/reference-examples.py` | C syntax, C++/Rust compilation and execution, Go example test, Python/shell/Lua syntax, x86-64/Thumb/AArch64 assembly passed with host tools; this host Clang lacks MIPS, and Zephyr requires a real board build |
 | Offline package contents | Checked quarterly stdman archive renders its C++ examples through mandoc; Python pathlib text retains example blocks; the four added documentation packages have no dependencies |
-| POSIX shfmt + ShellCheck | 101 operational/build/source/config files clean at style severity; interactive oksh checked separately with ksh mode and `/bin/ksh -n` |
+| POSIX shfmt + ShellCheck | 98 operational/build/source scripts and the two shell configuration files they source are clean at style severity; interactive oksh checked separately with ksh mode and `/bin/ksh -n` |
 | Fastfetch | Exact 2.69.0 parser accepts the detailed configuration; plain-output CLI flags checked with the host build. This does not verify FreeBSD sensor detection |
-| KiCad source recipes | All seven ports patches apply to the pinned tree with zero fuzz. OpenCASCADE packing-list commands retain staged headers/libraries/symlinks/empty resources and framework records. Full native builds have not run |
-| New reference sources | cppreference snapshot and InteractiveHtmlBom archives match pinned hashes; cppreference extraction confines files to its declared directory. ngspice's relocated release URL retains the original distinfo checksum |
+| Ports recipes | All six ports patches apply to the pinned tree with zero fuzz. Full native builds have not run |
+| Reference sources | cppreference snapshot matches its pinned hash; extraction confines files to its declared directory |
 | `lua tests/viewer-title.lua` | Shipped Swayimg config exercises viewer/slideshow/gallery title updates, empty images and duplicate-redraw suppression with a small host API stand-in |
 | Lua parsing | Eight editor/loader/image-viewer files parsed; native clients are not installed on this host |
 | `tests/rail-geometry.c` | Actual right/left/bottom painters checked at 1x/2x/4x: unchanged 80% recess, square outer corners, modest depth, centered directory/title pixels, title sanitization, responsive panel dimensions, 90% panel alpha, solid rails and no doubled foot alpha |
@@ -78,9 +111,12 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | HTML/start page | Actual QtWebEngine local page/font render and placeholder behavior checked; not a qutebrowser process |
 | Current artwork | Runtime logos/textures use PNG; native shared painters, idle bounce, QML login and browser page checked after conversion. Animated defaults and static/off overrides pass. Simulations are archived outside the source tree; regenerated previews stay in `.build/previews/` |
 
-The twelve Python suites total **98 passing cases**. They use real local code and
+The eleven Python suites total **107 passing cases**. They use real local code and
 small disposable command stand-ins where native devices/package managers are
 unavailable. They do not execute a root installer or alter this macOS machine.
+The separate pkg integration suite runs the transaction guard with the real pkg
+2.8.4 solver, signatures and database in a temporary directory, as an ordinary
+user. It does not use FreeBSD's repositories, kernel or installed packages.
 The console bootstrap suite uses a temporary controlling terminal; password masking
 is checked against the actual prompt and input handling. Hardware, services and
 root identity remain stand-ins. The security suite uses temporary Unix sockets and a PTY to exercise session
@@ -150,10 +186,10 @@ builds and exact board/probe acceptance.
 python3 tests/check.py
 python3 tests/helpers.py
 python3 tests/package-policy.py
+PKG=/path/to/pkg-2.8.4/src/pkg python3 tests/pkg-integration.py
 python3 tests/provisioning.py
 python3 tests/network-menus.py
 python3 tests/bootstrap.py
-python3 tests/eda.py
 python3 tests/security.py
 python3 tests/embedded.py
 python3 tests/offline-docs.py
@@ -220,9 +256,7 @@ no host result bypasses those gates.
 11. Disconnect networking and read C/C++/Rust/Go/Python references and formatted
     examples through DOCS, vis and dvtm. Check MIPS assembly with native LLVM and
     the GPIO example with the selected Zephyr board.
-12. Open KiCad's standard libraries and a real design; check simulation, ERC/DRC,
-    Gerbers/drills/BOM/positions, GerbView/3D/STEP and the interactive assembly page.
-13. Check the original 2D orb's idle cycle in native vis and the complete Fastfetch
+12. Check the original 2D orb's idle cycle in native vis and the complete Fastfetch
     view, including static/off, resizing, keyboard navigation, closing and sensor
     availability. Host Lua tests use an API stand-in, not a running native editor.
 

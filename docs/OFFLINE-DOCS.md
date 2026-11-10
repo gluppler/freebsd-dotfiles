@@ -26,7 +26,6 @@ close. The helper displays examples; it never executes them.
 | LLVM/assembly | LLVM assembler manual and local architecture examples | `nostromo-docs llvm`, `nostromo-docs examples assembly` |
 | FreeBSD | Installed English Handbook and other books/articles | `nostromo-docs freebsd` |
 | vis hooks and embedded work | Shipped examples, project guides and initialized Zephyr sources | `nostromo-docs examples vis`, `nostromo-docs examples zephyr` |
-| KiCad | Matching suite manuals and generated command help | `nostromo-docs kicad pcbnew`, `nostromo-docs kicad-cli` |
 
 The example picker also covers C, C++, Rust, Go, Python and shell scripts. The
 assembly examples cover x86-64, Thumb, AArch64 and MIPS32, with commands to inspect

@@ -13,16 +13,14 @@ remain attached to their files. There is no blanket license for the entire tree.
 - Michroma and Azeret Mono retain their SIL Open Font License files under
   `assets/fonts/`.
 - The space_dots shader and its adaptations retain Maxim Samoliuk's MIT notice.
-- The Cyberpunk reference artwork retains its attribution and usage notice under
-  `assets/wallpaper-sources/`. Software licenses do not grant rights to those
-  logos or trademarks. Other retained artwork and its sources are documented in
-  `assets/README.md` and `docs/SOURCES.md`.
+- Retained artwork and its sources are documented in `assets/README.md` and
+  `docs/SOURCES.md`. The Cyberpunk logo wallpapers and their attribution and
+  usage notice are archived outside this repository.
 
 Native builds copy their upstream notices into the installed license directory.
 Research snapshots under `docs/research/` retain their original notices and are
 not installed as programs.
 
 Downloaded cppreference pages retain their attribution and CC BY-SA notices.
-InteractiveHtmlBom retains its MIT license in its source directory and the
-staged license directory. Neither downloaded reference/plugin tree is included
-in the source export. Their exact sources and checksums are in `sources.lock`.
+The downloaded reference tree is not included in the source export. Its exact
+source and checksum are in `sources.lock`.

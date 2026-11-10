@@ -1,6 +1,5 @@
 # name|archive root|sha256|URL
 cppreference|reference|ac50671a1f52d7f0ab0911d14450eb35e8c2f812edd0e426b2cd1e3d9db91d6f|https://github.com/PeterFeicht/cppreference-doc/releases/download/v20250209/html-book-20250209.tar.xz
-ibom|InteractiveHtmlBom-d1eb5b79a52a2ddc1ce270b63920346463c19b05|b44d9169719733afded813d079cf65180ebc106240420a236bade98205f61a4b|https://codeload.github.com/openscopeproject/InteractiveHtmlBom/tar.gz/d1eb5b79a52a2ddc1ce270b63920346463c19b05
 tpass|tumpa-cli-10f8b8df15da93bd11b5efd3727c61593471e9b9|3a7234edbda83d79ff6744b01d7b91b680b4d8afdc9cdb8e3da376099a478733|https://codeload.github.com/tumpaproject/tumpa-cli/tar.gz/10f8b8df15da93bd11b5efd3727c61593471e9b9
 vis-lspc|vis-lspc-9d0f7a0b82b1983b44636259733d6d2c39497315|0989231f989159f6ab85926a34dfa9850b4b01e78d6663990f95910a44296736|https://gitlab.com/muhq/vis-lspc/-/archive/9d0f7a0b82b1983b44636259733d6d2c39497315/vis-lspc-9d0f7a0b82b1983b44636259733d6d2c39497315.tar.gz
 efm|efm-langserver-0.0.57|5a00742ab59c146514f652cc1d8cd34df1b0b1c692706261e4a97131f9cbe935|https://codeload.github.com/mattn/efm-langserver/tar.gz/refs/tags/v0.0.57

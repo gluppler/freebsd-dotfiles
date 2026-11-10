@@ -8,7 +8,7 @@ The desktop uses **dwl, foot, qutebrowser, oksh, vis and abduco/dvtm**, with
 fuzzel, fastfetch, zoxide, nnn, Git/lazygit, LLVM, uv and native WireGuard.
 Michroma and Azeret Mono, monochrome artwork, custom window bars and adjustable
 CRT effects are animated by default. Development tools cover C/C++, Rust, Go, Python,
-shell, assembly, KiCad PCB design and the documented Zephyr/Rust embedded workflows.
+shell, assembly and the documented Zephyr/Rust embedded workflows.
 
 Native FreeBSD builds, first login, reboot and hardware acceptance are still
 pending; see [validation](docs/VALIDATION.md). Simulated screenshots and SVG
@@ -52,7 +52,7 @@ user files and built programs link into it.
 | `system/` | System settings, privileged helpers, login theme and boot assets |
 | `src/` | Source patches, compositor configuration and shared drawing code |
 | `scripts/` | Build, provisioning, validation, linking and export helpers |
-| `assets/` | Fonts, artwork, wallpapers and attribution |
+| `assets/` | Fonts, artwork, the default wallpaper and attribution |
 | `docs/`, `tests/` | Setup guides, references, previews and verification |
 | `links.txt` | Explicit user-file installation manifest |
 | `packages.*`, `ports.lock`, `sources.lock` | Package policy and pinned build inputs |
@@ -71,7 +71,7 @@ and [licenses and attribution](COPYING.md) before publishing changes.
 ## Guides
 
 - [Keyboard controls](docs/KEYBINDINGS.md), [editor and development](docs/DEVELOPMENT.md), [embedded Rust/Zephyr](docs/EMBEDDED.md)
-- [First-run requirements](docs/FIRST-RUN.md), [PCB workflow](docs/EDA.md), [full laptop information](docs/SYSTEM-INFO.md)
+- [First-run requirements](docs/FIRST-RUN.md), [full laptop information](docs/SYSTEM-INFO.md)
 - [Offline manuals and formatted examples](docs/OFFLINE-DOCS.md), [password store](docs/PASSWORDS.md)
 - [Packages and GNU exceptions](docs/PACKAGES.md), [boot and session](docs/BOOT-AND-SESSION.md)
 - [Hardware](docs/HARDWARE.md), [performance](docs/PERFORMANCE.md), [fingerprint/FIDO](docs/AUTHENTICATION.md)

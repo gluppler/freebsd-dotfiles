@@ -19,7 +19,6 @@ Preflight checks writable `/etc`, `/var` and `/usr`, and that `devd` is running.
 | Fingerprint/FIDO | Optional discovery/enrollment helpers and documented PAM path | Supported device, explicit enrollment and a successful password-fallback test |
 | Printers/scanners/camera | Device discovery, permissions and native service helpers | Actual device/backend/queue choices and a hardware test |
 | Embedded work | LLVM/Rust/Go/Python tools, west and probe utilities | Board/target selection, vendor SDK/model licenses, pin map, linker memory map and probe connection |
-| KiCad | Suite, libraries, missing global library tables, assembly plugin, exports and offline manuals | Project circuit, footprints, SPICE models and fabrication constraints |
 | Fonts/reference books | Bundled fonts and explicit staged documentation checks | Optional project/CPU/vendor documentation not supplied by a language toolchain |
 
 The setup does not assume credentials, a printer model, a board memory map or a

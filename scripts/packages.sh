@@ -83,6 +83,29 @@ mkdir "$temp/remote" "$temp/db" "$temp/repo" "$temp/local"
 pkgtool() { env -i PATH="$PATH" HOME=/root LC_ALL=C /usr/local/sbin/pkg -C /dev/null "$@"; }
 remote() { pkgtool -R "$temp/remote" -o "PKG_DBDIR=$temp/db" "$@"; }
 localpkg() { pkgtool -R "$temp/local" "$@"; }
+# pkg 2.8.4 has no option that forbids removals, and its dry run needs -y to
+# report success. Review that plan, then approve the same command exactly once.
+transact() {
+    operation=$1
+    shift
+    status=0
+    localpkg "$operation" -U -n -y -r NostromoTransaction "$@" >"$temp/plan" 2>&1 || status=$?
+    tee -a "$receipt/plan" <"$temp/plan"
+    [ "$status" = 0 ] || exit "$status"
+    awk 'BEGIN {integrity_only=1}
+        /^Installed packages to be REMOVED:/ || /^Number of packages to be removed:/ {removed=1}
+        /^(New packages to be INSTALLED|Installed packages to be (UPGRADED|DOWNGRADED|REINSTALLED)):/ {known=1}
+        /^Your packages are up to date\.$/ || /^The most recent versions of packages are already installed$/ {known=1}
+        NF && $0!="Checking integrity... done (0 conflicting)" {integrity_only=0}
+        END {
+            if(removed){print "Package removal proposed; transaction stopped." > "/dev/stderr";exit 1}
+            if(!known && !(NR && integrity_only)){print "Unrecognized package plan; transaction stopped." > "/dev/stderr";exit 1}
+        }' "$temp/plan"
+    [ "$action" != preview ] || exit 0
+    # Approve this plan once. A second solver/conflict prompt receives EOF, not
+    # another automatic yes. Keep the private repository unchanged throughout.
+    printf 'y\n' | localpkg "$operation" -U -r NostromoTransaction "$@"
+}
 upstream_for() {
     case $1 in
     *-kmod | *-kmod-*) printf 'NostromoKmods\n' ;;
@@ -307,6 +330,11 @@ while IFS= read -r name; do
     validate "$name"
     set -- "$@" "$name"
 done <"$temp/request"
+# pkg installs its own upgrade first, then restarts and solves the rest again.
+# Review that step separately, so the restarted solution gets its own approval.
+if [ "$action" != preview ] && grep -q '^P|pkg|' "$temp/records"; then
+    transact upgrade pkg
+fi
 if [ "$action" = reinstall ]; then
     awk -F '|' -v name="$1" '$1==name {found=1} END{exit !found}' "$policy/packages.local"
     if pkgtool info -e "$1"; then
@@ -324,22 +352,20 @@ if [ "$action" = reinstall ]; then
             }
         fi
     fi
-    localpkg install -U -f -n --no-remove -r NostromoTransaction "$@"
-    localpkg install -U -f -y --no-remove -r NostromoTransaction "$@"
+    transact install -f "$@"
 elif [ "$action" = update ]; then
-    localpkg upgrade -U -n --no-remove -r NostromoTransaction "$@"
-    localpkg upgrade -U -y --no-remove -r NostromoTransaction "$@"
+    transact upgrade "$@"
 else
-    localpkg install -U -n --no-remove -r NostromoTransaction "$@"
-    [ "$action" != preview ] || exit
-    # --no-remove makes conflicting replacements a stop, not an implicit uninstall.
-    localpkg install -U -y --no-remove -r NostromoTransaction "$@"
+    transact install "$@"
 fi
 localpkg check -d -n -a
 pkgtool query -a '%n|%v|%o|%q|%a' >"$receipt/after"
+# pkg keeps an older installed dependency that a new package does not require
+# it to replace. Check identity here; updates report pending versions below.
 awk -F '|' '
     NR==FNR {if($1=="P"){origin[$2]=$4;abi[$2]=$5};next}
-    {installed[$1]=1;if($1 in origin && ($3!=origin[$1] || $4!=abi[$1]))bad=1}
+    {installed[$1]=1}
+    $1 in origin && ($3!=origin[$1] || $4!=abi[$1]) {print "Installed origin/ABI differs from the audited package: " $1 > "/dev/stderr";bad=1}
     END {for(n in origin)if(!installed[n]){print "Missing transaction package: " n > "/dev/stderr";bad=1};exit bad}
 ' "$temp/records" "$receipt/after"
 if [ "$action" = update ]; then
