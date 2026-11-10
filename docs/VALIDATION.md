@@ -5,9 +5,11 @@ the first package transaction. The first misread pkg's empty dependency rows. Wi
 that fixed, commit `faef848` reaches the transaction and passes pkg an option that
 pkg 2.8.4 does not have. Both have source fixes and regression coverage below,
 including real pkg 2.8.4 transactions on this host. Commit `15bb0b4` then passed
-that stage on the T14 and stopped in `python312-build`; the
-[native evidence](#native-evidence-from-the-t14) records the cause and its fix,
-whose native rerun is pending. The KiCad PCB workflow has since been removed because PCB design
+that stage on the T14 and stopped in `python312-build`. With that fixed, commit
+`7f3f3ee` built, installed and locked python312, cmake-core and libxml2 natively,
+then stopped at `libxslt-dependencies`; the
+[native evidence](#native-evidence-from-the-t14) records both causes and fixes.
+A native rerun of the second fix is pending. The KiCad PCB workflow has since been removed because PCB design
 runs on a separate server: its packages, six native variants, ports patch, plugin,
 helper, guide and tests are gone. Host checks pass for the listed scopes. The full native
 FreeBSD package build/install, first login/reboot and hardware acceptance remain
@@ -18,6 +20,12 @@ measured battery-performance claim is made.
 
 ## Audit fixes
 
+- Later dependency lists, the desktop list and updates name variants that
+  earlier stages installed and locked. pkg refuses any request naming a locked
+  package, even one identical to the reviewed archive, so `libxslt-dependencies`
+  stopped on libxml2. The helper now leaves installed, locked variants out of
+  install, preview and update requests; reinstall still unlocks its own variant
+  first. Real pkg 2.8.4 reproduces the stop and passes the corrected requests.
 - Python's libedit patch dropped `USES=readline`, which also added the
   `/usr/local` include and library search paths, so the T14's first variant build
   could not link `_decimal` and `pyexpat` against the system libmpdec and expat.
@@ -95,7 +103,7 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | `python3 tests/check.py` | 24 passed: links/assets/fonts, manifest coverage, every declared home destination, browser arguments/schema, CWD encoding, shell syntax, user-link preflight/rollback/idempotency, former-link removal/restoration/directory conversion/mid-run change, receipt-checked plugin pins and dkjson checksum stops |
 | `python3 tests/helpers.py` | 8 passed: display-mode/scale rollback and last-output protection, SSID bytes/managed blocks, USB CAM filtering, unsafe argument rejection and default fallback for a saved wallpaper whose exports were removed |
 | `python3 tests/package-policy.py` | 22 passed: reported empty-list failure and actual resolver/query handling, kmods selection/catalogue, failure/signal cleanup, graph/identity/ABI/receipt validation including only the FreeBSD 15 `*` ABI, exact GNU roles/versions, stock conversion/cleanup, pkgbase separation, protected removal, transaction-guard dispatch, separate pkg self-upgrade, named origin/ABI mismatches, pending versions, preserved automatic/build-protection flags, stale ports-tree replacement that stops on changed, added or missing files, all six ports patches on the cached pinned archive with search paths kept where Readline is dropped, and listed advisories reported without stopping a variant build |
-| `PKG=… python3 tests/pkg-integration.py` | 9 passed against pkg 2.8.4 built from source on this host, with disposable signed repositories: `--no-remove` rejected as unrecognized, the five reported leaf dependencies installed twice, preview/reinstall/upgrade, existing automatic dependencies, a file conflict denied a second approval, real removal plans rejected, a `FreeBSD:15:*` archive audited and installed, an older dependency pkg keeps, and pkg's restart failing under one approval but passing as its own transaction |
+| `PKG=… python3 tests/pkg-integration.py` | 10 passed against pkg 2.8.4 built from source on this host, with disposable signed repositories: the native locked-variant stop reproduced, then install/preview/update requests that keep a locked variant while stock packages and an unlocked variant still change and reinstall unlocks its own, `--no-remove` rejected as unrecognized, the five reported leaf dependencies installed twice, preview/reinstall/upgrade, existing automatic dependencies, a file conflict denied a second approval, real removal plans rejected, a `FreeBSD:15:*` archive audited and installed, an older dependency pkg keeps, and pkg's restart failing under one approval but passing as its own transaction |
 | `python3 tests/provisioning.py` | 9 passed: selective settings/SDDM/SSH/PF merges, helper/font/login/loader destinations, ambiguous input rejection, idempotency, rollback preserving later edits, legacy/current log pruning with archived recovery runs, signal cleanup, lock release and policy reuse/recovery |
 | `python3 tests/network-menus.py` | 9 passed: actual fuzzel managers, byte-safe SSIDs, masked secrets, cancellation, scan recovery, phone/open/OWE hotspots, unprivileged portal dispatch, Bluetooth initialization/pairing, persistent WireGuard selection and status without authentication |
 | `python3 tests/bootstrap.py` | 8 passed: actual console/helper transactions with simulated native commands; missing WPA profile, hidden input, failed-auth rollback, DNS-failure retention, later rc overrides, open/OWE profiles, unsupported security rejection, unsafe paths and supported Intel Bluetooth initialization |
@@ -108,7 +116,7 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | Offline package contents | Checked quarterly stdman archive renders its C++ examples through mandoc; Python pathlib text retains example blocks; the four added documentation packages have no dependencies |
 | POSIX shfmt + ShellCheck | 98 operational/build/source scripts and the two shell configuration files they source are clean at style severity; interactive oksh checked separately with ksh mode and `/bin/ksh -n` |
 | Fastfetch | Exact 2.69.0 parser accepts the detailed configuration; plain-output CLI flags checked with the host build. This does not verify FreeBSD sensor detection |
-| Ports recipes | `tests/package-policy.py` applies all six ports patches to the checksum-verified pinned archive with zero fuzz. No full native build has completed; see [native evidence](#native-evidence-from-the-t14) |
+| Ports recipes | `tests/package-policy.py` applies all six ports patches to the checksum-verified pinned archive with zero fuzz. Three of the 15 variants have built natively; see [native evidence](#native-evidence-from-the-t14) |
 | Reference sources | cppreference snapshot matches its pinned hash; extraction confines files to its declared directory |
 | `lua tests/viewer-title.lua` | Shipped Swayimg config exercises viewer/slideshow/gallery title updates, empty images and duplicate-redraw suppression with a small host API stand-in |
 | Lua parsing | Eight editor/loader/image-viewer files parsed; native clients are not installed on this host |
@@ -246,8 +254,8 @@ no host result bypasses those gates.
 
 ## Native evidence from the T14
 
-The installer has run natively on the T14 (FreeBSD 15.1-RELEASE amd64) up to its
-first variant build. Commit `15bb0b4` passed `python312-dependencies`;
+The installer has run natively on the T14 (FreeBSD 15.1-RELEASE amd64) through
+three variant builds. Commit `15bb0b4` passed `python312-dependencies`;
 `python312-build` then stopped linking two modules with
 `ld: error: unable to find library -lmpdec` and `-lexpat`, although both
 libraries are installed in `/usr/local/lib`. Read-only diagnosis as the desktop
@@ -264,9 +272,16 @@ user, over SSH and with temporary files confined to `/tmp`, found:
   version) and none of the other 14 variants. The live advisory list could not
   be downloaded here.
 
-No package was built, installed or removed during the diagnosis. The generated
-ports tree matched its receipt, so the next `prepare-ports` replaces it with the
-fixed recipe. A native rerun must still build, install and accept every variant.
+With that fix, commit `7f3f3ee` regenerated the tree for recipe `d486a70b…` and
+built python312, cmake-core and libxml2. Each was imported, installed from the
+transaction repository and locked, with that recipe's receipt. libxslt's
+dependency list (`gmake`, `pkgconf`, `libxml2`) then stopped with
+`libxml2-2.15.4 is locked and may not be modified`. pkg 2.8.4 returns that error
+for any request naming a locked package, before comparing versions or digests;
+it leaves a request's locked dependencies installed as they are.
+
+No package was built, installed or removed during either diagnosis. A native
+rerun must still build, install and accept the remaining 12 variants.
 
 ## Laptop acceptance after reinstall
 

@@ -45,6 +45,9 @@ class Transactions(unittest.TestCase):
             'if [ "$action" = reinstall ]; then',1)[0]
         self.identity_check = "pkgtool query -a '%n|%v|%o|%q|%a' >\"$receipt/after\"\n" + source.split(
             "pkgtool query -a '%n|%v|%o|%q|%a' >\"$receipt/after\"\n",1)[1].split('\nif [ "$action" = update ]',1)[0]
+        # From the request list through the final transaction choice.
+        self.request = '# pkg refuses a request' + source.split('# pkg refuses a request',1)[1].split(
+            '    transact install "$@"\nfi\n',1)[0] + '    transact install "$@"\nfi\n'
 
     def pkg(self, *args, check=True):
         result = subprocess.run([str(PKG),'-C',str(self.path/'pkg.conf'),*args],env=self.env,
@@ -53,7 +56,7 @@ class Transactions(unittest.TestCase):
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         return result
 
-    def package(self, name, version='1', *, deps=(), file=None, noarch=False):
+    def package(self, name, version='1', *, deps=(), file=None, noarch=False, annotations=None):
         # A dependency name records version 1; a mapping names the version.
         deps = deps if isinstance(deps, dict) else dict.fromkeys(deps, '1')
         manifest = {'name':name, 'version':version, 'origin':'misc/'+name,
@@ -67,6 +70,8 @@ class Transactions(unittest.TestCase):
         if file:
             (self.path/'payload'/file).write_text(name+'\n')
             manifest['files']={str(self.path/'payload'/file):''}
+        if annotations:
+            manifest['annotations']=annotations
         path = self.path/(name+'.json')
         path.write_text(json.dumps(manifest))
         for previous in (self.path/'repo').glob(name+'-*.pkg'):
@@ -236,6 +241,66 @@ pkgtool() { "$PKG_TEST" -C "$PKG_WORK/pkg.conf" "$@"; }
         plans = (self.path/'receipt/plan').read_text()
         self.assertEqual(plans.count('Installed packages to be UPGRADED:'),1)
         self.assertEqual(plans.count('New packages to be INSTALLED:'),1)
+
+    def test_requests_keep_installed_locked_variants(self):
+        # Later dependency lists and the desktop list name variants that earlier
+        # stages installed and locked. Naming one to pkg stopped the native run.
+        self.package('libxml2',annotations={'nostromo_recipe':'abc'})
+        self.package('application',deps=['libxml2'])
+        self.package('curl')
+        self.package('gmake')
+        self.publish()
+        self.pkg('install','-U','-y','-r','NostromoTransaction','libxml2','application','curl')
+        self.pkg('lock','-y','libxml2')
+        plain = self.transact('install','gmake','libxml2')
+        self.assertNotEqual(plain.returncode,0)
+        self.assertIn('libxml2-1 is locked and may not be modified',plain.stdout+plain.stderr)
+        (self.path/'policy').mkdir()
+        (self.path/'policy/packages.local').write_text(
+            '# name|origin|version\nlibxml2|misc/libxml2|1\ncurl|misc/curl|1\n')
+        (self.path/'records').write_text('')
+        script = '''set -eu
+receipt=$PKG_WORK/receipt; temp=$PKG_WORK; policy=$PKG_WORK/policy; recipe=abc; relock=; action=$1
+pkgtool() { "$PKG_TEST" -C "$PKG_WORK/pkg.conf" "$@"; }
+localpkg() { pkgtool "$@"; }
+validate() { :; }
+known_recipe() { [ "$1" = "$recipe" ]; }
+''' + self.guard + '\n' + self.request + "echo 'Post-transaction checks.'\n"
+
+        def request(action, *names):
+            (self.path/'request').write_text(''.join(name+'\n' for name in names))
+            return subprocess.run(['sh','-c',script,'--',action],env=self.env,text=True,
+                                  capture_output=True,timeout=60)
+
+        kept = 'Keeping the installed, locked libxml2 variant.'
+        result = request('install','gmake','libxml2')
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn(kept,result.stdout)
+        self.assertEqual(self.pkg('query','%v','gmake').stdout.strip(),'1')
+        # A request of kept variants alone leaves pkg out. Install still runs the
+        # post-transaction checks; a preview stops before them.
+        for action in ('install','preview'):
+            result = request(action,'libxml2')
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            self.assertIn(kept,result.stdout)
+            self.assertNotIn('Proceed with this action',result.stdout)
+            self.assertEqual('Post-transaction checks.' in result.stdout,action=='install')
+        self.package('application','2',deps=['libxml2'])
+        self.package('curl','2')
+        self.publish()
+        # Updates name every installed package. Stock packages and an unlocked
+        # variant, such as a stock bootstrap copy, still upgrade.
+        result = request('update','application','curl','gmake','libxml2')
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertNotIn('locked curl',result.stdout)
+        self.assertEqual(self.pkg('query','%v','application').stdout.strip(),'2')
+        self.assertEqual(self.pkg('query','%v','curl').stdout.strip(),'2')
+        self.assertEqual(self.pkg('query','%v|%k','libxml2').stdout.strip(),'1|1')
+        # Reinstall still names its variant: the helper unlocks it first.
+        result = request('reinstall','libxml2')
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertNotIn(kept,result.stdout)
+        self.assertIn('Installed packages to be REINSTALLED:',result.stdout)
 
 
 if __name__ == '__main__':

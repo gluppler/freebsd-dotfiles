@@ -325,9 +325,18 @@ NostromoTransaction: {
 }
 EOF
 localpkg update -f
+# pkg refuses a request that names a locked package, even an identical one.
+# Installed variants are locked; they already satisfy install and update requests.
+pkgtool query -a '%n|%k' >"$temp/locks"
+awk -F '|' 'NR==FNR {if (NF && $0 !~ /^#/) variant[$1]=1; next} $2 == 1 && variant[$1] {print $1}' \
+    "$policy/packages.local" "$temp/locks" >"$temp/locked-variants"
 set --
 while IFS= read -r name; do
     validate "$name"
+    if [ "$action" != reinstall ] && grep -Fxq -e "$name" "$temp/locked-variants"; then
+        printf 'Keeping the installed, locked %s variant.\n' "$name"
+        continue
+    fi
     set -- "$@" "$name"
 done <"$temp/request"
 # pkg installs its own upgrade first, then restarts and solves the rest again.
@@ -353,6 +362,9 @@ if [ "$action" = reinstall ]; then
         fi
     fi
     transact install -f "$@"
+elif [ "$#" = 0 ]; then
+    # Every requested package is a kept variant; the checks below still run.
+    [ "$action" != preview ] || exit 0
 elif [ "$action" = update ]; then
     transact upgrade "$@"
 else

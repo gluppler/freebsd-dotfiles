@@ -21,11 +21,17 @@ unedited generated tree from an earlier recipe and stops on edits. Commit
 patch dropped Readline's `/usr/local` search paths, so two Python modules could
 not link libmpdec and expat. The patch keeps them now. Variant builds also report
 pkg's advisories instead of stopping, since the framework would refuse Python
-3.12 once the nightly audit fetches its advisory file. The next native run must
+3.12 once the nightly audit fetches its advisory file. Commit `7f3f3ee` then
+built, installed and locked three variants natively and stopped at
+`libxslt-dependencies`: pkg refuses any request naming a locked package, and
+libxslt's dependency list names libxml2. The helper now keeps installed, locked
+variants out of install, preview and update requests. The next native run must
 confirm these fixes before installation, login and reboot can be marked
 complete; see the
-[dependency](docs/INSTALL.md#recover-from-a-stop-at-python312-dependencies) and
-[build](docs/INSTALL.md#recover-from-a-stop-at-python312-build) recovery instructions.
+[dependency](docs/INSTALL.md#recover-from-a-stop-at-python312-dependencies),
+[build](docs/INSTALL.md#recover-from-a-stop-at-python312-build) and
+[locked-variant](docs/INSTALL.md#recover-from-a-stop-at-libxslt-dependencies)
+recovery instructions.
 
 **Latest scope clarification:** migrate every implemented workflow **and every
 unfinished future plan** from the OpenBSD tree. The [coverage ledger](docs/MIGRATION-COVERAGE.md)

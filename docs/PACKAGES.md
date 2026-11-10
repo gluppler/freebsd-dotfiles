@@ -53,7 +53,10 @@ packages. A recipe hash covers the manifests/options/patches and is
 attached to each local archive. When the hash changes, preparation replaces an
 unedited generated ports tree and its build work; an edited tree stops for review.
 Local variants are locked after installation; a normal update cannot silently
-replace them with stock binaries. Rebuild through the PORTS menu, or rerun the
+replace them with stock binaries. pkg refuses any request that names a locked
+package, so install, preview and update requests keep an installed, locked
+variant as it is; later dependency lists, the desktop list and updates name
+earlier variants. Rebuild through the PORTS menu, or rerun the
 installer after a reviewed recipe change.
 
 The initial manual Git install can bring stock variants and automatic GNU

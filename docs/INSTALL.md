@@ -212,6 +212,26 @@ Pull and rerun `--check` and `--apply` as above. Both changes alter the ports
 recipe, so `prepare-ports` replaces the unedited generated tree and discards the
 failed build work; no manual cleanup is needed.
 
+### Recover from a stop at libxslt-dependencies
+
+With the build fixed, python312, cmake-core and libxml2 build, install and lock.
+libxslt's dependency stage then stops:
+
+```text
+libxml2-2.15.4 is locked and may not be modified
+```
+
+Variants are locked after installation, and libxslt's dependency list names
+libxml2 again. pkg refuses any request that names a locked package, even one
+identical to the reviewed archive. The package helper now leaves installed,
+locked variants out of install, preview and update requests, which they already
+satisfy. The desktop list, which names fcitx5 and wlroots020, and the software
+menu's update needed the same change.
+
+Pull and rerun `--check` and `--apply` as above. The ports recipe is unchanged,
+so the three finished variants are not rebuilt: their completed port work is
+checked again, reinstalled from its archive and locked before libxslt continues.
+
 ## Source exports
 
 From the development checkout, as its ordinary owner:
