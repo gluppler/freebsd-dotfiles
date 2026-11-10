@@ -1,11 +1,13 @@
 # Validation and native acceptance
 
-Updated **2026-11-10**. Native attempts stopped at `python312-dependencies`, the
-first package transaction. The first misread pkg's empty dependency rows. With
+Updated **2026-11-10**. Native attempts first stopped at `python312-dependencies`,
+the first package transaction. The first misread pkg's empty dependency rows. With
 that fixed, commit `faef848` reaches the transaction and passes pkg an option that
 pkg 2.8.4 does not have. Both have source fixes and regression coverage below,
-including real pkg 2.8.4 transactions on this host; a native rerun of these fixes
-is still pending. The KiCad PCB workflow has since been removed because PCB design
+including real pkg 2.8.4 transactions on this host. Commit `15bb0b4` then passed
+that stage on the T14 and stopped in `python312-build`; the
+[native evidence](#native-evidence-from-the-t14) records the cause and its fix,
+whose native rerun is pending. The KiCad PCB workflow has since been removed because PCB design
 runs on a separate server: its packages, six native variants, ports patch, plugin,
 helper, guide and tests are gone. Host checks pass for the listed scopes. The full native
 FreeBSD package build/install, first login/reboot and hardware acceptance remain
@@ -16,6 +18,17 @@ measured battery-performance claim is made.
 
 ## Audit fixes
 
+- Python's libedit patch dropped `USES=readline`, which also added the
+  `/usr/local` include and library search paths, so the T14's first variant build
+  could not link `_decimal` and `pyexpat` against the system libmpdec and expat.
+  The patch keeps those paths. A host test now applies every ports patch to the
+  cached pinned archive with zero fuzz and checks that each port dropping
+  Readline still gets the paths its libraries need.
+- The ports framework refuses any port listed in pkg's advisory file, and its
+  check runs on every build. Once the nightly security run downloads that file,
+  every rerun would stop at python312, whose two listed advisories have no fixed
+  version. Variant builds now print pkg's report for that variant, then build it
+  with `DISABLE_VULNERABILITIES`; stock packages are built without the check too.
 - The package transaction no longer passes `--no-remove`, which pkg 2.8.4 rejects
   as an unrecognized option, so `faef848` stopped at its first transaction. That
   dry run also lacked the `-y` pkg needs to return success for a nonempty plan.
@@ -81,7 +94,7 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | --- | --- |
 | `python3 tests/check.py` | 24 passed: links/assets/fonts, manifest coverage, every declared home destination, browser arguments/schema, CWD encoding, shell syntax, user-link preflight/rollback/idempotency, former-link removal/restoration/directory conversion/mid-run change, receipt-checked plugin pins and dkjson checksum stops |
 | `python3 tests/helpers.py` | 8 passed: display-mode/scale rollback and last-output protection, SSID bytes/managed blocks, USB CAM filtering, unsafe argument rejection and default fallback for a saved wallpaper whose exports were removed |
-| `python3 tests/package-policy.py` | 20 passed: reported empty-list failure and actual resolver/query handling, kmods selection/catalogue, failure/signal cleanup, graph/identity/ABI/receipt validation including only the FreeBSD 15 `*` ABI, exact GNU roles/versions, stock conversion/cleanup, pkgbase separation, protected removal, transaction-guard dispatch, separate pkg self-upgrade, named origin/ABI mismatches, pending versions, preserved automatic/build-protection flags and stale ports-tree replacement that stops on changed, added or missing files |
+| `python3 tests/package-policy.py` | 22 passed: reported empty-list failure and actual resolver/query handling, kmods selection/catalogue, failure/signal cleanup, graph/identity/ABI/receipt validation including only the FreeBSD 15 `*` ABI, exact GNU roles/versions, stock conversion/cleanup, pkgbase separation, protected removal, transaction-guard dispatch, separate pkg self-upgrade, named origin/ABI mismatches, pending versions, preserved automatic/build-protection flags, stale ports-tree replacement that stops on changed, added or missing files, all six ports patches on the cached pinned archive with search paths kept where Readline is dropped, and listed advisories reported without stopping a variant build |
 | `PKG=… python3 tests/pkg-integration.py` | 9 passed against pkg 2.8.4 built from source on this host, with disposable signed repositories: `--no-remove` rejected as unrecognized, the five reported leaf dependencies installed twice, preview/reinstall/upgrade, existing automatic dependencies, a file conflict denied a second approval, real removal plans rejected, a `FreeBSD:15:*` archive audited and installed, an older dependency pkg keeps, and pkg's restart failing under one approval but passing as its own transaction |
 | `python3 tests/provisioning.py` | 9 passed: selective settings/SDDM/SSH/PF merges, helper/font/login/loader destinations, ambiguous input rejection, idempotency, rollback preserving later edits, legacy/current log pruning with archived recovery runs, signal cleanup, lock release and policy reuse/recovery |
 | `python3 tests/network-menus.py` | 9 passed: actual fuzzel managers, byte-safe SSIDs, masked secrets, cancellation, scan recovery, phone/open/OWE hotspots, unprivileged portal dispatch, Bluetooth initialization/pairing, persistent WireGuard selection and status without authentication |
@@ -95,7 +108,7 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | Offline package contents | Checked quarterly stdman archive renders its C++ examples through mandoc; Python pathlib text retains example blocks; the four added documentation packages have no dependencies |
 | POSIX shfmt + ShellCheck | 98 operational/build/source scripts and the two shell configuration files they source are clean at style severity; interactive oksh checked separately with ksh mode and `/bin/ksh -n` |
 | Fastfetch | Exact 2.69.0 parser accepts the detailed configuration; plain-output CLI flags checked with the host build. This does not verify FreeBSD sensor detection |
-| Ports recipes | All six ports patches apply to the pinned tree with zero fuzz. Full native builds have not run |
+| Ports recipes | `tests/package-policy.py` applies all six ports patches to the checksum-verified pinned archive with zero fuzz. No full native build has completed; see [native evidence](#native-evidence-from-the-t14) |
 | Reference sources | cppreference snapshot matches its pinned hash; extraction confines files to its declared directory |
 | `lua tests/viewer-title.lua` | Shipped Swayimg config exercises viewer/slideshow/gallery title updates, empty images and duplicate-redraw suppression with a small host API stand-in |
 | Lua parsing | Eight editor/loader/image-viewer files parsed; native clients are not installed on this host |
@@ -111,7 +124,8 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | HTML/start page | Actual QtWebEngine local page/font render and placeholder behavior checked; not a qutebrowser process |
 | Current artwork | Runtime logos/textures use PNG; native shared painters, idle bounce, QML login and browser page checked after conversion. Animated defaults and static/off overrides pass. Simulations are archived outside the source tree; regenerated previews stay in `.build/previews/` |
 
-The eleven Python suites total **107 passing cases**. They use real local code and
+The eleven Python suites total **109 passing cases**. One package-policy case
+reads the cached, checksum-verified ports archive and skips without it. They use real local code and
 small disposable command stand-ins where native devices/package managers are
 unavailable. They do not execute a root installer or alter this macOS machine.
 The separate pkg integration suite runs the transaction guard with the real pkg
@@ -230,6 +244,30 @@ wheel/video/dialer membership and exact font families. Those checks are inside t
 installer and have not been executed here. Real native errors must stop the stage;
 no host result bypasses those gates.
 
+## Native evidence from the T14
+
+The installer has run natively on the T14 (FreeBSD 15.1-RELEASE amd64) up to its
+first variant build. Commit `15bb0b4` passed `python312-dependencies`;
+`python312-build` then stopped linking two modules with
+`ld: error: unable to find library -lmpdec` and `-lexpat`, although both
+libraries are installed in `/usr/local/lib`. Read-only diagnosis as the desktop
+user, over SSH and with temporary files confined to `/tmp`, found:
+
+- With the failed recipe, the pinned ports framework evaluates `LDFLAGS` to
+  nothing; `-I/usr/local/include` came only from the NLS option. With the fixed
+  patch, `LDFLAGS` is `-L/usr/local/lib` and reaches configure and `MAKE_ENV`.
+- Both failing link commands succeed with that path. The earlier replayed steps
+  (`getbuildinfo`, the LTO `_freeze_module` link and a freeze) also succeed.
+- `/var/db/pkg/vuln.xml` was absent. pkg's nightly audit is enabled and cron runs.
+  Real pkg 2.8.4 on this host lists python312-3.12.15 under the pinned tree's
+  advisories (newest 2026-10-01: CVE-2025-15367 and CVE-2025-15366, no fixed
+  version) and none of the other 14 variants. The live advisory list could not
+  be downloaded here.
+
+No package was built, installed or removed during the diagnosis. The generated
+ports tree matched its receipt, so the next `prepare-ports` replaces it with the
+fixed recipe. A native rerun must still build, install and accept every variant.
+
 ## Laptop acceptance after reinstall
 
 1. Verify release/running kernel, actual RAM/CPU/NVMe and detected devices.
@@ -260,6 +298,6 @@ no host result bypasses those gates.
     view, including static/off, resizing, keyboard navigation, closing and sensor
     availability. Host Lua tests use an API stand-in, not a running native editor.
 
-The user is waiting to install until the configuration is ready. No native
-laptop checks have been performed in this pass, and no zero-error guarantee is
-made for a machine that has not booted this environment.
+The installer has not yet completed on the laptop, none of these acceptance
+checks has run, and no zero-error guarantee is made for a machine that has not
+booted this environment.

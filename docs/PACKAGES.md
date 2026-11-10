@@ -37,11 +37,19 @@ wlroots 0.20, Hunspell, fcitx5, PipeWire, PyQt6 and Python ECDSA.
 `system/ports.conf` and `src/ports/` are the reviewed options/patches: libedit in
 place of Readline where supported, ICU/OpenSSL where appropriate, reduced Qt
 bindings and disabled optional GNU-heavy or X11 features. ECDSA uses its native
-Python implementation without optional GMPY/GMPY2.
+Python implementation without optional GMPY/GMPY2. Readline's ports module also
+adds the `/usr/local` include and library search paths. Python's patch keeps them
+for its system libmpdec and expat; Hunspell links nothing from there, and PipeWire
+gets them from `USES=localbase`.
 
 Builds run as the desktop user, using the pinned ports framework, native Clang,
 ordinary-user staging and `check-plist`. Dependency lists pass through the same
-root package gate. A recipe hash covers the manifests/options/patches and is
+root package gate. When pkg's advisory file (`/var/db/pkg/vuln.xml`, fetched by
+the nightly security run) lists a variant, its build prints pkg's report and
+continues. The ports framework would otherwise refuse every later build of that
+variant, even a finished one, until a pinned tree carries a fix; stock packages
+are built without that check. The nightly report still lists vulnerable installed
+packages. A recipe hash covers the manifests/options/patches and is
 attached to each local archive. When the hash changes, preparation replaces an
 unedited generated ports tree and its build work; an edited tree stops for review.
 Local variants are locked after installation; a normal update cannot silently

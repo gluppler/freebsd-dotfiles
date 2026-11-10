@@ -109,7 +109,13 @@ if [ "$action" = deps ]; then
             BATCH=yes NO_DEPENDS=yes "$@" -V PKGBASE
     done <"$work/$name.origins"
 else
-    portmake checksum stage stage-qa check-plist package
+    # Ports refuse a port listed in pkg's advisory file, even one already built;
+    # stock packages are built without that check. Report advisories, then build.
+    advisories=$(portmake -V AUDITFILE)
+    if [ -f "$advisories" ] && ! report=$(pkg audit -f "$advisories" "$name-$version" 2>&1); then
+        printf '%s\nBuilding %s despite the audit report above.\n' "$report" "$name" >&2
+    fi
+    portmake DISABLE_VULNERABILITIES=yes checksum stage stage-qa check-plist package
     file=$packages/All/$name-$version.pkg
     [ -f "$file" ] && [ ! -L "$file" ] || exit 1
     [ "$(pkg query -F "$file" '%At|%Av' | awk -F '|' '$1=="nostromo_recipe" {print $2}')" = "$(cat "$recipe_file")" ] || exit 1

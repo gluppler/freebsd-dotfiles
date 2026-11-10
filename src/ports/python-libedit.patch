@@ -9,12 +9,15 @@
  PATHFIX_MAKEFILEIN=	Makefile.pre.in
  USE_LDCONFIG=	yes
  GNU_CONFIGURE=	yes
-@@ -31,7 +31,9 @@
+@@ -31,7 +31,12 @@
  		Lib/test/ziptestdata/header.sh
  
  DISABLED_EXTENSIONS=	_sqlite3 _tkinter _gdbm
 -CONFIGURE_ARGS+=	--enable-shared --without-ensurepip --with-system-expat
 +LIB_DEPENDS+=	libedit.so:devel/libedit
++# USES=readline also supplied these paths; system libmpdec and expat need them.
++CPPFLAGS+=	-I${LOCALBASE}/include
++LDFLAGS+=	-L${LOCALBASE}/lib
 +CONFIGURE_ARGS+=	--with-readline=editline \
 +		--enable-shared --without-ensurepip --with-system-expat
  CONFIGURE_ENV+=		OPT="" # Null out OPT to respect user CFLAGS and remove optimizations

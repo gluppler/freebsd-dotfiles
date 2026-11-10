@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Fail-closed package graph checks; no package manager or root privileges."""
 from pathlib import Path
+import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -554,6 +556,132 @@ sys.exit(status)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('Incomplete generated ports tree', result.stderr)
             self.assertEqual(makefile.read_text(), 'PORTNAME=app\nOPTIONS_UNSET=X11\n')
+
+    def test_ports_patches_apply_to_the_pinned_archive_and_keep_search_paths(self):
+        # Reads the archive fetch-source.sh caches, after checking it; nothing is downloaded.
+        top, expected = next(row[1:3] for row in (line.split('|') for line in
+                             (ROOT/'sources.lock').read_text().splitlines()) if row[0] == 'ports')
+        archive = ROOT/'.build/downloads/ports.tar.gz'
+        if not archive.is_file():
+            self.skipTest('the pinned ports archive is not cached')
+        with archive.open('rb') as stream:
+            self.assertEqual(hashlib.file_digest(stream, 'sha256').hexdigest(), expected)
+        patches = sorted((ROOT/'src/ports').glob('*.patch'))
+        ports = sorted({'/'.join(line[6:].split('/')[:2]) for patch in patches
+                        for line in patch.read_text().splitlines() if line.startswith('+++ b/')})
+
+        def variables(path):
+            # Joined make assignments; option helpers such as NLS_CPPFLAGS stay separate.
+            found = {}
+            for line in path.read_text().replace('\\\n', ' ').splitlines():
+                match = re.match(r'([A-Za-z0-9_]+)\s*[+?:!]?=(.*)', line)
+                if match:
+                    found.setdefault(match[1], []).extend(match[2].split())
+            return found
+
+        with tempfile.TemporaryDirectory() as directory:
+            subprocess.run(['tar', '-xzf', str(archive), '-C', directory, f'{top}/Mk/Uses/readline.mk',
+                            *(f'{top}/{port}' for port in ports)], check=True)
+            pristine, patched = Path(directory)/top, Path(directory)/'patched'
+            shutil.copytree(pristine, patched)
+            for patch in patches:
+                with patch.open() as stream:
+                    result = subprocess.run(['patch', '-s', '-F', '0', '-p1'], cwd=patched, stdin=stream,
+                                            capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, patch.name + result.stdout + result.stderr)
+            # USES=readline also adds LOCALBASE search paths. Python's first native
+            # build lost them and could not link the system libmpdec and expat.
+            readline = variables(pristine/'Mk/Uses/readline.mk')
+            paths = {name: readline[name] for name in ('CPPFLAGS', 'LDFLAGS')}
+            self.assertEqual(paths, {'CPPFLAGS': ['-I${LOCALBASE}/include'], 'LDFLAGS': ['-L${LOCALBASE}/lib']})
+            outcome = {}
+            for port in ports:
+                before, after = variables(pristine/port/'Makefile'), variables(patched/port/'Makefile')
+                if 'readline' not in before.get('USES', []) or 'readline' in after.get('USES', []):
+                    continue
+                if not any(name.endswith('LIB_DEPENDS') for name in after):
+                    outcome[port] = 'no LOCALBASE libraries'
+                elif any(use.startswith('localbase') for use in after['USES']):
+                    outcome[port] = 'USES=localbase'
+                else:
+                    for name, words in paths.items():
+                        self.assertLessEqual(set(words), set(after.get(name, [])), f'{port} {name}')
+                    outcome[port] = 'own search paths'
+            self.assertEqual(outcome, {'lang/python312': 'own search paths', 'multimedia/pipewire': 'USES=localbase',
+                                       'textproc/hunspell': 'no LOCALBASE libraries'})
+
+    def test_variant_builds_report_listed_advisories_instead_of_stopping(self):
+        # Modeled make refuses a listed port without DISABLE_VULNERABILITIES, as the
+        # pinned framework's check-vulnerable does on every build.
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            repo, tools, build = base/'repo', base/'bin', base/'repo/.build'
+            for path in (repo/'scripts', build/'ports/devel/app', tools):
+                path.mkdir(parents=True)
+            source = (ROOT/'scripts/ports-variants.sh').read_text()
+            native = 'PATH=/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin:/usr/local/sbin\n'
+            self.assertIn(native, source)
+            (repo/'scripts/ports-variants.sh').write_text(source.replace(native, f'PATH={tools}:/bin:/usr/bin\n'))
+            (repo/'scripts/recipe-hash.sh').write_text('echo abc123\n')
+            (repo/'ports.lock').write_text('92ed857ab5f20e13114a4c01193751e7f0866a36\n')
+            (repo/'packages.local').write_text('app|devel/app|1.0\n')
+            (build/'ports.recipe').write_text('abc123\n')
+            (build/'ports.mtree').touch()
+            advisories = base/'vuln.xml'
+            (tools/'uname').write_text('#!/bin/sh\necho FreeBSD\n')
+            (tools/'sysctl').write_text('#!/bin/sh\ncase $2 in hw.ncpu) echo 4 ;; *) echo 8589934592 ;; esac\n')
+            (tools/'make').write_text(f'#!{sys.executable}\n' + r'''
+import os, sys
+args = sys.argv[1:]
+if '-V' in args:
+    print({'PKGNAME': 'app-1.0', 'AUDITFILE': os.environ['TEST_ADVISORIES']}[args[args.index('-V') + 1]])
+    sys.exit()
+targets = args[next(i for i, arg in enumerate(args) if arg.startswith('PKG_NOTE_')) + 1:]
+with open(os.environ['TEST_ROOT'] + '/builds', 'a') as log:
+    log.write(' '.join(targets) + '\n')
+listed = os.path.isfile(os.environ['TEST_ADVISORIES']) and 'app' in open(os.environ['TEST_ADVISORIES']).read()
+if listed and 'DISABLE_VULNERABILITIES=yes' not in targets:
+    print('===>  app-1.0 has known vulnerabilities:')
+    sys.exit(1)
+packages = next(arg for arg in args if arg.startswith('PACKAGES='))[9:] + '/All'
+os.makedirs(packages, exist_ok=True)
+open(packages + '/app-1.0.pkg', 'w').close()
+''')
+            (tools/'pkg').write_text(f'#!{sys.executable}\n' + r'''
+import os, sys
+args = sys.argv[1:]
+if args[0] == 'query':
+    print('nostromo_recipe|abc123')
+    sys.exit()
+with open(os.environ['TEST_ROOT'] + '/audits', 'a') as log:
+    log.write(' '.join(args[1:]) + '\n')
+if 'app' in open(args[2]).read():
+    print('app-1.0 is vulnerable:\n  App -- example advisory\n\n1 problem(s) in 1 package(s) found.')
+    sys.exit(1)
+print('0 problem(s) in 0 package(s) found.')
+''')
+            for tool in tools.iterdir():
+                tool.chmod(0o755)
+            package = build/'ports-packages/All/app-1.0.pkg'
+            for listing, reported in ((None, False), ('<vuln>other</vuln>\n', False), ('<vuln>app</vuln>\n', True)):
+                with self.subTest(listing=listing):
+                    if listing is None:
+                        advisories.unlink(missing_ok=True)
+                    else:
+                        advisories.write_text(listing)
+                    result = subprocess.run(['sh', str(repo/'scripts/ports-variants.sh'), 'build', 'app'],
+                                            capture_output=True, text=True,
+                                            env={**os.environ, 'TEST_ROOT': str(base),
+                                                 'TEST_ADVISORIES': str(advisories)})
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    # Standard output stays the archive path; reports go to standard error.
+                    self.assertEqual(result.stdout, f'{package}\n')
+                    self.assertEqual('App -- example advisory' in result.stderr, reported, result.stderr)
+                    self.assertEqual('Building app despite the audit report above.' in result.stderr, reported)
+            self.assertEqual((base/'builds').read_text().splitlines(),
+                             ['DISABLE_VULNERABILITIES=yes checksum stage stage-qa check-plist package'] * 3)
+            # pkg audit reads only the framework's advisory file, and only when it exists.
+            self.assertEqual((base/'audits').read_text().splitlines(), [f'-f {advisories} app-1.0'] * 2)
 
 
 if __name__ == "__main__":

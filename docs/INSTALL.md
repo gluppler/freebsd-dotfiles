@@ -189,6 +189,29 @@ Existing `FreeBSD-ports`, `FreeBSD-ports-kmods` and disabled `FreeBSD-base`
 definitions need no edits for these errors; the helper uses private signed
 upstream definitions without replacing those system files.
 
+### Recover from a stop at python312-build
+
+Commit `15bb0b4` passes `python312-dependencies`; its build then stops linking
+two Python modules:
+
+```text
+ld: error: unable to find library -lmpdec
+*** [Modules/_decimal.cpython-312.so] Error code 1
+ld: error: unable to find library -lexpat
+*** [Modules/pyexpat.cpython-312.so] Error code 1
+```
+
+Python's libedit patch removed `USES=readline`, which also added the
+`/usr/local` include and library search paths; the system libmpdec and expat are
+installed there. The patch now keeps those paths. Variant builds also report
+pkg's advisories instead of stopping: once the nightly security run downloads its
+advisory file, the ports framework would refuse Python 3.12, whose two listed
+advisories have no fixed version yet.
+
+Pull and rerun `--check` and `--apply` as above. Both changes alter the ports
+recipe, so `prepare-ports` replaces the unedited generated tree and discards the
+failed build work; no manual cleanup is needed.
+
 ## Source exports
 
 From the development checkout, as its ordinary owner:

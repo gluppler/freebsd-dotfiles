@@ -5,7 +5,7 @@ in `openbsd-dotfiles/PLANS.md` and the older archived FreeBSD/X11 project.
 Earlier user requirements continue unless explicitly superseded below.
 All user-facing configuration, documentation and menus remain in English.
 
-Native attempts stop at `python312-dependencies`, the first package transaction.
+Native attempts first stopped at `python312-dependencies`, the first package transaction.
 The first exposed an empty-list parsing error. With that fixed, the stage reaches
 its transaction, where `pkg install --no-remove` fails: pkg 2.8.4 has no such
 option. Both are reproduced and fixed in source; the transaction failure was
@@ -16,10 +16,16 @@ Retries now retain bounded diagnostic logs, preserve recovery data and reuse an
 unchanged package policy. Kernel modules use FreeBSD's release-specific quarterly
 repository. The KiCad PCB workflow is removed: PCB design runs on a separate
 server. That changes the pinned ports recipe; `prepare-ports` now replaces an
-unedited generated tree from an earlier recipe and stops on edits. The next
-native run must confirm these fixes before installation, login and reboot can
-be marked complete; see
-[recovery instructions](docs/INSTALL.md#recover-from-a-stop-at-python312-dependencies).
+unedited generated tree from an earlier recipe and stops on edits. Commit
+`15bb0b4` passes that stage natively and stops in `python312-build`: the libedit
+patch dropped Readline's `/usr/local` search paths, so two Python modules could
+not link libmpdec and expat. The patch keeps them now. Variant builds also report
+pkg's advisories instead of stopping, since the framework would refuse Python
+3.12 once the nightly audit fetches its advisory file. The next native run must
+confirm these fixes before installation, login and reboot can be marked
+complete; see the
+[dependency](docs/INSTALL.md#recover-from-a-stop-at-python312-dependencies) and
+[build](docs/INSTALL.md#recover-from-a-stop-at-python312-build) recovery instructions.
 
 **Latest scope clarification:** migrate every implemented workflow **and every
 unfinished future plan** from the OpenBSD tree. The [coverage ledger](docs/MIGRATION-COVERAGE.md)
