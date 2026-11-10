@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import pwd
 import shutil
+import stat
 import subprocess
 import tarfile
 import tempfile
@@ -134,15 +135,26 @@ class Release(unittest.TestCase):
         self.assertIn("Symlinked export directory", self.export().stderr)
 
     def test_installer_preview_and_host_guard(self):
-        for flag in ("--preview", "--help"):
-            result = subprocess.run(["sh", "install.sh", flag], cwd=self.repo,
-                                    capture_output=True, text=True)
+        def installer(*args):
+            return subprocess.run(["sh", "install.sh", *args], cwd=self.repo, capture_output=True, text=True)
+        for args in (("--preview",), ("--help",), ("--preview", "alice")):
+            result = installer(*args)
             self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("setup for the desktop account:", installer("--preview").stdout)
+        self.assertIn("setup for alice:", installer("--preview", "alice").stdout)
         self.assertFalse((self.repo / ".build").exists())
+        # No account is built in: check and apply name theirs before anything else runs.
+        for flag in ("--check", "--apply"):
+            result = installer(flag)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("Name the desktop account:", result.stderr)
+        for args in (("--check", "root"), ("--apply", "Alice"), ("--preview", "../x")):
+            result = installer(*args)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("Use an ordinary local account name.", result.stderr)
         if os.uname().sysname != "FreeBSD" or os.getuid() != 0:
-            for flag in ("--check", "--apply", "--wifi"):
-                result = subprocess.run(["sh", "install.sh", flag], cwd=self.repo,
-                                        capture_output=True, text=True)
+            for args in (("--check", "alice"), ("--apply", "alice"), ("--wifi",)):
+                result = installer(*args)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("root console on the FreeBSD", result.stderr)
         (self.repo / 'system/nostromo-suspend').unlink()
@@ -171,37 +183,82 @@ class Release(unittest.TestCase):
                 if mode == "check":
                     self.assertIn("No installation performed", result.stdout)
 
-    def test_preflight_mode_check_exempts_only_staged_ports(self):
+    def test_preflight_checks_ownership_then_lists_or_removes_loose_modes(self):
         script = (ROOT / "install.sh").read_text()
         start = script.index("as_user '{ [") + len("as_user '")
-        command = script[start:script.index("'\numask 077\n", start)]
+        end = script.index("'\n# Check lists what apply removes", start)
+        self.assertIn('\nas_user "sh scripts/checkout-modes.sh --$mode"\numask 077\nfor path in', script[end:])
+        checkout = self.repo.parent.resolve() / "owned"
+        checkout.mkdir()
+        env = {"PATH": os.environ["PATH"], "HOME": str(checkout), "USER": pwd.getpwuid(os.getuid()).pw_name,
+               "NOSTROMO_REPO": str(checkout), "NOSTROMO_UID": str(os.getuid())}
+        result = subprocess.run(["sh", "-c", 'set -eu; umask 022; cd "$NOSTROMO_REPO"; ' + script[start:end]],
+                                env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_checkout_modes_are_listed_by_check_and_removed_by_apply(self):
         checkout = self.repo.parent.resolve() / "modes"
         (checkout / "scripts").mkdir(parents=True)
+        shutil.copy2(ROOT / "scripts/checkout-modes.sh", checkout / "scripts")
         tool = checkout / "scripts/tool.sh"
         tool.write_text("#!/bin/sh\n")
         port = checkout / ".build/ports-work" / str(checkout).lstrip("/") / ".build/ports/print/cups"
         # CUPS stages these package modes; a flavored port stages under work-<flavor>.
+        staged = {}
         for relative, mode in (("work/stage/var/spool/cups/tmp", 0o1770), ("work/stage/var/cache/cups", 0o770),
                                ("work/stage/var/cache/cups/rss", 0o775), ("work-py312/stage/var/tmp", 0o1777)):
             (port / relative).mkdir(parents=True)
             (port / relative).chmod(mode)
-        env = {"PATH": os.environ["PATH"], "HOME": str(checkout), "USER": pwd.getpwuid(os.getuid()).pw_name,
-               "NOSTROMO_REPO": str(checkout), "NOSTROMO_UID": str(os.getuid())}
-        def check():
-            return subprocess.run(["sh", "-c", 'set -eu; umask 022; cd "$NOSTROMO_REPO"; ' + command],
-                                  env=env, text=True, capture_output=True)
-        result = check()
-        self.assertEqual(result.returncode, 0, result.stderr)
+            staged[port / relative] = mode
+        def modes(flag):
+            return subprocess.run(["sh", str(checkout / "scripts/checkout-modes.sh"), flag],
+                                  text=True, capture_output=True)
+        for flag in ("--check", "--apply"):
+            result = modes(flag)
+            self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
+        # uv 0.12.19 created its environment locks mode 0666 on the T14 (2026-11-11).
+        lock = checkout / ".build/python-lsp/.lock"
+        lock.parent.mkdir(parents=True)
+        lock.touch()
         build = port / "work/cups-2.4.20"
         build.mkdir()
-        for path, mode in ((tool, 0o664), (build, 0o775)):
-            with self.subTest(path=path):
-                path.chmod(mode)
-                result = check()
-                self.assertEqual(result.returncode, 1, result.stderr)
-                self.assertIn("./" + str(path.relative_to(checkout)) + "\n", result.stderr)
-                self.assertIn("group/world-writable paths above", result.stderr)
-                path.chmod(mode & 0o755)
+        loose = {tool: 0o664, build: 0o775, lock: 0o666}
+        for path, mode in loose.items():
+            path.chmod(mode)
+        # chmod would follow a link out of the checkout; a link's own mode grants nothing.
+        outside = self.repo.parent.resolve() / "outside"
+        outside.write_text("another file\n")
+        outside.chmod(0o666)
+        link = checkout / ".build/link"
+        link.symlink_to(outside)
+        if hasattr(os, "lchmod"):
+            os.lchmod(link, 0o777)
+        result = modes("--check")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Apply removes group/world write from the paths above.", result.stdout)
+        self.assertNotIn("./.build/link\n", result.stdout)
+        for path, mode in loose.items():
+            self.assertIn("./" + str(path.relative_to(checkout)) + "\n", result.stdout)
+            self.assertEqual(path.stat().st_mode & 0o7777, mode, path)
+        result = modes("--apply")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Removed group/world write from the paths above.", result.stdout)
+        for path, mode in {**loose, **staged}.items():
+            self.assertEqual(path.stat().st_mode & 0o7777, mode & 0o7755 if path in loose else mode, path)
+        self.assertEqual(outside.stat().st_mode & 0o777, 0o666)
+        self.assertEqual(modes("--check").stdout, "")
+        # Apply stops on a mode it cannot change and names the path. FreeBSD's tmpfs has no file flags.
+        with self.subTest(flags="immutable"):
+            tool.chmod(0o664)
+            try:
+                os.chflags(tool, stat.UF_IMMUTABLE)
+            except (AttributeError, OSError):
+                self.skipTest("this filesystem cannot mark a file immutable")
+            self.addCleanup(os.chflags, tool, 0)
+            result = modes("--apply")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("./scripts/tool.sh\n", result.stderr)
+            self.assertIn("Group/world write remains on the paths above", result.stderr)
 
 
 if __name__ == "__main__":

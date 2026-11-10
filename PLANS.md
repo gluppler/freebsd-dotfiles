@@ -44,7 +44,10 @@ passed every stage through `user-files` and stopped at `system-configuration`:
 the library receipt check rejected `libwlroots-0.20.so` and `liblua-5.4.so`,
 which have no version suffix. It accepts them now, and the installed font check
 now accepts fontconfig's family list for the variable Azeret Mono, which would
-have stopped the same stage. The next native run must
+have stopped the same stage. The next `--check` stopped on the two environment
+lock files uv creates mode 0666; `--apply` and `final-cleanup` now remove
+group/world write from the checkout, which `--check` lists. No account name is
+built in any more: check and apply require one. The next native run must
 confirm these fixes before installation, login and reboot can be marked
 complete; see the
 [dependency](docs/INSTALL.md#recover-from-a-stop-at-python312-dependencies),
@@ -52,8 +55,9 @@ complete; see the
 [locked-variant](docs/INSTALL.md#recover-from-a-stop-at-libxslt-dependencies),
 [unreviewed-dependency](docs/INSTALL.md#recover-from-a-stop-at-ffmpeg-dependencies),
 [checkout-permission](docs/INSTALL.md#recover-from-a-groupworld-writable-checkout-stop),
-[file-list](docs/INSTALL.md#recover-from-a-stop-at-fcitx5-build) and
-[system-configuration](docs/INSTALL.md#recover-from-a-stop-at-system-configuration)
+[file-list](docs/INSTALL.md#recover-from-a-stop-at-fcitx5-build),
+[system-configuration](docs/INSTALL.md#recover-from-a-stop-at-system-configuration) and
+[lock-file](docs/INSTALL.md#recover-from-a-stop-on-uvs-lock-files)
 recovery instructions.
 
 **Latest scope clarification:** migrate every implemented workflow **and every
@@ -99,8 +103,8 @@ requested useful workflows through the selected replacements.
 - WD BLACK SN850X 2 TB NVMe; actual disk node and capacity must be discovered.
 - Reported BIOS N34ET71W 1.71 (2026-05-09), EC N34HT46W 1.46,
   ME 15.0.55.2751. These are observations, not a claim that firmware is latest.
-- Hostname `nostromo`; ordinary account `gluppler`; discover UID/home, never
-  hardcode UID 1000. No unit/board serial, UUID, MAC or license IDs in the repo.
+- Hostname `nostromo`; the ordinary account is named when installing, never
+  built in; discover UID/home, never hardcode UID 1000. No unit/board serial, UUID, MAC or license IDs in the repo.
 - Laptop is the daily driver and local development client. SSH/SFTP and browser
   bookmarks reach separately managed services. No Ubuntu/router provisioning,
   local AI service, Docker, Kubernetes, jails, VMs or Linux compatibility runtime.

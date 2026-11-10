@@ -2,7 +2,8 @@
 
 FreeBSD **15.1-RELEASE amd64** dotfiles for a keyboard-driven Wayland desktop on
 the ThinkPad T14 Gen 2 Intel: Core i5-1135G7, Iris Xe graphics and NVMe storage.
-The default hostname is `nostromo`; the install account defaults to `gluppler`.
+The default hostname is `nostromo`. No account is built in; the installer sets up
+the one you name.
 
 The desktop uses **dwl, foot, qutebrowser, oksh, vis and abduco/dvtm**, with
 fuzzel, fastfetch, zoxide, nnn, Git/lazygit, LLVM, uv and native WireGuard.
@@ -23,14 +24,15 @@ source archive under the desktop account's home, owned by that account.
 Review the plan as the ordinary user:
 
 ```sh
-sh install.sh --preview gluppler
+sh install.sh --preview
 ```
 
-Then, from a local root console in the same directory:
+Then, from a local root console in the same directory, replacing `<account>`
+with the desktop account's login name:
 
 ```sh
-sh install.sh --check gluppler
-sh install.sh --apply gluppler
+sh install.sh --check <account>
+sh install.sh --apply <account>
 ```
 
 Boot normally into multi-user mode first. `sh install.sh --wifi` provides

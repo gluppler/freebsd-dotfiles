@@ -5,7 +5,7 @@ repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
 mode=${1:---stage}
 case $mode in --sources | --stage | --installed) ;; *) exit 2 ;; esac
 [ "$#" -le 1 ] || exit 2
-for script in configure-system configure-security configure-devices setup-wifi editor-plugins development-tools build-desktop link-home clean-build; do
+for script in configure-system configure-security configure-devices setup-wifi editor-plugins development-tools build-desktop link-home clean-build checkout-modes; do
     [ -s "$repo/scripts/$script.sh" ] || {
         echo "Missing implementation: $script" >&2
         exit 1

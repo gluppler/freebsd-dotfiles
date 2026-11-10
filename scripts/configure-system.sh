@@ -5,7 +5,8 @@ PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
 export PATH
 [ "$(uname -s)" = FreeBSD ] && [ "$(id -u)" = 0 ] && [ "$#" = 2 ] || exit 1
 account=$1 log=$2
-case $account in '' | root | [!a-z_]* | *[!a-z0-9_-]*) exit 2 ;; esac
+# Spelled out: in en_US.UTF-8, sh ranges follow collation and a-z matches A and é.
+case $account in '' | root | [!_abcdefghijklmnopqrstuvwxyz]* | *[!_abcdefghijklmnopqrstuvwxyz0123456789-]*) exit 2 ;; esac
 uid=$(id -u "$account")
 [ "$uid" -ge 1000 ] || exit 1
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)

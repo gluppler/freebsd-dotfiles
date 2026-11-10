@@ -8,7 +8,8 @@ export PATH
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
 mode=preview
 case ${1:-} in --help | -h)
-    printf 'Usage: %s [--preview|--check|--apply|--wifi] [gluppler]\n' "$0"
+    printf 'Usage: %s [--preview|--check|--apply|--wifi] [account]\n' "$0"
+    echo 'Check and apply need the desktop account; none is built in.'
     exit 0
     ;;
 --apply | --check | --wifi)
@@ -17,27 +18,34 @@ case ${1:-} in --help | -h)
     ;;
 --preview | --dry-run) shift ;; esac
 [ "$#" -le 1 ] || {
-    echo "Usage: $0 [--preview|--check|--apply|--wifi] [gluppler]" >&2
+    echo "Usage: $0 [--preview|--check|--apply|--wifi] [account]" >&2
     exit 2
 }
-account=${1:-gluppler}
-case $account in '' | root | [!a-z_]* | *[!a-z0-9_-]*)
+account=${1:-}
+case $mode:$account in check: | apply:)
+    echo "Name the desktop account: $0 --$mode account" >&2
+    exit 2
+    ;;
+esac
+# Spelled out: in en_US.UTF-8, sh ranges follow collation and a-z matches A and é.
+case $account in root | [!_abcdefghijklmnopqrstuvwxyz]* | *[!_abcdefghijklmnopqrstuvwxyz0123456789-]*)
     echo 'Use an ordinary local account name.' >&2
     exit 2
     ;;
 esac
 if [ "$mode" = preview ]; then
+    who=${account:-the desktop account}
     cat <<EOF
-FreeBSD 15.1-RELEASE amd64 / Wayland setup for $account:
+FreeBSD 15.1-RELEASE amd64 / Wayland setup for $who:
   1. Check release, running kernel, account, permanent checkout and source files.
      Remove what earlier runs left: stale locks, workspaces, logs and backups.
      Offer console Wi-Fi setup with a hidden password prompt before downloads.
      Offer a clean install: remove every earlier package (stock Git too), the
      package state and build output, then build and install everything again.
   2. Bootstrap signed pkg; publish the reviewed package policy and preserve its prior version.
-  3. Build the pinned native library variants as $account; audit every dependency before installation.
+  3. Build the pinned native library variants as $who; audit every dependency before installation.
   4. Install the reviewed desktop/development roots and detected Intel firmware.
-  5. Build patched Wayland clients, editor plugins and native language tools as $account.
+  5. Build patched Wayland clients, editor plugins and native language tools as $who.
   6. Check every staged binary/configuration, then transactionally install user links.
   7. Back up and merge the listed system settings; configure mdo and the native login session.
   8. Verify the final configuration before enabling SDDM at boot. Keep console login/recovery.
@@ -104,7 +112,8 @@ case $repo in *[[:space:]]* | *'|'*)
     ;;
 esac
 for script in scripts/configure-system.sh scripts/verify-stage.sh scripts/editor-plugins.sh \
-    scripts/development-tools.sh scripts/build-desktop.sh scripts/link-home.sh scripts/clean-build.sh; do
+    scripts/development-tools.sh scripts/build-desktop.sh scripts/link-home.sh scripts/clean-build.sh \
+    scripts/checkout-modes.sh; do
     [ -f "$repo/$script" ] || {
         echo "Incomplete checkout: $script. No system changes made." >&2
         exit 1
@@ -118,18 +127,14 @@ as_user() {
         NOSTROMO_COMMAND='set -eu; umask 022; cd "$NOSTROMO_REPO"; '"$1" \
         /usr/bin/su -f "$account" -c 'exec /bin/sh -c "$NOSTROMO_COMMAND"'
 }
-# A staged port keeps its package's modes: CUPS stages group-writable spool directories.
 as_user '{ [ "$(id -u)" = "$NOSTROMO_UID" ] && [ -w "$HOME" ] && [ -w "$NOSTROMO_REPO" ]; } || {
         echo "The desktop account must be able to write its home and the checkout." >&2; exit 1; }
     foreign=$(find . ! -user "$USER")
     [ -z "$foreign" ] || {
         printf "%s\n" "$foreign" | head -n 20 >&2
-        echo "The checkout must belong to the desktop account. Check the ownership of the paths above before installing." >&2; exit 1; }
-    writable=$(find . \( -path "./.build/ports-work/*/work/stage" -o -path "./.build/ports-work/*/work-*/stage" \) -prune -o \
-        \( -perm -0020 -o -perm -0002 \) -print)
-    [ -z "$writable" ] || {
-        printf "%s\n" "$writable" | head -n 20 >&2
-        echo "The checkout has the group/world-writable paths above. Review their permissions before installing." >&2; exit 1; }'
+        echo "The checkout must belong to the desktop account. Check the ownership of the paths above before installing." >&2; exit 1; }'
+# Check lists what apply removes: group/world write that tools left in the checkout.
+as_user "sh scripts/checkout-modes.sh --$mode"
 umask 077
 for path in /var/log/nostromo /usr/local/share/nostromo; do
     parent=$path
@@ -219,7 +224,9 @@ sweep() {
         done
     fi
     prune_logs || return 1
-    as_user 'sh scripts/clean-build.sh'
+    as_user 'sh scripts/clean-build.sh' || return 1
+    # Tools in this run's stages may have left group/world write again.
+    [ "${1:-}" != final ] || as_user 'sh scripts/checkout-modes.sh --apply'
 }
 # Like the package helper, ignore injected pkg configuration and environment.
 pkgtool() { env -i PATH="$PATH" HOME=/root LC_ALL=C /usr/local/sbin/pkg -C /dev/null "$@"; }

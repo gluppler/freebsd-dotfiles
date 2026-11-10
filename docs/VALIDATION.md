@@ -18,7 +18,10 @@ three more stops. Commit `73816d3` then rebuilt all 15 variants with the fixed
 recipe, installed and locked them, passed every stage through `user-files` and
 stopped at `system-configuration`: its check of the library receipt rejected two
 library names without a version. A check of the remaining stages found one more
-stop, in the installed-stage font check. The
+stop, in the installed-stage font check. With both fixed (`e32612f`), `--check`
+stopped on two lock files that uv had created mode 0666 in the development
+environments. The installer now removes group/world write from the checkout
+instead of stopping, and no longer builds in an account name. The
 [native evidence](#native-evidence-from-the-t14) records each cause and fix. A
 native run of these fixes is pending. The KiCad PCB workflow has since been removed because PCB design
 runs on a separate server: its packages, six native variants, ports patch, plugin,
@@ -31,6 +34,19 @@ measured battery-performance claim is made.
 
 ## Audit fixes
 
+- Tools can make paths group/world-writable whatever the umask: uv 0.12.19
+  created both development environments' lock files mode 0666, and the next
+  `--check` stopped on them. `scripts/checkout-modes.sh` now finds such paths in
+  the checkout. `--check` lists them without changing anything; `--apply` removes
+  group/world write before installing, and `final-cleanup` does it again for
+  whatever a stage left. Staged port trees keep their packages' modes, symlinks
+  are not followed, a mode that cannot change stops the run, and a path owned by
+  another account still stops it.
+- No account name is built in. `install.sh` used to default to the author's
+  account; `--check` and `--apply` now require the name, and docs and tests use
+  placeholders. The account check spells out its characters: in en_US.UTF-8,
+  sh ranges follow collation, so `[a-z]` also accepted `A`, `é` and `ß`, though
+  no punctuation.
 - `system-configuration` checks each name in the library receipt that staged
   validation writes before publishing it to the package helper. The pattern
   required a version after `.so`, but wlroots 0.20 and Lua 5.4 install
@@ -75,7 +91,7 @@ measured battery-performance claim is made.
   cache directories group-writable, as its package installs them, so the first
   `--check` after CUPS was built stopped. The check now skips
   `.build/ports-work/*/work/stage` and `work-*/stage` and lists each path it
-  rejects. Port build directories and the rest of the checkout are still checked,
+  finds, which `--apply` now repairs (first item). Port build directories and the rest of the checkout are still checked,
   and so is ownership of everything. A find failure now stops the check instead
   of passing it, and the account/write test, which never stopped on its first
   two conditions, now does.
@@ -192,13 +208,13 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | `python3 tests/helpers.py` | 8 passed: display-mode/scale rollback and last-output protection, SSID bytes/managed blocks, USB CAM filtering, unsafe argument rejection and default fallback for a saved wallpaper whose exports were removed |
 | `python3 tests/package-policy.py` | 27 passed: reported empty-list failure and actual resolver/query handling, kmods selection/catalogue, failure/signal cleanup, a lock reclaimed only after its boot with stale workspaces removed, only the latest transaction receipt kept, graph/identity/ABI/receipt validation including only the FreeBSD 15 `*` ABI, exact GNU roles/versions, stock conversion/cleanup, only an unreviewed, unused flavor of an audited origin replaceable, pkgbase separation, protected removal, transaction-guard dispatch, separate pkg self-upgrade, named origin/ABI mismatches, pending versions, preserved automatic/build-protection flags, stale ports-tree replacement that stops on changed, added or missing files, all seven ports patches on the cached pinned archive with search paths kept where Readline is dropped, listed advisories reported without stopping a variant build, the 15 dependency lists recorded on the T14 naming only reviewed packages and earlier variants, and the cached catalogue's dependencies of every installer request reviewed with matching origins and pinned versions |
 | `PKG=… python3 tests/pkg-integration.py` | 12 passed against pkg 2.8.4 built from source on this host, with disposable signed repositories: stock Git's flavor replaced by git-lite within one reviewed plan with its unused dependencies removed, the clean install keeping pkg, base, vital and firmware packages with their dependencies, the native locked-variant stop reproduced, then install/preview/update requests that keep a locked variant while stock packages and an unlocked variant still change and reinstall unlocks its own, `--no-remove` rejected as unrecognized, the five reported leaf dependencies installed twice, preview/reinstall/upgrade, existing automatic dependencies, a file conflict denied a second approval, real removal plans rejected, a `FreeBSD:15:*` archive audited and installed, an older dependency pkg keeps, and pkg's restart failing under one approval but passing as its own transaction |
-| `python3 tests/provisioning.py` | 20 passed: the library receipt check on the T14's names, including unversioned ones, and on malformed or empty receipts, the installed font check on fontconfig's family list for the variable Azeret Mono, selective settings/SDDM/SSH/PF merges, the SSH `Include` walk over relative, quoted and self includes with unsafe paths refused, the clean-install offer removing earlier packages, package state and build output, a Python requirements check that sees system packages, helper/font/login/loader destinations, ambiguous input rejection, idempotency, rollback preserving later edits, legacy/current/interrupted log pruning that keeps no backup, signal cleanup, lock release, a lock reclaimed only after its boot, stale workspaces/locks, recovery archives, policy copies and Wi-Fi backups removed unless a setup holds its lock, this run's backups removed only after the final check, build leftovers cleaned only from an earlier boot with user-file backups removed, the final login/SDDM/variant check, the reboot prompt after the lock is released, and policy reuse/recovery |
+| `python3 tests/provisioning.py` | 20 passed: the library receipt check on the T14's names, including unversioned ones, and on malformed or empty receipts, the installed font check on fontconfig's family list for the variable Azeret Mono, final cleanup removing loose checkout modes and stopping when it cannot, selective settings/SDDM/SSH/PF merges, the SSH `Include` walk over relative, quoted and self includes with unsafe paths refused, the clean-install offer removing earlier packages, package state and build output, a Python requirements check that sees system packages, helper/font/login/loader destinations, ambiguous input rejection, idempotency, rollback preserving later edits, legacy/current/interrupted log pruning that keeps no backup, signal cleanup, lock release, a lock reclaimed only after its boot, stale workspaces/locks, recovery archives, policy copies and Wi-Fi backups removed unless a setup holds its lock, this run's backups removed only after the final check, build leftovers cleaned only from an earlier boot with user-file backups removed, the final login/SDDM/variant check, the reboot prompt after the lock is released, and policy reuse/recovery |
 | `python3 tests/network-menus.py` | 9 passed: actual fuzzel managers, byte-safe SSIDs, masked secrets, cancellation, scan recovery, phone/open/OWE hotspots, unprivileged portal dispatch, Bluetooth initialization/pairing, persistent WireGuard selection and status without authentication |
 | `python3 tests/bootstrap.py` | 8 passed: actual console/helper transactions with simulated native commands; missing WPA profile, hidden input, failed-auth rollback, DNS-failure retention, later rc overrides, open/OWE profiles, unsupported security rejection, unsafe paths and supported Intel Bluetooth initialization |
 | `python3 tests/security.py` | 8 passed: mdo migration, terminal/GUI authenticated command transport, failure/cancellation, all-socket lock checks, suspend cancellation/deadline, installed mergers/SSID decoder and native event dispatch/resume debounce |
 | `python3 tests/embedded.py` | 3 passed: scoped Rust dispatch, Zephyr architecture/word-size/float-ABI guards, real ARM compiler-rt bare-metal ELF link |
 | `python3 tests/offline-docs.py` | 9 passed: literal/invalid topics, Go offline environment, pager cleanup, Python text lookup, encoded local language-book URLs, the LLVM ports' versioned manual name, `--check` requiring every local reference, examples, cancellation and separate-window dispatch |
-| `python3 tests/release.py` | 8 passed: complete home dotfiles in exports, private/generated file exclusions even when tracked, credential-pattern rejection without disclosure, file modes, symlink parents, installer host guards, the read-only preflight stop point and its mode check skipping only staged port trees |
+| `python3 tests/release.py` | 9 passed: complete home dotfiles in exports, private/generated file exclusions even when tracked, credential-pattern rejection without disclosure, file modes, symlink parents, installer host guards that require a named, exactly validated account, the read-only preflight stop point, the ownership preflight, and checkout modes listed by check and removed by apply outside staged port trees, without following links and stopping on a mode that cannot change |
 | `python3 tests/terminal-idle.py` | 4 passed: clock cleanup/static mode, actual PTY viewer scrolling/resizing/control filtering/signal restoration, bounded vis pages with pending-key/edit guards, and unchanged plain/JSON fetch dispatch |
 | `python3 tests/reference-examples.py` | C syntax, C++/Rust compilation and execution, Go example test, Python/shell/Lua syntax, x86-64/Thumb/AArch64 assembly passed with host tools; this host Clang lacks MIPS, and Zephyr requires a real board build |
 | Offline package contents | Checked quarterly stdman archive renders its C++ examples through mandoc; Python pathlib text retains example blocks; the four added documentation packages have no dependencies |
@@ -220,7 +236,7 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | HTML/start page | Actual QtWebEngine local page/font render and placeholder behavior checked; not a qutebrowser process |
 | Current artwork | Runtime logos/textures use PNG; native shared painters, idle bounce, QML login and browser page checked after conversion. Animated defaults and static/off overrides pass. Simulations are archived outside the source tree; regenerated previews stay in `.build/previews/` |
 
-The eleven Python suites total **130 passing cases**. Two package-policy cases
+The eleven Python suites total **131 passing cases**. Two package-policy cases
 read caches and skip without them: the checksum-verified ports archive and the
 quarterly catalogue. The installed font check skips without fontconfig. They use real local code and
 small disposable command stand-ins where native devices/package managers are
@@ -250,7 +266,7 @@ The source archive was extracted into a new temporary directory without `.git`,
 copy byte for byte; archive ownership, permissions, metadata exclusions and
 SHA256 were checked. Source-manifest validation and the installer preview passed.
 The nine suites that need no prebuilt cache passed from that extraction:
-**100 cases**, including the export and terminal-idle regressions. They require
+**101 cases**, including the export and terminal-idle regressions. They require
 host Python, Lua, a C compiler and, for the font check, fontconfig. The embedded suite retains
 its separate compiler-rt/cache requirements.
 
@@ -308,7 +324,7 @@ python3 tests/release.py
 python3 tests/terminal-idle.py
 python3 tests/reference-examples.py
 sh scripts/verify-stage.sh --sources
-sh install.sh --preview gluppler
+sh install.sh --preview
 ```
 
 Cross compilation and previews require the checksum-verified caches and native
@@ -396,7 +412,7 @@ desktop user found:
 group/world-writable files.` A read-only search as the desktop user found three
 such directories, all in CUPS's staged package tree under `.build/ports-work` and
 created when CUPS was built: `var/spool/cups/tmp` (1770), `var/cache/cups` (770)
-and `var/cache/cups/rss` (775), owned by gluppler. Nothing else in the checkout,
+and `var/cache/cups/rss` (775), owned by the desktop account. Nothing else in the checkout,
 including `.git`, is group/world-writable, and the login umask is 0022:
 
 - Run as the desktop user against the T14's checkout, the previous check
@@ -422,8 +438,8 @@ without root, in temporary directories under `/tmp` that were removed afterwards
   loader.conf, sysctl.conf, devfs rules, SSH configuration and PF file. The SSH
   `Include` walk stopped with FreeBSD awk's `nonterminated character class`.
   With the fix every merge succeeds. The effective sshd policy is port 2222 with
-  root, password and keyboard-interactive login off, `AllowUsers gluppler` and
-  public-key authentication.
+  root, password and keyboard-interactive login off, `AllowUsers` naming only
+  the desktop account, and public-key authentication.
 - FreeBSD 15.1's mdo(1), mac_do(4) and mac_do source confirm the mdo rule. mac_do
   is not loaded yet and has no rules. The kernel returns the rule string as set,
   which the configuration stage compares. `uid=.` refuses root, and
@@ -493,6 +509,18 @@ exit 1 and no message. Read-only checks as the desktop user found:
 The mdo rule, PF parsing, sshd's checks and `fc-cache` need root and run only
 inside the installer. Neither fix changes the ports recipe, so the next run
 reinstalls the 15 variants from their archives without rebuilding them.
+
+With those fixes pulled (`e32612f`), `--check` stopped on
+`./.build/python-lsp/.lock` and `./.build/embedded-python/.lock`. Both are empty,
+mode 0666 and dated 01:32:17 on 2026-11-11, during that run's
+`development-tools` stage; the T14 has uv 0.12.19. Nothing else in the checkout
+is group/world-writable outside the staged port trees. A manual `rm -rf` had left
+both in place; the message's paths are relative to the checkout. The new mode
+script ran on the T14 against a disposable checkout under `/tmp`. `--check`
+listed the loose paths and changed nothing. `--apply` set them to 0644, kept a
+staged 1770 directory and left a 0666 file outside the checkout untouched
+through a symlink. `/tmp` there does not support file flags, so the stop on an
+unchangeable mode was tested on the host.
 
 ## Laptop acceptance after reinstall
 

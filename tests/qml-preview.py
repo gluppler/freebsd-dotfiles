@@ -55,15 +55,15 @@ for width, height in ((1920, 1080), (2560, 1440), (3840, 2160), (7680, 4320)):
 view.resize(1920, 1080)
 item.setProperty("animateClock", True)
 QTest.qWait(100)
-for character in "gluppler": QTest.keyClick(view, character)
-assert login.property("text") == "gluppler", login.property("text")
+for character in "alice": QTest.keyClick(view, character)
+assert login.property("text") == "alice", login.property("text")
 QTest.keyClick(view, Qt.Key_Tab)
 for character in "preview-only": QTest.keyClick(view, character)
 assert password.property("text") == "preview-only"
 assert password.property("secret") is True
 QTest.keyClick(view, Qt.Key_Return)
 QTest.qWait(100)
-assert backend.attempted == ("gluppler", "preview-only", 0)
+assert backend.attempted == ("alice", "preview-only", 0)
 assert password.property("text") == ""
 assert item.property("busy") is False
 assert item.property("errorText") == "Authentication failed"

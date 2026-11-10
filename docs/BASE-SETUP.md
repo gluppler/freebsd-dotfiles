@@ -11,7 +11,8 @@ X11/doas/Zsh/Neovim application steps do not apply here.
 
 Target: ThinkPad T14 Gen 2 Intel / i5-1135G7 with Iris Xe integrated graphics,
 FreeBSD **15.1-RELEASE amd64**,
-hostname **nostromo**, account **gluppler**. Recommendations checked 2026-11-03;
+hostname **nostromo**, one ordinary desktop account whose name you choose.
+Recommendations checked 2026-11-03;
 confirm the release remains supported before a later reinstall.
 
 ## Before booting
@@ -106,7 +107,8 @@ the actual country/regulatory domain; do not copy a US radio domain because the
 keyboard is US. Keep DHCP for the initial LAN and use its DNS configuration.
 Enable IPv6 when the local network supplies it; no blanket IPv6-disable tuning.
 
-Set a root password for local recovery. Create `gluppler`, ordinary UID assigned
+Set a root password for local recovery. Create the desktop account with a
+lowercase login name (letters, digits, `_` and `-`), ordinary UID assigned
 by the installer, home under `/home`, and supplementary **wheel** membership for
 initial `su` recovery. Use `/bin/sh` initially; actual `/usr/local/bin/oksh` is
 selected only after installation/verification. The later mdo rule gives this
@@ -143,7 +145,7 @@ downloads. Do not configure timezone by sending the public IP to a web service.
 | secure_console | Select | Requires root authentication for single-user recovery |
 | disable_ddtrace | Select | Disables destructive DTrace operations; normal development does not need them |
 
-When Add User asks for details, enter `gluppler`, accept the assigned UID and
+When Add User asks for details, enter that login name, accept the assigned UID and
 primary group, add supplementary `wheel`, keep the default login class and
 `/bin/sh`, and record the proposed home. Use home permissions `700`, password
 authentication enabled, no empty/random password, and leave the account
@@ -233,7 +235,7 @@ pkgbase, stop and use its documented update method instead. The earlier failed
 
 Bootstrap native `pkg` if required, preview/install the explicitly permitted Git
 bootstrap, and keep normal repository signature checks. Do not install the old
-desktop package list. Clone the project as `gluppler` into its home and retain
+desktop package list. Clone the project as the desktop account into its home and retain
 that ownership; the setup entry point will separately handle root-only files.
 No preinstalled doas is needed: the selected replacement is **base mdo**.
 

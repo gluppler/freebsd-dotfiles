@@ -3,17 +3,18 @@
 Complete [Base-Setup](BASE-SETUP.md) manually first. Keep the permanent checkout
 inside the ordinary account's home, owned by that account, with no whitespace in
 its path (the ports framework cannot use whitespace in its build paths). Example:
-`/home/gluppler/Projects/freebsd-dotfiles`.
+`/home/<account>/Projects/freebsd-dotfiles`, where `<account>` is the desktop
+account's login name. No account is built in.
 
 ## Obtain the source
 
-Once published, clone the repository **as gluppler**:
+Once published, clone the repository as the desktop account:
 
 ```sh
 mkdir -p "$HOME/Projects"
 git clone https://github.com/gluppler/freebsd-dotfiles.git "$HOME/Projects/freebsd-dotfiles"
 cd "$HOME/Projects/freebsd-dotfiles"
-sh install.sh --preview gluppler
+sh install.sh --preview
 ```
 
 Alternatively, transfer the source archive and its `.sha256` file to the laptop.
@@ -31,12 +32,14 @@ From the laptop's local console, switch to root and enter the permanent checkout
 
 ```sh
 su -
-cd /home/gluppler/Projects/freebsd-dotfiles
-sh install.sh --check gluppler
-sh install.sh --apply gluppler
+cd /home/<account>/Projects/freebsd-dotfiles
+sh install.sh --check <account>
+sh install.sh --apply <account>
 ```
 
-Replace the path and account argument if needed. Preview works on another host
+Replace `<account>` with the desktop account's login name, and the path if the
+checkout is elsewhere. Check and apply stop when no account is named; it must be
+a lowercase local name (letters, digits, `_` and `-`). Preview works on another host
 and performs no installation. `--check` validates the native release, account,
 checkout, source files and protected parent directories without installing
 packages or writing system configuration. It does not test network access,
@@ -45,9 +48,11 @@ compile software or exercise hardware.
 Check and apply require native FreeBSD 15.1 amd64, matching installed/running kernels,
 base mdo, an ordinary UID of at least 1000, a user-owned permanent checkout and
 writable system filesystems, running devd and all source files. Nothing in the
-checkout may be group/world-writable except staged port trees under
-`.build/ports-work`, which keep their packages' modes; the check lists any path
-it rejects. Initial installation needs neither an existing mdo rule nor doas.
+checkout may stay writable by another account. Tools can grant group or world
+write whatever the umask; uv creates its environment locks mode 0666. `--check`
+lists such paths and `--apply` removes that access, and `final-cleanup` repeats
+it for anything a stage left. Staged port trees under `.build/ports-work` keep
+their packages' modes. Initial installation needs neither an existing mdo rule nor doas.
 The installer refuses an SSH session so network policy cannot strand its operator.
 
 ## What happens
@@ -227,18 +232,19 @@ To confirm the second error, run this from the root console before rerunning
 grep -h -e '--no-remove' /var/log/nostromo/install-*/python312-dependencies.log
 ```
 
-Push the corrected checkout, then update the laptop copy **as gluppler**:
+Push the corrected checkout, then update the laptop copy as the desktop account:
 
 ```sh
-cd /home/gluppler/freebsd-dotfiles
+cd ~/freebsd-dotfiles
 git pull --ff-only
 ```
 
-From the laptop's root console:
+From the laptop's root console, with `<account>` replaced by that account's
+login name:
 
 ```sh
-sh /home/gluppler/freebsd-dotfiles/install.sh --check gluppler
-sh /home/gluppler/freebsd-dotfiles/install.sh --apply gluppler
+sh /home/<account>/freebsd-dotfiles/install.sh --check <account>
+sh /home/<account>/freebsd-dotfiles/install.sh --apply <account>
 ```
 
 Adjust the path if the checkout is elsewhere. Skip the optional Wi-Fi setup when
@@ -331,8 +337,9 @@ installs: `var/spool/cups/tmp` (1770), `var/cache/cups` (770) and
 modes, so the stop appeared on the first check after it was built. Leave those
 modes alone; the staged tree matches what its package records. The check now
 skips staged port trees and still covers port build directories and the rest of
-the checkout. It lists every path it rejects. The ownership check still covers
-the whole checkout.
+the checkout, listing every path it finds. Since the
+[lock-file stop](#recover-from-a-stop-on-uvs-lock-files), `--apply` removes
+that access instead of stopping. The ownership check still covers the whole checkout.
 
 Pull and rerun `--check` and `--apply` as above. The ports recipe is unchanged,
 so the eight finished variants are not rebuilt; the frei0r policy change above
@@ -399,6 +406,28 @@ Neither fix changes the ports recipe, so the next run reinstalls the 15 variants
 from their archives without rebuilding them. Answer no to the clean install
 offer, which would remove them and rebuild everything. Pull and rerun `--check`
 and `--apply` as above.
+
+### Recover from a stop on uv's lock files
+
+With those fixes pulled (`e32612f`), `--check` stopped before installing anything:
+
+```text
+./.build/python-lsp/.lock
+./.build/embedded-python/.lock
+The checkout has the group/world-writable paths above. Review their permissions before installing.
+```
+
+The previous run's `development-tools` stage created both files: uv 0.12.19
+makes its environment lock files mode 0666 whatever the umask. The paths are
+relative to the checkout, so removing them from another directory changes
+nothing. Any tool can leave such modes, so `--check` now lists group/world-writable
+paths and `--apply` removes that access before installing; `final-cleanup`
+repeats it for anything a stage leaves. Staged port trees keep their packages'
+modes, and a path owned by another account still stops the run.
+
+No manual step is needed. Pull and rerun `--check` and `--apply` as above, and
+answer no to the clean install offer. `--check` and `--apply` now require the
+account name; none is built in.
 
 ## Source exports
 

@@ -257,6 +257,8 @@ print(sys.argv[-2].replace('%u','0').replace('%Lp',oct(s.st_mode & 0o777)[2:]).r
             for kept in ('run/nostromo-packages.lock/pid', 'share/policy', 'tmp/nostromo-maintenance.AbCd1234'):
                 self.assertTrue((path/kept).exists(), kept)
             self.assertIn('as_user: sh scripts/clean-build.sh', result.stdout)
+            # The preflight has just removed loose checkout modes; only final cleanup repeats it.
+            self.assertNotIn('checkout-modes', result.stdout)
             log = next((path/'logs').glob('install-*'))
             text = (log/'cleanup.log').read_text()
             self.assertIn('Removed a lock left by an earlier boot:', text)
@@ -422,8 +424,22 @@ pw() {{
                 if code:
                     self.assertFalse((log/'final-cleanup.log').exists())
                 else:
-                    self.assertIn('Removed a backup: '+str(log/'system-backup'), (log/'final-cleanup.log').read_text())
+                    text = (log/'final-cleanup.log').read_text()
+                    self.assertIn('Removed a backup: '+str(log/'system-backup'), text)
+                    self.assertIn('as_user: sh scripts/checkout-modes.sh --apply', text)
                     self.assertIn('Setup completed for fixture.', result.stdout)
+        # Loose modes that cannot be removed stop the run before it reports success.
+        failing = 'account=fixture\nas_user() { printf "as_user: %s\\n" "$1"; case $1 in *checkout-modes*) return 1 ;; esac; }\n'
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory).resolve()
+            (path/'share/policy').mkdir(parents=True)
+            (path/'tty-answer').write_text('n\n')
+            body = backups + 'run cleanup sweep\nfinal_check() { true; }\n' + ending
+            result = self.installer_run(path, body, setup=failing)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            log = next((path/'logs').glob('install-*'))
+            self.assertEqual((log/'final-cleanup.status').read_text(), '1\n')
+            self.assertNotIn('Setup completed', result.stdout)
 
     def test_final_check_requires_login_shell_sddm_and_current_locked_variants(self):
         def setup(shell='/usr/local/bin/oksh', sddm='YES', lock='1', recipe='current', verified='0'):

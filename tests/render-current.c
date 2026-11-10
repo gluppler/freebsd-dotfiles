@@ -106,12 +106,12 @@ static void browser(cairo_t *c) {
     panel_begin(c,780,124,1100,772);
     text(c,794,132,"1  Start · nostromo","Azeret Mono 10",1);
     image(c,".build/start-page.png",790,158,1080,718);
-    text(c,794,878,"file:///home/gluppler/.local/share/nostromo/start/index.html","Azeret Mono 8",.8);
+    text(c,794,878,"file:///home/alice/.local/share/nostromo/start/index.html","Azeret Mono 8",.8);
     panel_end(c,"qutebrowser");window(c,780,104,1100,792,NOSTROMO_TOP,"");
 }
 static void terminal(cairo_t *c,int mux) {
     const int x=74,y=264,w=1148,h=716;
-    window(c,x,y,w,h,1,"/home/gluppler/Projects/firmware");
+    window(c,x,y,w,h,1,"/home/alice/Projects/firmware");
     if(!mux){
         gchar *dashboard=NULL;
         if(!g_file_get_contents(".build/dashboard-preview.txt",&dashboard,NULL,NULL))exit(1);
@@ -122,7 +122,7 @@ static void terminal(cairo_t *c,int mux) {
         line(c,split,y+2,0,h-36);line(c,split,y+h/2,w-30-(split-x),0);
         text(c,x+16,y+18,"src/lib.rs   [vis]","Azeret Mono 11",1);
         text(c,x+16,y+68,"#![no_std]\n\n/// Logic shared with the board application.\npub fn next_counter(value: u32) -> u32 {\n    value.wrapping_add(1)\n}","Azeret Mono 11",1);
-        text(c,split+16,y+18,"gluppler@nostromo firmware\n> cargo check\n\n    Checking nostromo_embedded\n    Finished dev profile\n\n> ","Azeret Mono 10",1);
+        text(c,split+16,y+18,"alice@nostromo firmware\n> cargo check\n\n    Checking nostromo_embedded\n    Finished dev profile\n\n> ","Azeret Mono 10",1);
         text(c,split+16,y+h/2+18,"lazygit\n\nFiles\n  M  src/lib.rs\n\nBranches\n  main","Azeret Mono 10",1);
         line(c,x+2,y+h-34,w-32,0);
         text(c,x+16,y+h-27,"1 vis    2 shell    3 git                         abduco · firmware","Azeret Mono 10",1);
@@ -174,13 +174,13 @@ static void viewers(cairo_t *c) {
     panel_end(c,"swayimg");window(c,900,250,880,600,NOSTROMO_BOTTOM,"nostromo-1920x1080.png");
 }
 static void documentation(cairo_t *c) {
-    window(c,64,230,860,650,NOSTROMO_RIGHT,"/home/gluppler/Projects/firmware");
+    window(c,64,230,860,650,NOSTROMO_RIGHT,"/home/alice/Projects/firmware");
     gchar *code=NULL,*markup=NULL;
     if(!g_file_get_contents(".build/native-preview/example.c",&code,NULL,NULL) ||
        !g_file_get_contents(".build/native-preview/reference-markup.txt",&markup,NULL,NULL))exit(1);
     text(c,82,250,code,"Azeret Mono 11",1);
     text(c,82,842,"NORMAL   example.c","Azeret Mono 10",1);
-    window(c,1000,140,850,800,NOSTROMO_RIGHT,"/home/gluppler/Projects/firmware");
+    window(c,1000,140,850,800,NOSTROMO_RIGHT,"/home/alice/Projects/firmware");
     cairo_save(c);cairo_rectangle(c,1016,156,792,735);cairo_clip(c);
     PangoLayout *layout=pango_cairo_create_layout(c);
     PangoFontDescription *font=pango_font_description_from_string("Azeret Mono 10.5");

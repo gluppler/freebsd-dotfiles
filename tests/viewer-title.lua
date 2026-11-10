@@ -20,7 +20,7 @@ end})
 dofile('home/.config/swayimg/init.lua')
 for _, mode in ipairs({'viewer', 'slideshow', 'gallery'}) do
     swayimg.mode = mode
-    paths[mode] = '/home/gluppler/Pictures/' .. mode .. ' 日本語.png'
+    paths[mode] = '/home/alice/Pictures/' .. mode .. ' 日本語.png'
     redraw()
     assert(shown == mode .. ' 日本語.png')
     local before = writes

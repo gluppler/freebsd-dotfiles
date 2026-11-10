@@ -179,10 +179,10 @@ sys.exit(os.WEXITSTATUS(status) if os.WIFEXITED(status) else 128+os.WTERMSIG(sta
 
     def test_suspend_cancels_failed_or_timed_out_lock_before_native_hooks(self):
         policy=self.work/'account'
-        policy.write_text('1001 gluppler\n')
+        policy.write_text('1001 alice\n')
         policy.chmod(0o600)
         self.stub('uname', "print('FreeBSD')")
-        self.stub('id', "print('1001' if sys.argv[-1]=='gluppler' else '0')")
+        self.stub('id', "print('1001' if sys.argv[-1]=='alice' else '0')")
         self.stub('stat', "print('0 '+format(Path(sys.argv[-1]).stat().st_mode & 0o777,'o'))")
         self.stub('logger', "pass")
         su=self.stub('su', "\nwith (work/'events').open('a') as out: out.write(json.dumps('lock')+'\\n')\nsys.exit(1 if (work/'reject').exists() else 0)")
@@ -216,7 +216,7 @@ sys.exit(subprocess.call(sys.argv[4:]))
     def test_lock_probe_uses_existing_pam_directory_and_checks_every_socket(self):
         pam=self.work/'pam-system'
         pam.write_text(f'session optional pam_xdg.so runtime_dir_prefix={self.work}/runtime\n')
-        runtime=self.work/'runtime'/'gluppler'
+        runtime=self.work/'runtime'/'alice'
         runtime.mkdir(parents=True,mode=0o700)
         local=self.work/'.local/bin'
         local.mkdir(parents=True)
@@ -226,7 +226,7 @@ sys.exit(subprocess.call(sys.argv[4:]))
             self.addCleanup(sock.close)
             sock.bind(str(runtime/name))
         control=self.stub('nostromo-control', r'''
-assert os.environ['XDG_RUNTIME_DIR']==str(work/'runtime/gluppler')
+assert os.environ['XDG_RUNTIME_DIR']==str(work/'runtime/alice')
 sys.exit(0 if (work/('locked-'+os.environ['WAYLAND_DISPLAY'])).exists() else 1)
 ''')
         locker=self.stub('gtklock', r'''
@@ -235,7 +235,7 @@ if (work/'reject').exists(): sys.exit(1)
 ''')
         (local/'nostromo-control').symlink_to(control)
         (local/'gtklock').symlink_to(locker)
-        self.stub('id', "print('gluppler' if sys.argv[1]=='-un' else str(os.getuid()))")
+        self.stub('id', "print('alice' if sys.argv[1]=='-un' else str(os.getuid()))")
         # System commands still use the host's stat; only account naming is modeled.
         source=(ROOT/'system/nostromo-lock-session').read_text().replace('/etc/pam.d/system',str(pam))
         source=source.replace('PATH=$HOME/.local/bin:',f'PATH=$HOME/.local/bin:{self.bin}:')
