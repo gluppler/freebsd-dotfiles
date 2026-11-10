@@ -114,8 +114,13 @@ transact() {
     localpkg "$operation" -U -n -y -r NostromoTransaction "$@" >"$temp/plan" 2>&1 || status=$?
     tee -a "$receipt/plan" <"$temp/plan"
     [ "$status" = 0 ] || exit "$status"
-    awk 'BEGIN {integrity_only=1}
-        /^Installed packages to be REMOVED:/ || /^Number of packages to be removed:/ {removed=1}
+    # The only removal allowed is a flavor that this request replaces (below).
+    awk -v replaceable="$temp/replaceable" 'BEGIN {integrity_only=1
+            while ((getline name < replaceable) > 0) permitted[name]=1}
+        section && /^\t/ {name=$1;sub(/:$/,"",name);if(name in permitted)listed++;else removed=1;next}
+        {section=0}
+        /^Installed packages to be REMOVED:/ {section=1}
+        /^Number of packages to be removed:/ && $NF+0!=listed+0 {removed=1}
         /^(New packages to be INSTALLED|Installed packages to be (UPGRADED|DOWNGRADED|REINSTALLED)):/ {known=1}
         /^Your packages are up to date\.$/ || /^The most recent versions of packages are already installed$/ {known=1}
         NF && $0!="Checking integrity... done (0 conflicting)" {integrity_only=0}
@@ -159,7 +164,7 @@ if [ "$action" = finish-bootstrap ]; then
         changed=no
         pkgtool query -a '%n|%a|%#r|%k|%V|%o' >"$temp/bootstrap-installed"
         awk -F '|' 'NR==FNR {if($0!~/^#/)allowed[$1]=1;next}
-            $6 !~ /^base\// && !($1 in allowed) &&
+            $6 ~ /\// && !($1 in allowed) &&
             $1 ~ /^(bash|readline|gdbm|gcc[0-9]*|binutils|gnutls|nettle|mpfr|mpc|libidn2?|libltdl|libgcrypt|libgpg-error|m4|autoconf|automake|texinfo)$/ {print}
         ' "$policy/packages.allowed" "$temp/bootstrap-installed" >"$temp/bootstrap-gnu"
         while IFS='|' read -r name automatic reverse locked vital _origin; do
@@ -205,7 +210,8 @@ if [ "$action" = remove ] || [ "$action" = remove-check ]; then
         NR==FNR {protected[$1]=1;next}
         $1=="P" && $2==wanted {
             found++
-            unsafe=($2=="pkg" || $3~/^base\// || $4!="0" || $5!="0" || $6!="0")
+            # pkgbase origins have no category.
+            unsafe=($2=="pkg" || $3!~/\// || $4!="0" || $5!="0" || $6!="0")
         }
         $1=="D" {edges[$2 SUBSEP $3]=1}
         END {
@@ -227,8 +233,9 @@ fi
 if [ "$action" = update ]; then
     [ ! -f "$store/protected-build" ] || build=1
     pkgtool query -a '%n|%o' >"$temp/update-installed"
-    # pkgbase has its own repository/update path, outside the application gate.
-    awk -F '|' '$2 !~ /^base\// {print $1}' "$temp/update-installed" >"$temp/request"
+    # pkgbase, whose origins have no category, has its own repository/update
+    # path outside the application gate.
+    awk -F '|' '$2 ~ /\// {print $1}' "$temp/update-installed" >"$temp/request"
     [ -s "$temp/request" ] || {
         echo 'No installed packages.'
         exit
@@ -328,7 +335,12 @@ if [ -s "$policy/local-libraries" ]; then
             exit bad
         }' "$policy/local-libraries" "$temp/records" "$temp/libraries"
 fi
-# Record exact archive hashes and the checked graph for recovery/auditing.
+# Record exact archive hashes and the checked graph for auditing. Nothing reads
+# an earlier receipt, so under the lock only this transaction's is kept.
+for previous in "$store"/transaction-*; do
+    [ -d "$previous" ] && [ ! -L "$previous" ] || continue
+    rm -rf "$previous"
+done
 receipt=$store/transaction-$(date +%Y%m%d-%H%M%S)-$$
 mkdir "$receipt"
 cp "$temp/records" "$receipt/packages"
@@ -361,6 +373,17 @@ while IFS= read -r name; do
     fi
     set -- "$@" "$name"
 done <"$temp/request"
+# The base setup may have installed another flavor of a port in this transaction,
+# such as stock git for git-lite. pkg resolves their file conflict by removing it
+# within the plan. Permit only such a flavor: unreviewed, unlocked, not vital and
+# unused. Its own unreviewed dependencies are removed after the transaction.
+pkgtool query -a '%n|%o|%k|%V|%#r' >"$temp/flavors"
+awk -F '|' 'FILENAME==ARGV[1] {if(NF && $0!~/^#/) allowed[$1]=1; next}
+    FILENAME==ARGV[2] {if($1=="P") {origin[$4]=1; audited[$2]=1}; next}
+    ($2 in origin) && !($1 in audited) && !($1 in allowed) && $3==0 && $4==0 && $5==0 {print $1}' \
+    "$policy/packages.allowed" "$temp/records" "$temp/flavors" >"$temp/replaceable"
+: >"$temp/replaced-dependencies"
+while IFS= read -r name; do pkgtool query '%dn' "$name" >>"$temp/replaced-dependencies"; done <"$temp/replaceable"
 # pkg installs its own upgrade first, then restarts and solves the rest again.
 # Review that step separately, so the restarted solution gets its own approval.
 if [ "$action" != preview ] && grep -q '^P|pkg|' "$temp/records"; then
@@ -392,6 +415,25 @@ elif [ "$action" = update ]; then
 else
     transact install "$@"
 fi
+# A replaced flavor's unreviewed automatic dependencies that nothing uses now.
+changed=yes
+while [ "$changed" = yes ]; do
+    changed=no
+    pkgtool query -a '%n|%a|%#r|%k|%V' >"$temp/leftovers-installed"
+    awk -F '|' 'FILENAME==ARGV[1] {if(NF && $0!~/^#/) allowed[$1]=1; next}
+        FILENAME==ARGV[2] {candidate[$1]=1; next}
+        ($1 in candidate) && !($1 in allowed) && $2==1 && $3==0 && $4==0 && $5==0 {print $1}' \
+        "$policy/packages.allowed" "$temp/replaced-dependencies" "$temp/leftovers-installed" >"$temp/leftovers"
+    while IFS= read -r name; do
+        pkgtool query '%dn' "$name" >>"$temp/replaced-dependencies"
+        pkgtool delete -n "$name"
+        pkgtool delete -y "$name"
+        changed=yes
+    done <"$temp/leftovers"
+done
+while IFS= read -r name; do
+    pkgtool info -e "$name" || printf 'Replaced the unreviewed %s flavor.\n' "$name"
+done <"$temp/replaceable"
 localpkg check -d -n -a
 pkgtool query -a '%n|%v|%o|%q|%a' >"$receipt/after"
 # pkg keeps an older installed dependency that a new package does not require

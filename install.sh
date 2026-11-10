@@ -30,8 +30,10 @@ if [ "$mode" = preview ]; then
     cat <<EOF
 FreeBSD 15.1-RELEASE amd64 / Wayland setup for $account:
   1. Check release, running kernel, account, permanent checkout and source files.
-     Remove stale locks, workspaces and old logs; keep recovery backups.
+     Remove what earlier runs left: stale locks, workspaces, logs and backups.
      Offer console Wi-Fi setup with a hidden password prompt before downloads.
+     Offer a clean install: remove every earlier package (stock Git too), the
+     package state and build output, then build and install everything again.
   2. Bootstrap signed pkg; publish the reviewed package policy and preserve its prior version.
   3. Build the pinned native library variants as $account; audit every dependency before installation.
   4. Install the reviewed desktop/development roots and detected Intel firmware.
@@ -39,7 +41,7 @@ FreeBSD 15.1-RELEASE amd64 / Wayland setup for $account:
   6. Check every staged binary/configuration, then transactionally install user links.
   7. Back up and merge the listed system settings; configure mdo and the native login session.
   8. Verify the final configuration before enabling SDDM at boot. Keep console login/recovery.
-  9. Check the installed system again and clean up, then ask before rebooting into the desktop.
+  9. Check the installed system again, remove every backup, then ask before rebooting into the desktop.
 No partitioning, OS installation or server provisioning.
 See docs/BASE-SETUP.md for the separate manual installation and docs/VALIDATION.md for readiness.
 Preview only. On the laptop, run --check first, then --apply from its root console.
@@ -169,37 +171,16 @@ printf '%s\n' "$$" >"$lock/pid"
 log=
 policy=
 stage=preflight
-archive() {
-    recovery=/var/log/nostromo/recovery
-    [ ! -L "$recovery" ] || return 1
-    mkdir -p "$recovery" || return 1
-    [ "$(stat -f '%u %Lp' "$recovery")" = '0 700' ] || return 1
-    destination=$recovery/${1##*/}
-    [ ! -e "$destination" ] && [ ! -L "$destination" ] || return 1
-    mv "$1" "$destination" || return 1
-    printf 'Archived recovery data: %s\n' "$destination"
-}
-recoverable() {
-    if [ -e "$1/policy-backup" ] || [ -L "$1/policy-backup" ]; then return 0; fi
-    [ -e "$1/system-backup" ] || [ -L "$1/system-backup" ] || return 1
-    [ -d "$1/system-backup" ] && [ ! -L "$1/system-backup" ] || return 0
-    # A run that changed no system file leaves only an empty journal.
-    found=$(find "$1/system-backup" -mindepth 1 ! \( -type f -empty \( -name journal -o -name reverse \) \) -print) ||
-        return 0
-    [ -n "$found" ]
-}
 prune_logs() {
     # The lock is held, so every other run has ended, including one that power
-    # loss left without a result. Keep only this diagnostic run. Move runs with
-    # recovery data out of the log directory instead of deleting them.
+    # loss left without a result. Keep only this run's logs. A run's backups
+    # serve its own rollback, so they go with its logs.
     for previous in /var/log/nostromo/install-????????; do
         [ -d "$previous" ] && [ ! -L "$previous" ] && [ "$previous" != "$log" ] || continue
         case ${previous##*/install-} in *[!A-Za-z0-9]*) continue ;; esac
         if [ "$(stat -f '%u %Lp' "$previous")" != '0 700' ] ||
             [ ! -f "$previous/release-before" ] || [ ! -f "$previous/account-before" ]; then
             printf 'Retained unrecognized or unsafe log directory: %s\n' "$previous"
-        elif recoverable "$previous"; then
-            archive "$previous" || return 1
         else
             rm -rf "$previous" || return 1
             printf 'Removed old install log: %s\n' "$previous"
@@ -219,13 +200,89 @@ sweep() {
         rm -rf "$stale" || return 1
         printf 'Removed a lock left by an earlier boot: %s\n' "$stale"
     done
-    # Earlier installers kept each replaced package policy beside the active one.
-    for previous in /usr/local/share/nostromo/policy.previous.*; do
+    # Earlier installers kept replaced policies and recovery archives. Wi-Fi setup
+    # backups serve only its own rollback; skip them while a setup holds its lock.
+    for previous in /usr/local/share/nostromo/policy.previous.* /var/log/nostromo/recovery \
+        /var/backups/nostromo/wifi-*; do
         [ -d "$previous" ] && [ ! -L "$previous" ] && [ "$(stat -f %u "$previous")" = 0 ] || continue
-        archive "$previous" || return 1
+        case $previous in */wifi-*) [ ! -d /var/run/nostromo-wifi-setup.lock ] || continue ;; esac
+        rm -rf "$previous" || return 1
+        printf 'Removed an old backup: %s\n' "$previous"
     done
+    rmdir /var/backups/nostromo 2>/dev/null || :
+    # After the final check, this run's rollback copies have no further use.
+    if [ "${1:-}" = final ]; then
+        for previous in "$log/system-backup" "$log/policy-backup"; do
+            [ -e "$previous" ] || [ -L "$previous" ] || continue
+            rm -rf "$previous" || return 1
+            printf 'Removed a backup: %s\n' "$previous"
+        done
+    fi
     prune_logs || return 1
     as_user 'sh scripts/clean-build.sh'
+}
+# Like the package helper, ignore injected pkg configuration and environment.
+pkgtool() { env -i PATH="$PATH" HOME=/root LC_ALL=C /usr/local/sbin/pkg -C /dev/null "$@"; }
+clean_packages() {
+    # Keep pkg, base (its origin has no category), vital packages and the firmware
+    # fwget detects, since Wi-Fi may need it before its own stage, with everything
+    # they depend on.
+    /usr/sbin/fwget -nq >"$log/clean-firmware" || return 1
+    pkgtool query -a '%n|%o|%k|%V' >"$log/clean-installed" || return 1
+    pkgtool query -a '%n|%dn' >"$log/clean-dependencies" || return 1
+    awk -F '|' 'FILENAME==ARGV[1] {kept[$1]=1; next}
+        FILENAME==ARGV[2] {row[++n]=$0; name[n]=$1
+            if ($1=="pkg" || $1 ~ /^FreeBSD-/ || $2 !~ /\// || $4!=0) kept[$1]=1
+            next}
+        {from[++m]=$1; to[m]=$2}
+        END {
+            do {changed=0
+                for (i=1; i<=m; i++) if ((from[i] in kept) && !(to[i] in kept)) {kept[to[i]]=1; changed=1}
+            } while (changed)
+            for (i=1; i<=n; i++) if (!(name[i] in kept)) print row[i]
+        }' "$log/clean-firmware" "$log/clean-installed" "$log/clean-dependencies" >"$log/clean-packages" || return 1
+    # Without its shell, an account could not log in again if a later stage stops.
+    pw usershow -a -7 >"$log/clean-accounts" || return 1
+    reset=
+    while IFS=: read -r user _ _ _ _ _ shell; do
+        [ -e "$shell" ] || continue
+        origin=$(pkgtool which -qo "$shell") || continue
+        awk -F '|' -v origin="$origin" '$2==origin {found=1} END {exit !found}' "$log/clean-packages" || continue
+        if [ "$user" != "$account" ]; then
+            printf 'Give %s a base login shell first; %s goes with its package.\n' "$user" "$shell" >&2
+            return 1
+        fi
+        reset=yes
+    done <"$log/clean-accounts"
+    if [ -n "$reset" ]; then
+        pw usermod "$account" -s /bin/sh || return 1
+        printf 'The login shell of %s is /bin/sh until the login-shell stage.\n' "$account"
+    fi
+    set --
+    while IFS='|' read -r name _origin locked _vital; do
+        [ "$locked" = 0 ] || pkgtool unlock -y "$name" || return 1
+        set -- "$@" "$name"
+    done <"$log/clean-packages"
+    [ "$#" = 0 ] || pkgtool delete -y "$@" || return 1
+    pkgtool clean -a -y
+}
+clean_install() {
+    # Start every stage from scratch: earlier packages, the package helper's state
+    # and the checkout's build output. Merged system settings stay; the
+    # configuration stage merges them again.
+    [ ! -d /var/run/nostromo-packages.lock ] || {
+        echo 'A package operation holds /var/run/nostromo-packages.lock; let it finish first.' >&2
+        return 1
+    }
+    if [ -x /usr/local/sbin/pkg ]; then clean_packages || return 1; fi
+    for state in /var/db/nostromo/packages /usr/local/share/nostromo/policy; do
+        [ -e "$state" ] || [ -L "$state" ] || continue
+        rm -rf "$state" || return 1
+        printf 'Removed installer state: %s\n' "$state"
+    done
+    # Staged ports can leave read-only directories; chmod -R follows no symlinks.
+    as_user 'if [ -e .build ] || [ -L .build ]; then chmod -R u+w .build; rm -rf .build
+        echo "Removed the build output: $NOSTROMO_REPO/.build"; fi'
 }
 final_check() {
     as_user 'sh scripts/verify-stage.sh --installed' || return 1
@@ -304,6 +361,12 @@ run cleanup sweep
 # Prompts bypass tee/logging; the password is read only from the console.
 stage=wifi-setup
 sh "$repo/scripts/setup-wifi.sh" --offer
+stage=clean-offer
+{ printf '%s\n%s\n%s' 'A clean install removes every package except pkg, base and detected firmware,' \
+    'then the package state and build output; this run builds everything again.' \
+    'Start with a clean install? [y/N] ' >/dev/tty; } 2>/dev/null &&
+    IFS= read -r answer </dev/tty || answer=n
+case $answer in y | Y | yes | YES) run clean-install clean_install ;; esac
 # Base pkg bootstrap verifies FreeBSD's repository signature. No doas/sudo bootstrap.
 run pkg-bootstrap env -i HOME=/root PATH="$PATH" /usr/sbin/pkg bootstrap -y
 pkg -v >"$log/pkg-version"
@@ -375,6 +438,11 @@ while IFS='|' read -r component _origin version; do
     run "$component-import" "$packages" import "$component" "$repo/.build/ports-packages/All/$component-$version.pkg"
     if pkg info -e "$component"; then operation=reinstall; else operation=install; fi
     run "$component-install" "$packages" "$operation" --build "$component"
+    # A clean install removed Git as well. Restore it once its reviewed curl is
+    # installed, so that a stopped run can still pull fixes.
+    if [ "$component" = curl ] && ! pkg info -e git-lite && ! pkg info -e git; then
+        run git-lite "$packages" install git-lite
+    fi
 done <"$repo/packages.local"
 set --
 while IFS= read -r name; do
@@ -402,7 +470,7 @@ run login-shell pw usermod "$account" -s /usr/local/bin/oksh
 # Activation is the last change; the current console/desktop keeps running until reboot.
 run enable-login sysrc sddm_enable=YES
 run final-check final_check
-run final-cleanup sweep
+run final-cleanup sweep final
 printf 'Setup completed for %s. Logs: %s\n' "$account" "$log"
 # The exit handler offers the reboot after recording the result and releasing the lock.
 stage=reboot

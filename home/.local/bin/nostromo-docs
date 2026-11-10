@@ -42,6 +42,15 @@ rust_file() {
     }
     printf '%s\n' "$path"
 }
+# FreeBSD's LLVM ports move each manual into the shared tree under a versioned
+# name: /usr/local/llvm21/bin/llvm-mc is documented by llvm-mc21(1).
+llvm_manual() {
+    tool=$(nostromo-tool --path llvm-mc) || return
+    directory=${tool%/bin/*}
+    name=llvm-mc
+    case $directory in /usr/local/llvm[0-9]*) name=llvm-mc${directory#/usr/local/llvm} ;; esac
+    MANPATH="$directory/share/man${MANPATH:+:$MANPATH}:" man "$@" "$name"
+}
 rust_topics() {
     for topic in book reference rust-by-example embedded-book std core alloc cargo rustc rustdoc \
         clippy nomicon edition-guide style-guide unstable-book; do
@@ -156,9 +165,7 @@ if [ "$action" = --check ]; then
     man -w 3 malloc >/dev/null
     man -w 3 'std::vector' >/dev/null
     for topic in book std reference rust-by-example embedded-book; do rust_file "$topic" >/dev/null; done
-    tool=$(nostromo-tool --path llvm-mc)
-    directory=${tool%/bin/*}
-    MANPATH="$directory/share/man${MANPATH:+:$MANPATH}:" man -w llvm-mc >/dev/null
+    llvm_manual -w >/dev/null
     package_file python-doc-text /library/pathlib.txt >/dev/null
     for topic in tutorial reference library c-api extending howto using whatsnew; do
         package_file python-doc-html "/$topic/index.html" >/dev/null
@@ -232,11 +239,7 @@ python)
     file=$(package_file python-doc-text "/library/$topic.txt")
     less -iMRS -- "$file"
     ;;
-llvm)
-    tool=$(nostromo-tool --path llvm-mc)
-    directory=${tool%/bin/*}
-    MANPATH="$directory/share/man${MANPATH:+:$MANPATH}:" man llvm-mc
-    ;;
+llvm) llvm_manual ;;
 freebsd) book "$(package_file en-freebsd-doc /en/books/handbook/index.html)" ;;
 guide)
     topic=${topic:-OFFLINE-DOCS}

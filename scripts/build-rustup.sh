@@ -4,6 +4,9 @@ set -eu
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
 export CC=/usr/bin/clang CXX=/usr/bin/clang++
 export CARGO_HOME="$repo/.build/cargo" CARGO_TARGET_DIR="$repo/.build/rustup-target"
+# aws-lc-sys 0.28 ships no FreeBSD bindings: its build generates them with
+# libclang, from the reviewed LLVM, and then builds with CMake.
+export LIBCLANG_PATH=/usr/local/llvm21/lib
 mkdir -p "$repo/.build/work" "$repo/.build/prefix/bin"
 work=$(mktemp -d "$repo/.build/work/rustup.XXXXXXXX")
 trap 'rm -rf "$work"' 0

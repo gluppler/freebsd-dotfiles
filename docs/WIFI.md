@@ -4,9 +4,9 @@ Before the desktop is installed, run `sh install.sh --wifi` as root in a normal
 multi-user console. `--apply` offers this same setup before downloading packages.
 It discovers the radio and an existing matching wlan interface, creates one if
 needed, asks for the SSID/security/password, and configures the native rc services.
-The password is hidden and the prompt bypasses installer logs. Initial settings
-are backed up under `/var/backups/nostromo`; failed authentication restores the
-previous persistent configuration. A DNS failure after association keeps the
+The password is hidden and the prompt bypasses installer logs. Failed
+authentication restores the previous persistent configuration from a backup
+under `/var/backups/nostromo`; the installer's cleanup removes these backups. A DNS failure after association keeps the
 saved network and stops the download stage for diagnosis. See
 [Base-Setup](BASE-SETUP.md) for read-only filesystems and single-user recovery.
 

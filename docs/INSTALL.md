@@ -52,10 +52,10 @@ The installer refuses an SSH session so network policy cannot strand its operato
 
 ## What happens
 
-1. Remove stale locks, workspaces and old logs that earlier runs left (see
-   below), keeping recovery backups. Offer console Wi-Fi setup before package
-   downloads. Password entry bypasses the install log. Skip this when the
-   current connection already works.
+1. Remove what earlier runs left: stale locks, workspaces, logs and backups (see
+   below). Offer console Wi-Fi setup before package downloads. Password entry
+   bypasses the install log. Skip this when the current connection already works.
+   Then offer a [clean install](#clean-install); the default keeps what is there.
    Bootstrap pkg with FreeBSD's signature verification and publish the root-owned
    package policy. Resolve and audit the complete requested dependency closure.
 2. Build the 15 pinned library/package variants as the ordinary user, run ports
@@ -81,8 +81,8 @@ The installer refuses an SSH session so network policy cannot strand its operato
    radio during installation.
 8. Check the installed system again: user links, staged binaries, mdo policy,
    helpers and fonts, the oksh login shell, SDDM at boot, and all 15 variants
-   installed, locked and built from the current recipe. Clean up again, record
-   the result and release the lock, then ask at the console
+   installed, locked and built from the current recipe. Clean up again and remove
+   every backup this run made. Record the result, release the lock, then ask at the console
    `Reboot into the new desktop now? [Y/n]`. Enter reboots; `n` keeps the
    console running.
 
@@ -90,6 +90,36 @@ The first native build may reveal a release/port/API issue that macOS cannot
 exercise. Unknown dependencies, stale recipes, missing devices and invalid files
 stop the relevant stage; errors are not suppressed to reach a success message.
 See [VALIDATION](VALIDATION.md) before treating the candidate as laptop-tested.
+
+## Clean install
+
+After the Wi-Fi offer, `--apply` asks `Start with a clean install? [y/N]`. Enter
+continues as an ordinary rerun. `y` first removes:
+
+- every package except pkg, FreeBSD base packages, packages pkg marks vital and
+  the firmware `fwget` detects, with everything those depend on. Stock Git, the
+  documentation packages and the built variants go too; locked variants are
+  unlocked first. pkg's download cache is emptied.
+- the package helper's state in `/var/db/nostromo/packages` and the published
+  package policy in `/usr/local/share/nostromo/policy`.
+- the checkout's `.build`: variant archives and port work, desktop programs,
+  editor plugins, Python environments and downloads.
+
+The run then downloads and builds everything again, which takes hours. Merged
+system settings stay, and the configuration stage merges them again. Your files,
+`~/.local/state` and the saved power profile stay too. On the T14 the clean
+install keeps pkg and the detected GPU and Wi-Fi firmware. The Wi-Fi driver is
+part of base, so the connection keeps working.
+
+Without Git a stopped run could not pull fixes, so the installer installs
+git-lite as soon as the reviewed curl variant is installed. If a clean run stops
+before that, run `pkg install git-lite` at the root console, then pull.
+
+A desktop account whose login shell comes from a package gets `/bin/sh` until the
+login-shell stage selects oksh. Another account with a packaged login shell stops
+the clean install before anything is removed; give it a base shell with `chsh`
+first. A package operation still holding `/var/run/nostromo-packages.lock` stops
+it too.
 
 ## Logs, reruns and recovery
 
@@ -101,21 +131,29 @@ failing stage's log before rerunning the same command.
 The `cleanup` stage at the start of `--apply`, `final-cleanup` at its end and
 the exit handler prune logs under the installer lock. No other run can be active
 then, so every earlier run has ended, including one that power loss left
-without a result. Diagnostic-only runs are removed, so only the current run's
-logs remain: read or copy a failed run's logs before rerunning. A run that kept a
-`policy-backup/`, or whose `system-backup/` journal records a changed file, moves
-to `/var/log/nostromo/recovery/` instead. A run that changed no system file
-leaves only an empty journal and is removed. The policy copies earlier installers
-kept as `/usr/local/share/nostromo/policy.previous.*` move to the recovery
-directory too. Unfamiliar or unsafe directories are retained and reported.
-Cleanup does not follow directory symlinks. An unchanged package policy is
-reused; a changed policy's previous version goes in that run's `policy-backup/`.
-Interrupted publication restores the old policy if the active path is missing.
+without a result. Each earlier run's log directory is removed with everything in
+it, so only the current run's logs remain: read or copy a failed run's logs
+before rerunning. Unfamiliar or unsafe directories are retained and reported.
+Cleanup does not follow directory symlinks.
+
+The installer keeps no recovery archive. A run backs up what it replaces only
+for its own rollback: system files in its log's `system-backup/`, the replaced
+package policy in `policy-backup/`, user files under
+`~/.local/state/freebsd-dotfiles/backups/` and Wi-Fi settings under
+`/var/backups/nostromo/`. `final-cleanup` removes them all once the final check
+passes; after a failed run, the next run's cleanup removes them. A Wi-Fi setup
+still holding its lock keeps its backup. Cleanup also removes the
+`/var/log/nostromo/recovery/` directory and the
+`/usr/local/share/nostromo/policy.previous.*` copies that earlier installers
+kept. A completed install therefore leaves no copy of the files it replaced. An
+unchanged package policy is reused. Interrupted publication restores the old
+policy if the active path is missing.
 
 Temporary package downloads/private repositories and unpublished policy directories
 are removed on ordinary failures and handled signals. SIGKILL or power loss cannot
 run shell cleanup handlers, so later runs remove what they leave. The package
-helper removes its stale workspaces under its own lock. The installer's cleanup
+helper removes its stale workspaces under its own lock and keeps only its latest
+transaction receipt under `/var/db/nostromo/packages/`. The installer's cleanup
 stages remove unpublished policies, system-configuration workspaces and project
 lock directories from an earlier boot. As the desktop user, they also remove
 build workspaces and partial downloads from an earlier boot; during the boot that
@@ -137,13 +175,11 @@ the current boot stops the run even after its process has ended, because a stage
 it started may still be running. Reboot, or confirm with `ps -ax` that no install
 or build remains, then remove the directory the message names.
 
-User-file backups are under `~/.local/state/freebsd-dotfiles/backups/`, and
 `~/.local/state/freebsd-dotfiles/links` lists the links last applied. A later run
 removes a listed link that has left `links.txt` if it still points to the same
-checkout file; anything you changed is kept.
-System backups and a file/mode/hash journal are in the install log's
-`system-backup/`, under `/var/log/nostromo/recovery/` after a later run. Failed
-system-file provisioning restores files only if they
+checkout file; anything you changed is kept. A failed link stage restores the
+files it replaced. Failed system-file provisioning restores files from its
+journal only if they
 still match what that transaction wrote; later administrator edits are retained.
 Group memberships, ACPI settings and active mdo policy introduced by that failed stage are
 restored where safe. Package transactions, previously completed user links,
@@ -209,8 +245,8 @@ the current connection works. The retry installs the corrected package helper.
 This update also removes the KiCad workflow, which changes the pinned ports
 recipe, so `prepare-ports` replaces the failed run's unedited tree from the
 cached archive; no manual cleanup is needed. A fresh clone downloads the archive
-and prepares its first tree instead. The package policy changes too: the retry
-publishes it and keeps the previous copy in that run's `policy-backup/`.
+and prepares its first tree instead. The package policy changes too, and the
+retry publishes it.
 Existing `FreeBSD-ports`, `FreeBSD-ports-kmods` and disabled `FreeBSD-base`
 definitions need no edits for these errors; the helper uses private signed
 upstream definitions without replacing those system files.
@@ -276,8 +312,8 @@ reviewed stock packages. The 15 dependency lists recorded on the T14 are in
 `tests/variant-deps.txt`, and host tests check them against the reviewed list.
 
 Pull and rerun `--check` and `--apply` as above. The ports recipe is unchanged,
-so the eight finished variants are not rebuilt. The package policy changed: the
-retry publishes it and keeps the previous copy in that run's `policy-backup/`.
+so the eight finished variants are not rebuilt. The package policy changed, and
+the retry publishes it.
 
 ### Recover from a group/world-writable checkout stop
 
@@ -300,8 +336,45 @@ the whole checkout.
 Pull and rerun `--check` and `--apply` as above. The ports recipe is unchanged,
 so the eight finished variants are not rebuilt; the frei0r policy change above
 is published as described there. This update also adds the cleanup, final check
-and reboot prompt described above. Its first cleanup moves the earlier
-`policy.previous.*` copies into `/var/log/nostromo/recovery/`.
+and reboot prompt described above. Its cleanup removes the `policy.previous.*`
+copies and recovery archives that earlier installers kept.
+
+### Recover from a stop at fcitx5-build
+
+With those fixes, the first 11 variants, through hunspell, were built, installed
+and locked. fcitx5's packaging check then stopped:
+
+```text
+Error : Missing : etc/xdg/Xwayland-session.d/20-fcitx-x11
+Error : Missing : lib/fcitx5/libxcb.so
+Error : Missing : lib/fcitx5/libxim.so
+Error : Missing : %%DATADIR%%/addon/xcb.conf
+Error : Missing : %%DATADIR%%/addon/xim.conf
+Error : Plist issues found.
+```
+
+The reviewed options build fcitx5 without X11, but the port's file list named its
+X11 session script and XCB/XIM add-ons as unconditional files.
+`src/ports/fcitx-x11.patch` marks those five entries X11-only, so the list matches
+the Wayland-only build.
+
+The stages after fcitx5 were then checked on the T14 before rerunning (see
+[VALIDATION](VALIDATION.md#native-evidence-from-the-t14)). That found three more
+stops, now fixed:
+
+- `development-tools`: `uv pip check` reads only the environment's own
+  packages, so it would reject the wheels that use reviewed system packages. A
+  check that reads both replaces it.
+- `staged-validation`: FreeBSD's LLVM ports install `llvm-mc.1` as
+  `llvm-mc21.1`, so `nostromo-docs --check` could not find the manual.
+- `system-configuration`: FreeBSD's awk rejected the pattern that validates SSH
+  `Include` paths.
+
+Desktop packages also replace stock Git with the reviewed git-lite flavor.
+
+The patch changes the ports recipe, so the next run regenerates the tree and
+rebuilds all 15 variants, whether or not you choose a clean install. Pull and
+rerun `--check` and `--apply` as above.
 
 ## Source exports
 

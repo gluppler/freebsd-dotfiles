@@ -95,6 +95,52 @@ class Migration(unittest.TestCase):
             with self.subTest(script=script.name):
                 subprocess.run(["/bin/sh", "-n", str(script)], check=True, capture_output=True)
 
+    def test_awk_programs_parse(self):
+        # sh -n cannot see inside quoted awk programs. FreeBSD's awk ended an Include
+        # pattern at a slash inside brackets, which stopped every system configuration.
+        programs = []
+        for directory, dirs, names in os.walk(ROOT):
+            dirs[:] = [name for name in dirs if Path(directory, name).relative_to(ROOT).as_posix()
+                       not in (".git", ".build", "docs/research", "tests")]
+            for name in names:
+                path = Path(directory, name)
+                if path.suffix == ".awk":
+                    programs.append((path, path.read_text()))
+                    continue
+                if path.is_symlink() or not (path.suffix == ".sh" or path.read_bytes()[:9] == b"#!/bin/sh"):
+                    continue
+                text = path.read_text()
+                for match in re.finditer(r"(?<![\w./-])awk(?![\w.-])((?:\s+-[Fv](?:\s*(?:'[^']*'|\"[^\"]*\"|[^\s'\"])+))*)\s+'", text):
+                    if text[text.rfind("\n", 0, match.start()) + 1:match.start()].lstrip().startswith("#"):
+                        continue
+                    start, parts = match.end(), []
+                    while True:
+                        end = text.index("'", start)
+                        parts.append(text[start:end])
+                        if not text.startswith("\\''", end + 1):
+                            break
+                        parts.append("'")
+                        start = end + 4
+                    programs.append((path, "".join(parts)))
+        self.assertGreater(len(programs), 100)
+        with tempfile.TemporaryDirectory() as directory:
+            for path, program in programs:
+                (Path(directory) / "program.awk").write_text(program)
+                result = subprocess.run(["awk", "-f", "program.awk"], cwd=directory, stdin=subprocess.DEVNULL,
+                                        capture_output=True, text=True, env={**os.environ, "LC_ALL": "C"})
+                self.assertIsNone(re.search(r"syntax error|nonterminated|unterminated|illegal|bailing out|fatal",
+                                            result.stderr), f"{path.relative_to(ROOT)}: {result.stderr}")
+
+    def test_llvm_paths_name_the_installed_llvm(self):
+        # rustup's libclang and the embedded runtime use fixed LLVM prefixes.
+        packages = set((ROOT / "packages.txt").read_text().split())
+        used = {}
+        for script in ROOT.glob("scripts/*.sh"):
+            for version in re.findall(r"/usr/local/llvm(\d+)\b", script.read_text()):
+                used.setdefault(f"llvm{version}", []).append(script.name)
+        self.assertIn("build-rustup.sh", used.get("llvm21", []))
+        self.assertEqual({name: files for name, files in used.items() if name not in packages}, {})
+
     def test_no_x11_or_doas_runtime(self):
         for path in (ROOT / "home").rglob("*"):
             if not path.is_file() or path.suffix in (".pyc", ".png"):

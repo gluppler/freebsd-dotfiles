@@ -1,6 +1,7 @@
 #!/bin/sh
-# Remove build leftovers as the checkout owner: workspaces and partial downloads
-# from an earlier boot, old desktop build logs and superseded variant archives.
+# Remove leftovers as the checkout owner: build workspaces and partial downloads
+# from an earlier boot, old desktop build logs, superseded variant archives and
+# user-file backups.
 set -eu
 LC_ALL=C
 export LC_ALL
@@ -19,6 +20,8 @@ for stale in "$build"/work/*.???????? "$build"/validation.???????? "$build"/port
     # mktemp makes directories here, except for partial downloads.
     case $stale in */.download.*) [ -f "$stale" ] ;; *) [ -d "$stale" ] ;; esac && [ ! -L "$stale" ] || continue
     [ "$(stat -f %B "$stale")" -lt "$boot" ] || continue
+    # Staged ports can leave read-only directories; chmod -R follows no symlinks.
+    chmod -R u+w "$stale"
     rm -rf "$stale"
     printf 'Removed a stale build workspace: %s\n' "$stale"
 done
@@ -40,3 +43,9 @@ for archive in "$build"/ports-packages/All/*.pkg; do
     rm -f "$archive"
     printf 'Removed a superseded variant archive: %s\n' "$archive"
 done
+# The link stage restores from these only when it fails itself.
+backups=$HOME/.local/state/freebsd-dotfiles/backups
+if [ -d "$backups" ] && [ ! -L "$backups" ]; then
+    rm -rf "$backups"
+    printf 'Removed user-file backups: %s\n' "$backups"
+fi

@@ -70,8 +70,9 @@ desktop session, suspension is refused. Test every output, hotplug, failed passw
 on the laptop before treating authentication/suspend as accepted.
 
 Console recovery is kept. From a root console, `sysrc sddm_enable=NO` prevents the
-next graphical startup; inspect the session/install logs and restore only the
-relevant backed-up files. See [INSTALL](INSTALL.md) for transaction boundaries.
+next graphical startup; inspect the session/install logs and correct the reported
+file. A completed install keeps no backup copies. See [INSTALL](INSTALL.md) for
+transaction boundaries.
 
 Sources: [FreeBSD Wayland](https://docs.freebsd.org/en/books/handbook/wayland/),
 [loader.conf](https://man.freebsd.org/cgi/man.cgi?query=loader.conf&sektion=5),

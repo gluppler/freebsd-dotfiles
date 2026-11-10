@@ -48,6 +48,8 @@ class Transactions(unittest.TestCase):
         # From the request list through the final transaction choice.
         self.request = '# pkg refuses a request' + source.split('# pkg refuses a request',1)[1].split(
             '    transact install "$@"\nfi\n',1)[0] + '    transact install "$@"\nfi\n'
+        self.leftovers = '# A replaced flavor' + source.split('# A replaced flavor',1)[1].split(
+            'localpkg check -d -n -a\n',1)[0]
 
     def pkg(self, *args, check=True):
         result = subprocess.run([str(PKG),'-C',str(self.path/'pkg.conf'),*args],env=self.env,
@@ -56,10 +58,11 @@ class Transactions(unittest.TestCase):
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         return result
 
-    def package(self, name, version='1', *, deps=(), file=None, noarch=False, annotations=None):
+    def package(self, name, version='1', *, deps=(), file=None, noarch=False, annotations=None, origin=None,
+                vital=False):
         # A dependency name records version 1; a mapping names the version.
         deps = deps if isinstance(deps, dict) else dict.fromkeys(deps, '1')
-        manifest = {'name':name, 'version':version, 'origin':'misc/'+name,
+        manifest = {'name':name, 'version':version, 'origin':origin or 'misc/'+name,
                     'comment':'Disposable transaction fixture', 'desc':'Test fixture',
                     'arch':'FreeBSD:15:amd64', 'maintainer':'test@example.invalid',
                     'www':'https://example.invalid', 'prefix':str(self.path/'payload'),
@@ -72,6 +75,8 @@ class Transactions(unittest.TestCase):
             manifest['files']={str(self.path/'payload'/file):''}
         if annotations:
             manifest['annotations']=annotations
+        if vital:
+            manifest['vital']=True
         path = self.path/(name+'.json')
         path.write_text(json.dumps(manifest))
         for previous in (self.path/'repo').glob(name+'-*.pkg'):
@@ -188,6 +193,17 @@ localpkg() {
         self.assertNotEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertIn('Package removal proposed',result.stderr)
         self.assertEqual(self.pkg('query','-a','%n').stdout.strip(),'incumbent')
+        # A replaceable flavor may leave only as listed: any other name, or a list
+        # that does not match the summary count, stops the review.
+        (self.path/'replaceable').write_text('incumbent\n')
+        install='New packages to be INSTALLED:\n\treplacement: 1\n\n'
+        for listing,applied in (('\tincumbent: 1\n',True),('\tincumbent: 1\n\tother: 1\n',False),
+                                ('    incumbent: 1\n',False),('',False)):
+            count=listing.count(': 1')
+            (self.path/'removal-plan').write_text(install+'Installed packages to be REMOVED:\n'+listing+
+                                                 '\nNumber of packages to be removed: '+str(count or 1)+'\n')
+            result=subprocess.run(['sh','-c',script],env=self.env,text=True,capture_output=True)
+            self.assertEqual(result.returncode,99 if applied else 1,listing+result.stdout+result.stderr)
 
     def test_architecture_independent_archive_passes_the_audit(self):
         self.package('font',noarch=True)
@@ -258,6 +274,8 @@ pkgtool() { "$PKG_TEST" -C "$PKG_WORK/pkg.conf" "$@"; }
         (self.path/'policy').mkdir()
         (self.path/'policy/packages.local').write_text(
             '# name|origin|version\nlibxml2|misc/libxml2|1\ncurl|misc/curl|1\n')
+        (self.path/'policy/packages.allowed').write_text(
+            'libxml2|misc/libxml2|1|local\ncurl|misc/curl|1|local\ngmake|misc/gmake|*|stock\n')
         (self.path/'records').write_text('')
         script = '''set -eu
 receipt=$PKG_WORK/receipt; temp=$PKG_WORK; policy=$PKG_WORK/policy; recipe=abc; relock=; action=$1
@@ -301,6 +319,135 @@ known_recipe() { [ "$1" = "$recipe" ]; }
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertNotIn(kept,result.stdout)
         self.assertIn('Installed packages to be REINSTALLED:',result.stdout)
+
+    def test_unreviewed_flavor_is_replaced_within_the_reviewed_plan(self):
+        # The T14's base setup installed stock git; the desktop list names git-lite,
+        # another flavor of devel/git with the same files.
+        # Only the replaced flavor's own automatic, unreviewed and unused
+        # dependencies leave, also transitively; the rest stays.
+        for name in ('p5-Deep','p5-Base','p5-Shared','perl5','stray'):
+            self.package(name)
+        self.package('p5-Error',deps=['p5-Deep','p5-Base'])
+        self.package('keeper',deps=['p5-Shared'])
+        self.package('git',file='bin-git',deps=['p5-Error','perl5','p5-Shared'],origin='devel/git')
+        self.publish()
+        self.pkg('install','-U','-y','-r','NostromoTransaction','git','keeper','stray')
+        self.pkg('set','-y','-A','1','stray')
+        self.pkg('set','-y','-A','0','p5-Base')
+        for archive in (self.path/'repo').glob('*.pkg'):
+            archive.unlink()
+        self.package('git-lite',file='bin-git',origin='devel/git')
+        (self.path/'payload/bin-git').write_text('git\n')
+        self.publish()
+        (self.path/'policy').mkdir()
+        (self.path/'policy/packages.local').write_text('# name|origin|version\n')
+        (self.path/'records').write_text(self.records())
+        (self.path/'request').write_text('git-lite\n')
+        script = '''set -eu
+receipt=$PKG_WORK/receipt; temp=$PKG_WORK; policy=$PKG_WORK/policy; recipe=abc; relock=; action=$1
+pkgtool() { "$PKG_TEST" -C "$PKG_WORK/pkg.conf" "$@"; }
+localpkg() { pkgtool "$@"; }
+validate() { :; }
+known_recipe() { [ "$1" = "$recipe" ]; }
+''' + self.guard + '\n' + self.request + self.leftovers + "echo 'Post-transaction checks.'\n"
+
+        def request(allowed):
+            (self.path/'policy/packages.allowed').write_text(''.join(name+'|misc/'+name+'|*|stock\n' for name in allowed))
+            return subprocess.run(['sh','-c',script,'--','install'],env=self.env,text=True,
+                                  capture_output=True,timeout=60)
+
+        reviewed = ['git-lite','perl5']
+
+        def refused(allowed, reason='Package removal proposed'):
+            # Not a replacement candidate: the transaction stops before any change.
+            result = request(allowed)
+            self.assertNotEqual(result.returncode,0,result.stdout+result.stderr)
+            self.assertIn(reason,result.stdout+result.stderr)
+            self.assertEqual((self.path/'payload/bin-git').read_text(),'git\n')
+            self.assertIn('git',self.pkg('query','-a','%n').stdout.split())
+
+        # pkg itself refuses to replace a locked package.
+        self.pkg('lock','-y','git')
+        refused(reviewed,'conflicts with git-1')
+        self.pkg('unlock','-y','git')
+        refused(reviewed+['git'])
+        self.package('tig',deps=['git'])
+        self.publish()
+        self.pkg('install','-U','-y','-r','NostromoTransaction','tig')
+        refused(reviewed)
+        self.pkg('delete','-y','tig')
+        result = request(reviewed)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn('Replaced the unreviewed git flavor.',result.stdout)
+        self.assertIn('Post-transaction checks.',result.stdout)
+        self.assertEqual(set(self.pkg('query','-a','%n').stdout.split()),
+                         {'git-lite','perl5','p5-Base','p5-Shared','keeper','stray'})
+        self.assertEqual((self.path/'payload/bin-git').read_text(),'git-lite\n')
+        self.assertIn('Installed packages to be REMOVED:\n\tgit: 1\n',(self.path/'receipt/plan').read_text())
+
+    def test_clean_install_keeps_pkg_base_vital_firmware_and_their_dependencies(self):
+        source = (ROOT/'install.sh').read_text()
+        block = 'clean_packages() {' + source.split('clean_packages() {',1)[1].split('\n}\n',1)[0] + '\n}\n'
+        (self.path/'fwget').write_text('#!/bin/sh\necho wifi-firmware-iwlwifi-kmod-22000\n')
+        (self.path/'fwget').chmod(0o755)
+        block = block.replace('/usr/sbin/fwget', str(self.path/'fwget'))
+        # pkg first, as pkg bootstrap installs it alone.
+        self.package('pkg',origin='ports-mgmt/pkg')
+        self.publish()
+        self.pkg('install','-U','-y','-r','NostromoTransaction','pkg')
+        # pkgbase origins have no category.
+        self.package('FreeBSD-runtime',origin='base',vital=True)
+        self.package('FreeBSD-utilities',origin='base')
+        for name in ('firmware-common','libimportant','libpsl','perl5','stray'):
+            self.package(name)
+        self.package('wifi-firmware-iwlwifi-kmod-22000',deps=['firmware-common'],origin='net/wifi-firmware-iwlwifi-kmod')
+        self.package('important',deps=['libimportant'],vital=True)
+        self.package('curl',deps=['libpsl'],origin='ftp/curl')
+        self.package('git',file='bin-git',deps=['curl','perl5'],origin='devel/git')
+        self.package('oksh',file='oksh',origin='shells/oksh')
+        self.publish()
+        everything = ['FreeBSD-runtime','FreeBSD-utilities','wifi-firmware-iwlwifi-kmod-22000','important',
+                      'git','oksh','stray']
+        self.pkg('install','-U','-y','-r','NostromoTransaction',*everything)
+        self.pkg('lock','-y','curl','libpsl')
+        # A file:// repository installs in place; a fetched archive stays cached.
+        (self.path/'cache/All').mkdir()
+        (self.path/'cache/All/git-1.pkg').write_bytes((self.path/'repo/git-1.pkg').read_bytes())
+        installed = set(self.pkg('query','-a','%n').stdout.split())
+        shell = self.path/'payload/oksh'
+
+        def clean(*accounts):
+            listed = ' '.join("'"+account+"'" for account in
+                              ('root:*:0:0:Charlie:/root:/bin/sh', f'fixture:*:1000:1000::/home/fixture:{shell}',
+                               'uucp:*:66:66::/var/spool/uucppublic:/usr/local/libexec/uucp/uucico', *accounts))
+            script = f'''set -eu
+log=$PKG_WORK; account=fixture
+pkgtool() {{ "$PKG_TEST" -C "$PKG_WORK/pkg.conf" "$@"; }}
+pw() {{
+    case $* in
+    'usershow -a -7') printf '%s\\n' {listed} ;;
+    *) printf 'pw %s\\n' "$*" >>"$PKG_WORK/pw" ;;
+    esac
+}}
+''' + block + 'clean_packages\n'
+            return subprocess.run(['sh','-c',script],env=self.env,text=True,capture_output=True,timeout=60)
+
+        # Another account's packaged shell stops the clean install before any change.
+        result = clean(f'admin:*:1001:1001::/home/admin:{shell}')
+        self.assertEqual(result.returncode,1,result.stdout+result.stderr)
+        self.assertIn(f'Give admin a base login shell first; {shell} goes with its package.',result.stderr)
+        self.assertEqual(set(self.pkg('query','-a','%n').stdout.split()),installed)
+        self.assertEqual(self.pkg('query','-e','%k = 1','%n').stdout.split(),['curl','libpsl'])
+        self.assertFalse((self.path/'pw').exists())
+        result = clean()
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertEqual((self.path/'pw').read_text(),'pw usermod fixture -s /bin/sh\n')
+        self.assertIn('The login shell of fixture is /bin/sh until the login-shell stage.',result.stdout)
+        self.assertEqual(set(self.pkg('query','-a','%n').stdout.split()),
+                         {'pkg','FreeBSD-runtime','FreeBSD-utilities','wifi-firmware-iwlwifi-kmod-22000',
+                          'firmware-common','important','libimportant'})
+        self.assertFalse(shell.exists())
+        self.assertEqual(list((self.path/'cache').iterdir()),[])
 
 
 if __name__ == '__main__':

@@ -30,7 +30,7 @@ from pathlib import Path
 p=Path(os.environ['TEST_ROOT']); name=Path(sys.argv[0]).name; args=sys.argv[1:]
 with (p/'calls').open('a') as log:
     log.write(json.dumps([name,args,{k:os.environ.get(k) for k in
-        ('GOTOOLCHAIN','GOPROXY','GOSUMDB','QT_QPA_PLATFORM')}])+'\\n')
+        ('GOTOOLCHAIN','GOPROXY','GOSUMDB','QT_QPA_PLATFORM','MANPATH')}])+'\\n')
 if name=='go':
     assert os.environ['GOTOOLCHAIN']=='local' and os.environ['GOPROXY']=='off'
     assert os.environ['GOSUMDB']=='off'
@@ -38,8 +38,12 @@ if name=='go':
     elif args[0]=='list': print(p)
     else: print('func Printf(format string, a ...any) (n int, err error)')
 elif name=='pkg':
-    if args[-1]=='python-doc-html': print(p/'python library/reference/index.html')
+    if args[-1]=='python-doc-html':
+        for topic in ('reference','tutorial','library','c-api','extending','howto','using','whatsnew'):
+            print(p/'python library'/topic/'index.html')
+    elif args[-1]=='en-freebsd-doc': print(p/'freebsd/en/books/handbook/index.html')
     else: print(p/'python library/library/pathlib.txt')
+elif name=='nostromo-tool': print(os.environ.get('TEST_LLVM_MC','/usr/local/llvm21/bin/llvm-mc'))
 elif name=='rustc': print(p/'rust root')
 elif name=='less': print(Path(args[-1]).read_text(),end='')
 elif name=='lowdown': print(Path(args[-1]).read_text(),end='')
@@ -55,7 +59,7 @@ elif name=='foot': time.sleep(0.4)
 ''')
         stub.chmod(0o755)
         for name in ('go','pkg','rustc','less','lowdown','tput','nostromo-picker',
-                     'fzf','foot','qutebrowser','man','notify-send'):
+                     'fzf','foot','qutebrowser','man','notify-send','nostromo-tool'):
             (binary/name).symlink_to(stub)
 
     def read(self, *args):
@@ -123,6 +127,33 @@ elif name=='foot': time.sleep(0.4)
             self.assertEqual(unquote(self.calls()[-1][1][-1]),'file://'+str(file))
         for args in [('language','../secret'),('python-book','unknown'),('rust','../std')]:
             self.assertEqual(self.read(*args).returncode,2)
+
+    def test_llvm_manual_uses_the_ports_versioned_name(self):
+        # FreeBSD's llvm21 port installs llvm-mc.1 as /usr/local/share/man/man1/llvm-mc21.1.gz.
+        for tool, manual in [('/usr/local/llvm21/bin/llvm-mc', 'llvm-mc21'), ('/opt/llvm/bin/llvm-mc', 'llvm-mc')]:
+            self.env['TEST_LLVM_MC'] = tool
+            result = self.read('llvm')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            name, args, env = self.calls()[-1]
+            self.assertEqual((name, args), ('man', [manual]))
+            self.assertTrue(env['MANPATH'].startswith(tool[:-len('/bin/llvm-mc')] + '/share/man:'), env['MANPATH'])
+
+    def test_check_finds_every_local_reference(self):
+        files = ['cppreference/en/c.html', 'cppreference/en/cpp.html', 'go root/doc/go_spec.html',
+                 'python library/library/pathlib.txt', 'freebsd/en/books/handbook/index.html',
+                 *(f'python library/{topic}/index.html' for topic in
+                   ('reference','tutorial','library','c-api','extending','howto','using','whatsnew')),
+                 *(f'rust root/share/doc/rust/html/{topic}/index.html' for topic in
+                   ('book','std','reference','rust-by-example','embedded-book'))]
+        for relative in files:
+            file = self.path/relative
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_text('reference')
+        result = self.read('--check')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(['man', ['-w', 'llvm-mc21']], [row[:2] for row in self.calls()])
+        (self.path/'go root/doc/go_spec.html').unlink()
+        self.assertNotEqual(self.read('--check').returncode, 0)
 
     def test_menu_cancellation_and_separate_document_window(self):
         (self.path/'choices').write_text('')

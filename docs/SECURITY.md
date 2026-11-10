@@ -105,8 +105,9 @@ this project's quick policy intentionally determines filtering for its traffic.
 
 System helpers, PAM policy, loader assets and package policy are root-owned.
 Builds, user links, project environments and secrets belong to the desktop user.
-System-file transactions reject unsafe symlink parents, keep numbered backups,
-and restore only files whose content/mode still match the transaction's write;
+System-file transactions reject unsafe symlink parents, keep numbered backups
+until the run's final check passes, and restore only files whose content/mode
+still match the transaction's write;
 later administrator edits are preserved. The install is not an atomic rollback
 of packages, compiled outputs, group memberships or created directories. See
 [INSTALL](INSTALL.md) before applying or recovering it.

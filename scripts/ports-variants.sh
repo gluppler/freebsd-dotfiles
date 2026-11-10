@@ -43,6 +43,8 @@ if [ "$action" = prepare ]; then
             echo 'Discarding build work from the previous ports tree.'
             mv "$work" "$pending/previous-work"
         fi
+        # Staged ports can leave read-only directories; chmod -R follows no symlinks.
+        chmod -R u+w "$pending"
         rm -rf "$pending/previous" "$pending/previous-work"
         sh "$repo/scripts/fetch-source.sh" ports "$pending/tree"
         for patchfile in "$repo"/src/ports/*.patch; do

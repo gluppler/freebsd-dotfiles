@@ -31,7 +31,8 @@ security_ssh() {
             for(i=2;i<=NF;i++) {
                 if($i ~ /^#/)break
                 item=$i;gsub(/^"|"$/,"",item)
-                if(item !~ /^[a-zA-Z0-9_./*?\[\]-]+$/ || item ~ /(^|\/)\.\.(\/|$)/)exit 1
+                # awk ends a regular expression at any unescaped slash, even in brackets.
+                if(item !~ /^[a-zA-Z0-9_.\/*?\[\]-]+$/ || item ~ /(^|\/)\.\.(\/|$)/)exit 1
                 print item
             }
         }' "$ssh_file" >"$work/ssh-includes"

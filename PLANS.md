@@ -12,8 +12,8 @@ option. Both are reproduced and fixed in source; the transaction failure was
 reproduced with the real pkg 2.8.4 binary. The helper now reviews pkg's dry-run plan and
 approves it once. The audit also accepts architecture-independent `FreeBSD:15:*`
 packages that later stages need, and pkg's own upgrade is approved separately.
-Retries now retain bounded diagnostic logs, preserve recovery data and reuse an
-unchanged package policy. Kernel modules use FreeBSD's release-specific quarterly
+Retries now keep only the current run's logs and reuse an unchanged package
+policy. Kernel modules use FreeBSD's release-specific quarterly
 repository. The KiCad PCB workflow is removed: PCB design runs on a separate
 server. That changes the pinned ports recipe; `prepare-ports` now replaces an
 unedited generated tree from an earlier recipe and stops on edits. Commit
@@ -31,15 +31,23 @@ unreviewed frei0r, a build dependency only the ports framework lists. It and
 the wheel tools py312-ecdsa needs are now reviewed, and the 15 dependency lists
 recorded on the T14 are checked on the host. `--check` on commit `26cb970` then
 stopped on the group-writable directories CUPS stages; the mode check now skips
-staged port trees. Reruns also clean up stale locks, workspaces and logs, and a
-final check precedes a reboot prompt. The next native run must
+staged port trees. Reruns also clean up stale locks, workspaces, logs and
+backups, keeping no recovery archive, and a final check precedes a reboot prompt.
+Commit `8bf9f2b` built eleven variants and stopped at `fcitx5-build`: the port's
+file list named X11 files that the Wayland-only build omits, and a ports patch now
+marks them X11-only. A check of every later stage on the T14 then found three
+more stops, now fixed: an awk pattern FreeBSD rejects in the SSH merge, the LLVM
+ports' versioned manual name and a Python requirements check that ignored system
+packages. Desktop packages replace stock Git with git-lite, and `--apply` offers
+a clean install. The next native run must
 confirm these fixes before installation, login and reboot can be marked
 complete; see the
 [dependency](docs/INSTALL.md#recover-from-a-stop-at-python312-dependencies),
 [build](docs/INSTALL.md#recover-from-a-stop-at-python312-build),
 [locked-variant](docs/INSTALL.md#recover-from-a-stop-at-libxslt-dependencies),
-[unreviewed-dependency](docs/INSTALL.md#recover-from-a-stop-at-ffmpeg-dependencies) and
-[checkout-permission](docs/INSTALL.md#recover-from-a-groupworld-writable-checkout-stop)
+[unreviewed-dependency](docs/INSTALL.md#recover-from-a-stop-at-ffmpeg-dependencies),
+[checkout-permission](docs/INSTALL.md#recover-from-a-groupworld-writable-checkout-stop) and
+[file-list](docs/INSTALL.md#recover-from-a-stop-at-fcitx5-build)
 recovery instructions.
 
 **Latest scope clarification:** migrate every implemented workflow **and every
@@ -313,7 +321,8 @@ add no email client, Tuta integration or account placeholders.
 - Build and create user configs as the user; keep privileged policy/helpers owned
   by root. Use fixed trusted paths and a clean privileged environment.
 - Idempotent, backed-up, transactional file updates with logs and rollback;
-  preserve unrelated settings and credentials. Do not replace whole rc.conf,
+  preserve unrelated settings and credentials. Backups last only until the
+  final check passes: a completed install leaves no archive on the laptop. Do not replace whole rc.conf,
   loader.conf, sysctl.conf, PF/SSH or user config files blindly.
 - Native signed package/ABI checks precede installation; unreviewed dependencies
   stop the transaction. Updates/removal share this gate, protected roots and

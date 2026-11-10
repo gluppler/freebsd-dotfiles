@@ -3,8 +3,9 @@
 # framework knows these lists: no reviewed package need depend on a build-only
 # option's header or on the framework's own build tools. Record them again on
 # FreeBSD when the checksum of ports.lock, packages.local, system/ports.conf
-# and src/ports/*.patch below no longer matches.
-inputs|587e2627f38a072489c1117da5e69e26618e128514148de5d0aeefd3b28cd412
+# and src/ports/*.patch below no longer matches. The later fcitx-x11.patch edits
+# only pkg-plist, which no dependency list reads.
+inputs|38a2c13ceaac5350ef4b942f03ba0d9bdf38de17088b1f03c9be11cfa9cfffbf
 python312|expat gettext-runtime libedit libffi mpdecimal pkgconf
 cmake-core|expat jsoncpp libuv pkg rhash
 libxml2|gmake pkgconf

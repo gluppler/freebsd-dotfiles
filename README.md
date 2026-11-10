@@ -34,10 +34,11 @@ sh install.sh --apply gluppler
 ```
 
 Boot normally into multi-user mode first. `sh install.sh --wifi` provides
-standalone console Wi-Fi setup; `--apply` offers it before downloads.
+standalone console Wi-Fi setup; `--apply` offers it before downloads, then offers
+a clean install that removes earlier packages and build output first.
 `--check` performs read-only native preflight. `--apply` installs packages,
-builds as the ordinary user, backs up replaced files and enables login after
-validation. Base `mdo` grants limited ACPI access; administrative changes use
+builds as the ordinary user and enables login after validation. It keeps backups
+of replaced files only until its final check passes. Base `mdo` grants limited ACPI access; administrative changes use
 base `su`/PAM authentication. No existing privilege wrapper is needed.
 It does not partition disks; after a final check it asks before rebooting.
 Read the [installation and recovery

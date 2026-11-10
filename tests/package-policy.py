@@ -215,6 +215,66 @@ print(sys.argv[-2].replace('%u','0').replace('%B',str(int(getattr(s,'st_birthtim
                     self.assertFalse(list((path/'tmp').iterdir()))
                     self.assertFalse(list((path/'run').iterdir()))
 
+    def test_only_the_current_transaction_receipt_is_kept(self):
+        source = (ROOT/'scripts/packages.sh').read_text()
+        block = '# Record exact archive hashes' + source.split('# Record exact archive hashes',1)[1].split(
+            'cp "$temp/records"',1)[0]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            store = path/'store'
+            for name in ('transaction-20261105-140800-1', 'transaction-20261110-172500-2'):
+                (store/name).mkdir(parents=True)
+                (store/name/'packages').write_text('earlier\n')
+            (store/'local').mkdir()
+            (store/'local/python312.pkg').write_text('variant\n')
+            (store/'signing.pem').write_text('key\n')
+            outside = path/'outside'
+            outside.mkdir()
+            (outside/'keep').write_text('keep\n')
+            (store/'transaction-link').symlink_to(outside)
+            script = 'set -eu\nstore=$STORE\n' + block + 'printf %s "$receipt"\n'
+            result = subprocess.run(['sh','-c',script], capture_output=True, text=True, env={**os.environ, 'STORE':str(store)})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            receipt = Path(result.stdout)
+            self.assertTrue(receipt.is_dir())
+            # Imported variants and the signing key are working state, not records.
+            self.assertEqual(sorted(p.name for p in store.iterdir()),
+                             sorted([receipt.name, 'local', 'signing.pem', 'transaction-link']))
+            self.assertEqual((outside/'keep').read_text(), 'keep\n')
+
+    def test_only_an_unreviewed_unused_flavor_of_an_audited_origin_is_replaceable(self):
+        # The T14's base setup installed stock git; the desktop list names git-lite.
+        source = (ROOT/'scripts/packages.sh').read_text()
+        block = '# The base setup may have installed' + source.split('# The base setup may have installed',1)[1].split(
+            '# pkg installs its own upgrade first',1)[0]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path/'packages.allowed').write_text('# name|origin|version|kind\ngit-lite|devel/git|*|stock\n'
+                                                 'git-tiny|devel/git|*|stock\nvim|editors/vim|*|stock\n')
+            (path/'records').write_text('P|git-lite|2.56.0|devel/git|FreeBSD:15:amd64|4\n'
+                                        'P|curl|8.23.0|ftp/curl|FreeBSD:15:amd64|5\n')
+            # name|origin|locked|vital|consumers, as pkg query prints them.
+            installed = ['git|devel/git|0|0|0', 'git-gui|devel/git|1|0|0', 'git-svn|devel/git|0|0|2',
+                         'git-full|devel/git|0|1|0', 'git-tiny|devel/git|0|0|0', 'git-lite|devel/git|0|0|0',
+                         'curl-stock|ftp/curl|0|0|0', 'vim-tiny|editors/vim|0|0|0', 'stray|misc/stray|0|0|0']
+            script = '''set -eu
+policy=$TEST_ROOT; temp=$TEST_ROOT
+pkgtool() {
+    case $* in
+    "query -a %n|%o|%k|%V|%#r") printf '%s\\n' $INSTALLED ;;
+    "query %dn git") printf '%s\\n' p5-Error perl5 ;;
+    "query %dn curl-stock") printf '%s\\n' libidn2 ;;
+    *) return 90 ;;
+    esac
+}
+''' + block
+            result = subprocess.run(['sh','-c',script], capture_output=True, text=True,
+                                    env={**os.environ, 'TEST_ROOT':str(path), 'INSTALLED':' '.join(installed)})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            # Locked, vital, used, reviewed or unrelated packages are never candidates.
+            self.assertEqual((path/'replaceable').read_text().split(), ['git', 'curl-stock'])
+            self.assertEqual((path/'replaced-dependencies').read_text().split(), ['p5-Error', 'perl5', 'libidn2'])
+
     def test_catalog_uses_release_modules_and_ordinary_application_versions(self):
         source = (ROOT/'scripts/packages.sh').read_text()
         branch = source.split('if [ "$action" = catalog ]; then\n',1)[1].split('\nif [ "$action" = details ]; then',1)[0]
@@ -346,7 +406,7 @@ else: raise SystemExit('unexpected pkg call: '+repr(args))
                 'libidn2': ['1','2','0','0','dns/libidn2'],
                 'gdbm': ['1','0','0','0','databases/gdbm'],
                 'libiconv': ['1','0','0','0','converters/libiconv'],
-                'gcc': ['1','0','0','0','base/gcc'],
+                'gcc': ['1','0','0','0','base'],
                 'unrelated': ['1','0','0','0','misc/unrelated'],
             }
             (path/'state').write_text(json.dumps({name: {'fields': fields, 'library': 'libgdbm.so.6' if name=='gdbm' else ''} for name, fields in states.items()}))
@@ -400,7 +460,7 @@ set -- curl
             script = '''set -eu
 store=$TEST_ROOT
 temp=$TEST_ROOT
-pkgtool() { printf '%s\n' 'FreeBSD-runtime|base/FreeBSD-runtime' 'foot|x11/foot' 'git-lite|devel/git@lite'; }
+pkgtool() { printf '%s\n' 'FreeBSD-runtime|base' 'FreeBSD-utilities|base' 'foot|x11/foot' 'git-lite|devel/git@lite'; }
 ''' + branch + '\ncat "$temp/request"\n'
             result = subprocess.run(['sh','-c',script], env={**os.environ,'TEST_ROOT':directory},
                                     capture_output=True, text=True, check=True)
@@ -433,7 +493,7 @@ if true; then
                 ('leaf','misc/leaf',0,0,1,'',False),
                 ('leaf','misc/leaf',1,0,0,'',False),
                 ('leaf','misc/leaf',0,1,0,'',False),
-                ('leaf','base/runtime',0,0,0,'',False),
+                ('leaf','base',0,0,0,'',False),
                 ('pkg','ports-mgmt/pkg',0,0,0,'',False),
                 ('desktop','x11/desktop',0,0,0,'',False),
                 ('leaf','misc/leaf',0,0,0,'liblocal.so.1',False),

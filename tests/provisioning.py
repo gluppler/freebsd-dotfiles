@@ -67,7 +67,9 @@ printf '15.1-RELEASE\\n' > "$log/release-before"
 printf 'uid=1000(fixture)\\n' > "$log/account-before"
 ''' + body
         for original, local in [('/var/log/nostromo','logs'), ('/var/run/','run/'), ('/var/tmp/','tmp/'),
-                                ('/usr/local/share/nostromo','share'), ('/usr/local/libexec','libexec')]:
+                                ('/var/backups/','backups/'), ('/var/db/','db/'), ('/usr/local/share/nostromo','share'),
+                                ('/usr/local/libexec','libexec'), ('/usr/local/sbin/pkg','bin/pkg'),
+                                ('/usr/sbin/fwget','bin/fwget')]:
             # pathlib drops a trailing slash; keep it so run/<lock> stays inside run/.
             script = script.replace(original, str(path/local) + ('/' if local.endswith('/') else ''))
         # The console prompt writes and reads separate fixture files.
@@ -90,7 +92,7 @@ print(sys.argv[-2].replace('%u','0').replace('%Lp',oct(s.st_mode & 0o777)[2:]).r
         return subprocess.run(['sh','-c',script], capture_output=True, text=True,
             env={**os.environ, 'PATH':str(path/'bin')+':'+os.environ['PATH'], 'REPO':str(ROOT)})
 
-    def test_install_retry_bounds_logs_and_preserves_recovery_data(self):
+    def test_install_retry_keeps_only_its_own_logs_and_no_backups(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory).resolve()
             logs = path/'logs'
@@ -102,10 +104,8 @@ print(sys.argv[-2].replace('%u','0').replace('%Lp',oct(s.st_mode & 0o777)[2:]).r
                 (previous/'account-before').write_text('fixture\n')
                 # Legacy runs have no result marker, only stage statuses.
                 (previous/'python312-dependencies.status').write_text('1\n')
-                if number in (5,6):
-                    (previous/'system-backup').mkdir()
-                    (previous/'system-backup/journal').touch()
                 if number==6:
+                    (previous/'system-backup').mkdir()
                     (previous/'system-backup/journal').write_text('1|/etc/rc.conf|644|digest|yes\n')
                     (previous/'system-backup/1.before').write_text('original\n')
                 if number==7: (previous/'policy-backup').mkdir()
@@ -125,14 +125,11 @@ print(sys.argv[-2].replace('%u','0').replace('%Lp',oct(s.st_mode & 0o777)[2:]).r
             self.assertFalse((path/'run/nostromo-install.lock').exists())
             retained = {p.name for p in logs.iterdir()}
             self.assertIn('install-00000009', retained)
+            # Backups go with their run's logs; nothing is archived.
             self.assertFalse({f'install-{n:08d}' for n in range(9)} & retained)
-            self.assertEqual((logs/'recovery/install-00000006/system-backup/1.before').read_text(), 'original\n')
-            self.assertTrue((logs/'recovery/install-00000007/policy-backup').is_dir())
-            # A backup with an empty journal holds no original file.
-            self.assertEqual(sorted(p.name for p in (logs/'recovery').iterdir()),
-                             ['install-00000006', 'install-00000007'])
+            self.assertNotIn('recovery', retained)
             self.assertIn('Removed old install log:', result.stdout)
-            self.assertIn('Archived recovery data:', result.stdout)
+            self.assertNotIn('Archived', result.stdout)
             self.assertNotIn('unfinished', result.stdout)
             self.assertIn('Retained unrecognized or unsafe log directory:', result.stdout)
             self.assertTrue((logs/'install-symlink1').is_symlink())
@@ -178,36 +175,197 @@ print(sys.argv[-2].replace('%u','0').replace('%Lp',oct(s.st_mode & 0o777)[2:]).r
                     self.assertIn('Removed the lock of an install interrupted before the last boot.', result.stdout)
                     self.assertFalse(lock.exists())
 
-    def test_install_cleanup_removes_stale_workspaces_and_locks_and_archives_old_policies(self):
+    def test_install_cleanup_removes_stale_workspaces_locks_and_old_backups(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory).resolve()
             for name in ('share/.policy.AbCd1234', 'share/policy', 'share/policy.previous.20261105-140800-34264',
                          'tmp/nostromo-system.AbCd1234', 'tmp/nostromo-maintenance.AbCd1234',
-                         'run/nostromo-wifi-setup.lock', 'run/nostromo-packages.lock'):
+                         'run/nostromo-wifi-setup.lock', 'run/nostromo-packages.lock',
+                         'logs/recovery/install-00000006/system-backup', 'backups/nostromo/wifi-20261105-140800-34264'):
                 (path/name).mkdir(parents=True)
             (path/'share/.policy.AbCd1234/packages.allowed').write_text('partial\n')
             (path/'share/policy.previous.20261105-140800-34264/managed').write_text('earlier policy\n')
+            (path/'logs/recovery/install-00000006/system-backup/1.before').write_text('original\n')
+            (path/'backups/nostromo/wifi-20261105-140800-34264/1.before').write_text('network={}\n')
             (path/'run/nostromo-packages.lock/pid').write_text(f'{os.getpid()}\n')
             setup = 'as_user() { printf "as_user: %s\\n" "$1"; }\n'
             result = self.installer_run(path, 'run cleanup sweep\n', setup=setup, boot=int(time.time()) + 3600)
             self.assertEqual(result.returncode, 0, result.stderr)
-            for removed in ('share/.policy.AbCd1234', 'tmp/nostromo-system.AbCd1234', 'run/nostromo-wifi-setup.lock'):
+            # The Wi-Fi lock from an earlier boot goes first, so its backups go too.
+            for removed in ('share/.policy.AbCd1234', 'tmp/nostromo-system.AbCd1234', 'run/nostromo-wifi-setup.lock',
+                            'share/policy.previous.20261105-140800-34264', 'logs/recovery', 'backups/nostromo'):
                 self.assertFalse((path/removed).exists(), removed)
             # A running owner keeps its lock; the active policy and other tools' workspaces stay.
             for kept in ('run/nostromo-packages.lock/pid', 'share/policy', 'tmp/nostromo-maintenance.AbCd1234'):
                 self.assertTrue((path/kept).exists(), kept)
-            self.assertEqual((path/'logs/recovery/policy.previous.20261105-140800-34264/managed').read_text(),
-                             'earlier policy\n')
-            self.assertFalse(list((path/'share').glob('policy.previous.*')))
             self.assertIn('as_user: sh scripts/clean-build.sh', result.stdout)
             log = next((path/'logs').glob('install-*'))
-            self.assertIn('Removed a lock left by an earlier boot:', (log/'cleanup.log').read_text())
+            text = (log/'cleanup.log').read_text()
+            self.assertIn('Removed a lock left by an earlier boot:', text)
+            self.assertIn('Removed an old backup: '+str(path/'logs/recovery'), text)
             self.assertEqual((log/'cleanup.status').read_text(), '0\n')
-            # A lock taken during this boot may still have a running owner.
-            (path/'run/nostromo-bluetooth.lock').mkdir()
+            # A lock taken during this boot may still have a running owner, and a
+            # Wi-Fi setup holding its lock may still need its backup.
+            for name in ('run/nostromo-bluetooth.lock', 'run/nostromo-wifi-setup.lock',
+                         'backups/nostromo/wifi-20261110-172400-4242'):
+                (path/name).mkdir(parents=True)
             again = self.installer_run(path, 'run cleanup sweep\n', setup=setup)
             self.assertEqual(again.returncode, 0, again.stderr)
-            self.assertTrue((path/'run/nostromo-bluetooth.lock').is_dir())
+            for kept in ('run/nostromo-bluetooth.lock', 'run/nostromo-wifi-setup.lock',
+                         'backups/nostromo/wifi-20261110-172400-4242'):
+                self.assertTrue((path/kept).is_dir(), kept)
+
+    def test_clean_install_offer_removes_earlier_packages_state_and_build_output(self):
+        source = (ROOT/'install.sh').read_text()
+        offer = 'stage=clean-offer\n' + source.split('stage=clean-offer\n',1)[1].split('esac\n',1)[0] + 'esac\n'
+        prompt = ('A clean install removes every package except pkg, base and detected firmware,\n'
+                  'then the package state and build output; this run builds everything again.\n'
+                  'Start with a clean install? [y/N] ')
+        for answer, other, held, installed, cleaned in [('y\n', False, False, True, True), ('y\n', False, False, False, True),
+                                                       ('n\n', False, False, True, False), ('', False, False, True, False),
+                                                       ('y\n', True, False, True, False), ('y\n', False, True, True, False)]:
+            with self.subTest(answer=answer, other=other, held=held, installed=installed), \
+                    tempfile.TemporaryDirectory() as directory:
+                path = Path(directory).resolve()
+                (path/'tty-answer').write_text(answer)
+                (path/'share/policy').mkdir(parents=True)
+                (path/'db/nostromo/packages/local').mkdir(parents=True)
+                (path/'db/nostromo/packages/local/python312.pkg').write_text('variant\n')
+                if held: (path/'run/nostromo-packages.lock').mkdir(parents=True)
+                # A staged port's read-only directory with an entry, as CUPS stages one.
+                repo = path/'repo'
+                certs = repo/'.build/ports-work/cups/work/stage/var/run/cups/certs'
+                certs.mkdir(parents=True)
+                (certs/'0').write_text('certificate\n')
+                certs.chmod(0o511)
+                outside = path/'outside'
+                outside.mkdir()
+                (outside/'keep').write_text('keep\n')
+                outside.chmod(0o500)
+                (repo/'.build/link').symlink_to(outside)
+                shells = path/'shells'
+                shells.mkdir()
+                for shell in ('oksh', 'bash'): (shells/shell).write_text('shell\n')
+                (path/'bin').mkdir()
+                (path/'bin/fwget').write_text('#!/bin/sh\necho wifi-firmware-iwlwifi-kmod-22000\n')
+                (path/'bin/fwget').chmod(0o755)
+                calls = shlex.quote(str(path/'calls'))
+                if installed:
+                    # pkgtool clears the environment, so the stub names its files.
+                    (path/'bin/pkg').write_text(f'''#!/bin/sh
+[ "$1" != -C ] || shift 2
+printf 'pkg %s\\n' "$*" >>{calls}
+case $1:$3 in
+'query:%n|%o|%k|%V') printf '%s\\n' 'pkg|ports-mgmt/pkg|0|0' 'git|devel/git|0|0' 'curl|ftp/curl|1|0' \\
+    'oksh|shells/oksh|0|0' 'bash|shells/bash|0|0' 'FreeBSD-runtime|base|0|1' \\
+    'wifi-firmware-iwlwifi-kmod-22000|net/wifi-firmware-iwlwifi-kmod|0|0' ;;
+'query:%n|%dn') echo 'git|curl' ;;
+which:{shells}/oksh) echo shells/oksh ;;
+which:{shells}/bash) echo shells/bash ;;
+which:*) exit 1 ;;
+esac
+''')
+                    (path/'bin/pkg').chmod(0o755)
+                # uucp keeps the shell of a port that is not installed.
+                accounts = ['root:*:0:0:Charlie:/root:/bin/sh', f'fixture:*:1000:1000::/home/fixture:{shells}/oksh',
+                            'uucp:*:66:66::/var/spool/uucppublic:/usr/local/libexec/uucp/uucico']
+                if other: accounts.append(f'admin:*:1001:1001::/home/admin:{shells}/bash')
+                setup = f'''account=fixture
+as_user() {{ (cd "{repo}" && NOSTROMO_REPO="{repo}" sh -c "set -eu; $1"); }}
+pw() {{
+    case $* in
+    'usershow -a -7') printf '%s\\n' {' '.join(shlex.quote(account) for account in accounts)} ;;
+    *) printf 'pw %s\\n' "$*" >>{calls} ;;
+    esac
+}}
+'''
+                result = self.installer_run(path, offer, setup=setup)
+                self.assertEqual((path/'tty-prompt').read_text(), prompt)
+                made = (path/'calls').read_text().splitlines() if (path/'calls').exists() else []
+                kept = [p for p in ('share/policy', 'db/nostromo/packages', 'repo/.build') if (path/p).exists()]
+                if cleaned:
+                    self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+                    # pkg, base, vital packages and detected firmware stay; the desktop
+                    # account's packaged shell is reset; locked variants are unlocked first.
+                    self.assertEqual(made, ['pkg query -a %n|%o|%k|%V', 'pkg query -a %n|%dn', 'pkg which -qo /bin/sh',
+                                            f'pkg which -qo {shells}/oksh', 'pw usermod fixture -s /bin/sh',
+                                            'pkg unlock -y curl', 'pkg delete -y git curl oksh bash',
+                                            'pkg clean -a -y'] if installed else [])
+                    self.assertEqual(kept, [])
+                    self.assertEqual((outside/'keep').read_text(), 'keep\n')
+                    self.assertEqual(outside.stat().st_mode & 0o777, 0o500)
+                    log = (next((path/'logs').glob('install-*'))/'clean-install.log').read_text()
+                    self.assertIn('Removed installer state: '+str(path/'db/nostromo/packages'), log)
+                    self.assertIn('Removed the build output: '+str(repo/'.build'), log)
+                else:
+                    self.assertEqual(kept, ['share/policy', 'db/nostromo/packages', 'repo/.build'])
+                    self.assertFalse([call for call in made if 'delete' in call or 'usermod' in call], made)
+                    if answer.startswith('y'):
+                        self.assertEqual(result.returncode, 1, result.stdout+result.stderr)
+                        self.assertIn('Setup stopped at clean-install', result.stderr)
+                        self.assertIn(f'Give admin a base login shell first; {shells}/bash goes with its package.'
+                                      if other else 'nostromo-packages.lock', result.stdout)
+                    else:
+                        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+                        self.assertFalse(list((path/'logs').glob('install-*/clean-install.log')))
+                outside.chmod(0o755)
+                if certs.exists(): certs.chmod(0o755)
+
+    def test_python_requirements_check_sees_shared_system_packages(self):
+        # uv pip check reads only the environment's own site-packages, so the wheels'
+        # requirements met by reviewed system packages looked missing.
+        source = (ROOT/'scripts/development-tools.sh').read_text()
+        checker = source.split("-I - <<'EOF'\n",1)[1].split('\nEOF\n',1)[0]
+        if subprocess.run([sys.executable,'-I','-c','import packaging.requirements']).returncode:
+            self.skipTest('this Python lacks packaging, which the native environments share')
+        with tempfile.TemporaryDirectory() as directory:
+            environment = Path(directory)/'environment'
+            subprocess.run([sys.executable,'-m','venv','--system-site-packages','--without-pip',str(environment)],
+                           check=True)
+            python = str(environment/'bin/python')
+            purelib = Path(subprocess.run([python,'-I','-c','import sysconfig; print(sysconfig.get_path("purelib"))'],
+                                          check=True,capture_output=True,text=True).stdout.strip())
+            metadata = purelib/'fixture-1.0.dist-info/METADATA'
+            metadata.parent.mkdir(parents=True)
+            requirements = ['packaging>=20', 'pytest; extra == "dev"', 'tomli>=1.1.0; python_version < "3.11"']
+            for extra, failures in [([], []),
+                                    (['nostromo-missing-fixture', 'packaging<1'],
+                                     ['fixture requires nostromo-missing-fixture; found none.',
+                                      'fixture requires packaging<1; found '])]:
+                with self.subTest(extra=extra):
+                    metadata.write_text('Metadata-Version: 2.1\nName: fixture\nVersion: 1.0\n' +
+                                        ''.join('Requires-Dist: '+line+'\n' for line in requirements+extra))
+                    result = subprocess.run([python,'-I','-'],input=checker,capture_output=True,text=True)
+                    self.assertEqual(result.returncode, 1 if failures else 0, result.stderr)
+                    lines = result.stderr.splitlines()
+                    self.assertEqual(len(lines), len(failures), result.stderr)
+                    for line, expected in zip(lines, failures):
+                        self.assertTrue(line.startswith(expected), line)
+
+    def test_final_cleanup_removes_this_runs_backups_only_after_the_final_check(self):
+        source = (ROOT/'install.sh').read_text()
+        ending = 'run final-check final_check\n' + source.split('run final-check final_check\n',1)[1]
+        setup = 'account=fixture\nas_user() { printf "as_user: %s\\n" "$1"; }\n'
+        backups = 'mkdir "$log/system-backup" "$log/policy-backup"\nprintf original > "$log/system-backup/1.before"\n'
+        for checks, code in [('true', 0), ('false', 1)]:
+            with self.subTest(checks=checks), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory).resolve()
+                # With an active policy, the exit handler leaves the policy backup in place.
+                (path/'share/policy').mkdir(parents=True)
+                (path/'tty-answer').write_text('n\n')
+                body = backups + 'run cleanup sweep\nfinal_check() { ' + checks + '; }\n' + ending
+                result = self.installer_run(path, body, setup=setup)
+                self.assertEqual(result.returncode, code, result.stderr)
+                log = next((path/'logs').glob('install-*'))
+                # The first cleanup keeps this run's own rollback copies.
+                self.assertEqual((log/'cleanup.status').read_text(), '0\n')
+                for name in ('system-backup', 'policy-backup'):
+                    self.assertEqual((log/name).exists(), bool(code), name)
+                if code:
+                    self.assertFalse((log/'final-cleanup.log').exists())
+                else:
+                    self.assertIn('Removed a backup: '+str(log/'system-backup'), (log/'final-cleanup.log').read_text())
+                    self.assertIn('Setup completed for fixture.', result.stdout)
 
     def test_final_check_requires_login_shell_sddm_and_current_locked_variants(self):
         def setup(shell='/usr/local/bin/oksh', sddm='YES', lock='1', recipe='current', verified='0'):
@@ -288,13 +446,17 @@ pkg() {{
             archives.mkdir(parents=True)
             for name in ('python312-3.12.15.pkg', 'python312-3.12.14.pkg', 'ffmpeg-9.0.2,1.pkg', 'kicad-9.0.pkg'):
                 (archives/name).write_text(name)
+            state = path/'home/.local/state/freebsd-dotfiles'
+            (state/'backups/20261110-180000-4242').mkdir(parents=True)
+            (state/'backups/20261110-180000-4242/.profile').write_text('default profile\n')
+            (state/'links').write_text('home/.profile|.profile\n')
             (path/'bin').mkdir()
             def clean(boot):
                 sysctl = path/'bin/sysctl'
                 sysctl.write_text(f"#!/bin/sh\necho '{{ sec = {boot}, usec = 0 }} Thu Jan  1 00:00:01 1970'\n")
                 sysctl.chmod(0o755)
                 return subprocess.run(['sh', str(repo/'scripts/clean-build.sh')], capture_output=True, text=True,
-                                      env={**os.environ, 'PATH': str(path/'bin')+':'+os.environ['PATH']})
+                                      env={**os.environ, 'HOME': str(path/'home'), 'PATH': str(path/'bin')+':'+os.environ['PATH']})
             # This boot's workspaces may belong to a running build.
             first = clean(1)
             self.assertEqual(first.returncode, 0, first.stderr)
@@ -302,6 +464,10 @@ pkg() {{
             self.assertTrue((build/'downloads/.download.AbCd1234').is_file())
             self.assertEqual(sorted(p.name for p in (build/'logs').iterdir()), logs[2:])
             self.assertEqual(sorted(p.name for p in archives.iterdir()), ['ffmpeg-9.0.2,1.pkg', 'python312-3.12.15.pkg'])
+            # User-file backups go; the record of installed links stays.
+            self.assertEqual(sorted(p.name for p in state.iterdir()), ['links'])
+            self.assertIn('Removed user-file backups: '+str(state/'backups'), first.stdout)
+            (state/'backups').symlink_to(outside)
             # An earlier boot's leftovers are stale; links are not followed.
             second = clean(int(time.time()) + 3600)
             self.assertEqual(second.returncode, 0, second.stderr)
@@ -310,6 +476,7 @@ pkg() {{
             for name in ('downloads/ports.tar.gz', 'ports.mtree', 'ports.recipe', 'ports'):
                 self.assertTrue((build/name).exists(), name)
             self.assertTrue((build/'work/link.AbCd1234').is_symlink())
+            self.assertTrue((state/'backups').is_symlink())
             self.assertEqual((outside/'keep').read_text(), 'keep\n')
             self.assertIn('Removed a stale build workspace:', second.stdout)
             self.assertEqual(len(list((build/'logs').iterdir())), 3)
@@ -352,13 +519,12 @@ mv() { case $1 in */.policy.*) return 29 ;; *) command mv "$@" ;; esac; }
             backups = list((path/'logs').glob('install-*/policy-backup'))
             self.assertEqual(len(backups), 1)
             self.assertEqual((backups[0]/'packages.allowed').read_text(), original)
-            # A later retry must retain recovery data while rotating ordinary logs.
+            # A later retry removes the earlier run's logs, its policy backup included.
             for _ in range(3):
                 retry = self.installer_run(path, publish, setup=setup)
                 self.assertEqual(retry.returncode, 0, retry.stderr)
-            archived = path/'logs/recovery'/backups[0].parent.name/'policy-backup'
-            self.assertTrue(archived.is_dir())
-            self.assertEqual((archived/'packages.allowed').read_text(), original)
+            self.assertFalse(list((path/'logs').glob('install-*/policy-backup')))
+            self.assertFalse((path/'logs/recovery').exists())
             self.assertEqual(len(list((path/'logs').glob('install-*'))), 1)
 
     def merge(self, script, original, policy=None, *options):
@@ -403,6 +569,44 @@ mv() { case $1 in */.policy.*) return 29 ;; *) command mv "$@" ;; esac; }
         self.assertNotIn('Port ', stripped.stdout)
         self.assertNotIn('PasswordAuthentication', stripped.stdout)
         self.assertNotEqual(self.merge("merge-ssh.awk", '# END NOSTROMO SSH\n', policy).returncode, 0)
+
+    def test_ssh_include_walk_strips_managed_keys_and_rejects_unsafe_paths(self):
+        # The include walk had never run: FreeBSD's awk rejected its path pattern.
+        source = (ROOT/'scripts/configure-security.sh').read_text()
+        walk = 'security_ssh() {' + source.split('security_ssh() {',1)[1].split('\n}\n',1)[0] + '\n}\n'
+        for include, okay in [('Include sshd_config.d/*.conf\nInclude "{ssh}/extra.conf"', True),
+                              ('Include ../outside.conf', False), ('Include /usr/local/etc/ssh/other.conf', False)]:
+            with self.subTest(include=include), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory).resolve()
+                ssh = path/'etc/ssh'
+                (ssh/'sshd_config.d').mkdir(parents=True)
+                (path/'work').mkdir()
+                files = {ssh/'sshd_config': 'Port 22\n' + include.format(ssh=ssh) + '\nPasswordAuthentication yes\n',
+                         ssh/'sshd_config.d/10-port.conf': 'Port 2200\nPasswordAuthentication yes\nBanner none\n',
+                         ssh/'extra.conf': 'PermitRootLogin yes\nInclude extra.conf\n'}
+                for file, text in files.items():
+                    file.write_text(text)
+                (path/'policy').write_text((ROOT/'system/sshd_config').read_text().replace('@ACCOUNT@', 'fixture'))
+                script = f'''set -eu
+repo={shlex.quote(str(ROOT))}; work={shlex.quote(str(path/'work'))}; stage={shlex.quote(str(path))}
+sf_safe() {{ case $1 in "$stage"/*) ;; *) return 1 ;; esac; }}
+sf_put() {{ sf_safe "$2"; cp "$1" "$2"; chmod "$3" "$2"; }}
+''' + walk.replace('/etc/ssh', str(ssh)) + 'security_ssh sshd "$stage/policy"\n'
+                result = subprocess.run(['sh','-c',script], capture_output=True, text=True)
+                if not okay:
+                    self.assertNotEqual(result.returncode, 0, result.stdout)
+                    for file, text in files.items():
+                        self.assertEqual(file.read_text(), text, file)
+                    continue
+                self.assertEqual(result.returncode, 0, result.stderr)
+                main = (ssh/'sshd_config').read_text()
+                self.assertTrue(main.startswith('# BEGIN NOSTROMO SSH\nPort 2222\n'), main)
+                self.assertNotIn('Port 22\n', main.split('# END NOSTROMO SSH\n',1)[1])
+                self.assertNotIn('PasswordAuthentication yes', main)
+                self.assertIn(f'Include "{ssh}/extra.conf"', main)
+                # Included files only lose the managed keys; a self-include is read once.
+                self.assertEqual((ssh/'sshd_config.d/10-port.conf').read_text(), 'Banner none\n')
+                self.assertEqual((ssh/'extra.conf').read_text(), 'Include extra.conf\n')
 
     def test_pf_order_idempotency_and_name_collision(self):
         original = 'set skip on lo0\nblock out to 192.0.2.0/24\n'

@@ -1,0 +1,33 @@
+--- a/textproc/fcitx5/pkg-plist
++++ b/textproc/fcitx5/pkg-plist
+@@ -2,7 +2,7 @@
+ bin/fcitx5-configtool
+ bin/fcitx5-diagnose
+ bin/fcitx5-remote
+-%%WAYLAND%%etc/xdg/Xwayland-session.d/20-fcitx-x11
++%%WAYLAND%%%%X11%%etc/xdg/Xwayland-session.d/20-fcitx-x11
+ etc/xdg/autostart/org.fcitx.Fcitx5.desktop
+ include/Fcitx5/Config/fcitx-config/configuration.h
+ include/Fcitx5/Config/fcitx-config/dbushelper.h
+@@ -167,8 +167,8 @@
+ lib/fcitx5/libvirtualkeyboard.so
+ %%WAYLAND%%lib/fcitx5/libwayland.so
+ %%WAYLAND%%lib/fcitx5/libwaylandim.so
+-lib/fcitx5/libxcb.so
+-lib/fcitx5/libxim.so
++%%X11%%lib/fcitx5/libxcb.so
++%%X11%%lib/fcitx5/libxim.so
+ lib/libFcitx5Config.so
+ lib/libFcitx5Config.so.%%VER%%
+ lib/libFcitx5Config.so.6
+@@ -205,8 +205,8 @@
+ %%DATADIR%%/addon/virtualkeyboard.conf
+ %%WAYLAND%%%%DATADIR%%/addon/wayland.conf
+ %%WAYLAND%%%%DATADIR%%/addon/waylandim.conf
+-%%DATADIR%%/addon/xcb.conf
+-%%DATADIR%%/addon/xim.conf
++%%X11%%%%DATADIR%%/addon/xcb.conf
++%%X11%%%%DATADIR%%/addon/xim.conf
+ %%DATADIR%%/data/quickphrase.d/emoji-eac.mb
+ %%DATADIR%%/data/quickphrase.d/emoji.mb
+ %%DATADIR%%/data/quickphrase.d/latex.mb

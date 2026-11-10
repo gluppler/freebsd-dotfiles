@@ -73,6 +73,13 @@ non-vital, have no reverse dependencies and provide no required local-library AB
 Manual packages and still-needed libraries are preserved and reported for review.
 There is no blanket autoremove or forced cascading deletion.
 
+That Git install is usually stock `git`, which conflicts with the reviewed
+git-lite flavor of the same port. pkg resolves a flavor conflict by removing the
+installed flavor within the plan. A transaction may do that only for a flavor that
+is unreviewed, unlocked, not vital and unused by other packages. Afterwards it
+removes that flavor's unreviewed automatic dependencies that nothing uses any
+more, such as stock Git's Perl modules, and reports the replacement.
+
 ## Transaction and update behavior
 
 `scripts/packages.sh` uses the signed FreeBSD 15 amd64 quarterly repository,
@@ -81,11 +88,12 @@ with kernel-module packages selected from `kmods_quarterly_${VERSION_MINOR}`
 checks each package identity/ABI/dependency edge and rejects unknown origins,
 missing receipts or unreviewed GNU versions. It copies the checked archives into
 a private locally signed transaction repository and records pkg's dry-run plan.
-A plan that removes any package, or that the helper does not recognize, stops
-the transaction. pkg 2.8.4 has no option that forbids removal, so the reviewed
+A plan that removes any package other than such a replaced flavor, or that the
+helper does not recognize, stops the transaction. pkg 2.8.4 has no option that forbids removal, so the reviewed
 command receives exactly one approval: a conflict that makes pkg propose a second
 solution reads end-of-input and stops instead of being approved again. It records
-the exact graph, plans and archive hashes under `/var/db/nostromo/packages/`.
+the exact graph, plans and archive hashes of its latest transaction under
+`/var/db/nostromo/packages/`.
 Existing system repository files are preserved.
 The private upstream names do not depend on the system repositories being named
 `FreeBSD`, `FreeBSD-ports` or `FreeBSD-ports-kmods`. Disabled pkgbase repositories
@@ -118,7 +126,9 @@ They do not turn every optional application into a required desktop component.
 Native staged programs are checked with `ldd`; their required shared libraries
 become a root-owned ABI-retention list. Required desktop roots, local variants,
 reviewed build tools and their dependency closure are protected from removal.
-The removal check also rejects pkg itself, base packages, locked/vital entries,
+pkgbase packages are recognized by their origin, which has no category (`base`),
+and stay outside application updates and removal. The removal check also rejects
+pkg itself, base packages, locked/vital entries,
 packages with consumers and providers of libraries used by locally built programs.
 This check matters because native `pkg delete` can expand its deletion list to
 include consumers. The menu never requests forced, recursive or orphan removal.
