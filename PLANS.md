@@ -25,12 +25,17 @@ pkg's advisories instead of stopping, since the framework would refuse Python
 built, installed and locked three variants natively and stopped at
 `libxslt-dependencies`: pkg refuses any request naming a locked package, and
 libxslt's dependency list names libxml2. The helper now keeps installed, locked
-variants out of install, preview and update requests. The next native run must
+variants out of install, preview and update requests. Commit `d8f1ac5` passed
+that stage, built five more variants and stopped at `ffmpeg-dependencies` on the
+unreviewed frei0r, a build dependency only the ports framework lists. It and
+the wheel tools py312-ecdsa needs are now reviewed, and the 15 dependency lists
+recorded on the T14 are checked on the host. The next native run must
 confirm these fixes before installation, login and reboot can be marked
 complete; see the
 [dependency](docs/INSTALL.md#recover-from-a-stop-at-python312-dependencies),
-[build](docs/INSTALL.md#recover-from-a-stop-at-python312-build) and
-[locked-variant](docs/INSTALL.md#recover-from-a-stop-at-libxslt-dependencies)
+[build](docs/INSTALL.md#recover-from-a-stop-at-python312-build),
+[locked-variant](docs/INSTALL.md#recover-from-a-stop-at-libxslt-dependencies) and
+[unreviewed-dependency](docs/INSTALL.md#recover-from-a-stop-at-ffmpeg-dependencies)
 recovery instructions.
 
 **Latest scope clarification:** migrate every implemented workflow **and every

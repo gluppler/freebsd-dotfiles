@@ -7,9 +7,10 @@ pkg 2.8.4 does not have. Both have source fixes and regression coverage below,
 including real pkg 2.8.4 transactions on this host. Commit `15bb0b4` then passed
 that stage on the T14 and stopped in `python312-build`. With that fixed, commit
 `7f3f3ee` built, installed and locked python312, cmake-core and libxml2 natively,
-then stopped at `libxslt-dependencies`; the
-[native evidence](#native-evidence-from-the-t14) records both causes and fixes.
-A native rerun of the second fix is pending. The KiCad PCB workflow has since been removed because PCB design
+then stopped at `libxslt-dependencies`. Commit `d8f1ac5` passed that stage, built
+five more variants and stopped at `ffmpeg-dependencies`; the
+[native evidence](#native-evidence-from-the-t14) records the three causes and fixes.
+A native rerun of the third fix is pending. The KiCad PCB workflow has since been removed because PCB design
 runs on a separate server: its packages, six native variants, ports patch, plugin,
 helper, guide and tests are gone. Host checks pass for the listed scopes. The full native
 FreeBSD package build/install, first login/reboot and hardware acceptance remain
@@ -20,6 +21,14 @@ measured battery-performance claim is made.
 
 ## Audit fixes
 
+- Variant dependency lists come from the ports framework on FreeBSD and name
+  packages that no other reviewed package depends on. `ffmpeg-dependencies` stopped on
+  the unreviewed frei0r, whose header FFmpeg's default frei0r effects build
+  against; py312-ecdsa would have stopped on the framework's wheel tools. frei0r,
+  py312-build, py312-installer and py312-pyproject-hooks are now reviewed stock
+  packages. `tests/variant-deps.txt` records all 15 lists from the T14. Host
+  tests check them against the reviewed list and, with the cached catalogue,
+  check every package the installer's requests depend on.
 - Later dependency lists, the desktop list and updates name variants that
   earlier stages installed and locked. pkg refuses any request naming a locked
   package, even one identical to the reviewed archive, so `libxslt-dependencies`
@@ -45,7 +54,7 @@ measured battery-performance claim is made.
   end-of-input and stops. When the transaction repository contains pkg, pkg's own
   upgrade and restart are approved as a separate reviewed transaction.
 - The audit accepts pkg's `FreeBSD:15:*` ABI for architecture-independent packages,
-  128 of the 507 reviewed repository packages in the cached 2026Q4 catalogue. Later
+  131 of the 511 reviewed repository packages in the cached 2026Q4 catalogue. Later
   variant and desktop stages would otherwise stop on fonts, headers and Python
   modules. Other releases, architectures and broader patterns still fail.
 - The post-install check compares origin and ABI, not version: pkg 2.8.4 keeps an
@@ -102,7 +111,7 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | --- | --- |
 | `python3 tests/check.py` | 24 passed: links/assets/fonts, manifest coverage, every declared home destination, browser arguments/schema, CWD encoding, shell syntax, user-link preflight/rollback/idempotency, former-link removal/restoration/directory conversion/mid-run change, receipt-checked plugin pins and dkjson checksum stops |
 | `python3 tests/helpers.py` | 8 passed: display-mode/scale rollback and last-output protection, SSID bytes/managed blocks, USB CAM filtering, unsafe argument rejection and default fallback for a saved wallpaper whose exports were removed |
-| `python3 tests/package-policy.py` | 22 passed: reported empty-list failure and actual resolver/query handling, kmods selection/catalogue, failure/signal cleanup, graph/identity/ABI/receipt validation including only the FreeBSD 15 `*` ABI, exact GNU roles/versions, stock conversion/cleanup, pkgbase separation, protected removal, transaction-guard dispatch, separate pkg self-upgrade, named origin/ABI mismatches, pending versions, preserved automatic/build-protection flags, stale ports-tree replacement that stops on changed, added or missing files, all six ports patches on the cached pinned archive with search paths kept where Readline is dropped, and listed advisories reported without stopping a variant build |
+| `python3 tests/package-policy.py` | 24 passed: reported empty-list failure and actual resolver/query handling, kmods selection/catalogue, failure/signal cleanup, graph/identity/ABI/receipt validation including only the FreeBSD 15 `*` ABI, exact GNU roles/versions, stock conversion/cleanup, pkgbase separation, protected removal, transaction-guard dispatch, separate pkg self-upgrade, named origin/ABI mismatches, pending versions, preserved automatic/build-protection flags, stale ports-tree replacement that stops on changed, added or missing files, all six ports patches on the cached pinned archive with search paths kept where Readline is dropped, listed advisories reported without stopping a variant build, the 15 dependency lists recorded on the T14 naming only reviewed packages and earlier variants, and the cached catalogue's dependencies of every installer request reviewed with matching origins and pinned versions |
 | `PKG=… python3 tests/pkg-integration.py` | 10 passed against pkg 2.8.4 built from source on this host, with disposable signed repositories: the native locked-variant stop reproduced, then install/preview/update requests that keep a locked variant while stock packages and an unlocked variant still change and reinstall unlocks its own, `--no-remove` rejected as unrecognized, the five reported leaf dependencies installed twice, preview/reinstall/upgrade, existing automatic dependencies, a file conflict denied a second approval, real removal plans rejected, a `FreeBSD:15:*` archive audited and installed, an older dependency pkg keeps, and pkg's restart failing under one approval but passing as its own transaction |
 | `python3 tests/provisioning.py` | 9 passed: selective settings/SDDM/SSH/PF merges, helper/font/login/loader destinations, ambiguous input rejection, idempotency, rollback preserving later edits, legacy/current log pruning with archived recovery runs, signal cleanup, lock release and policy reuse/recovery |
 | `python3 tests/network-menus.py` | 9 passed: actual fuzzel managers, byte-safe SSIDs, masked secrets, cancellation, scan recovery, phone/open/OWE hotspots, unprivileged portal dispatch, Bluetooth initialization/pairing, persistent WireGuard selection and status without authentication |
@@ -116,7 +125,7 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | Offline package contents | Checked quarterly stdman archive renders its C++ examples through mandoc; Python pathlib text retains example blocks; the four added documentation packages have no dependencies |
 | POSIX shfmt + ShellCheck | 98 operational/build/source scripts and the two shell configuration files they source are clean at style severity; interactive oksh checked separately with ksh mode and `/bin/ksh -n` |
 | Fastfetch | Exact 2.69.0 parser accepts the detailed configuration; plain-output CLI flags checked with the host build. This does not verify FreeBSD sensor detection |
-| Ports recipes | `tests/package-policy.py` applies all six ports patches to the checksum-verified pinned archive with zero fuzz. Three of the 15 variants have built natively; see [native evidence](#native-evidence-from-the-t14) |
+| Ports recipes | `tests/package-policy.py` applies all six ports patches to the checksum-verified pinned archive with zero fuzz. Eight of the 15 variants have built natively; see [native evidence](#native-evidence-from-the-t14) |
 | Reference sources | cppreference snapshot matches its pinned hash; extraction confines files to its declared directory |
 | `lua tests/viewer-title.lua` | Shipped Swayimg config exercises viewer/slideshow/gallery title updates, empty images and duplicate-redraw suppression with a small host API stand-in |
 | Lua parsing | Eight editor/loader/image-viewer files parsed; native clients are not installed on this host |
@@ -132,8 +141,9 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | HTML/start page | Actual QtWebEngine local page/font render and placeholder behavior checked; not a qutebrowser process |
 | Current artwork | Runtime logos/textures use PNG; native shared painters, idle bounce, QML login and browser page checked after conversion. Animated defaults and static/off overrides pass. Simulations are archived outside the source tree; regenerated previews stay in `.build/previews/` |
 
-The eleven Python suites total **109 passing cases**. One package-policy case
-reads the cached, checksum-verified ports archive and skips without it. They use real local code and
+The eleven Python suites total **111 passing cases**. Two package-policy cases
+read caches and skip without them: the checksum-verified ports archive and the
+quarterly catalogue. They use real local code and
 small disposable command stand-ins where native devices/package managers are
 unavailable. They do not execute a root installer or alter this macOS machine.
 The separate pkg integration suite runs the transaction guard with the real pkg
@@ -255,7 +265,7 @@ no host result bypasses those gates.
 ## Native evidence from the T14
 
 The installer has run natively on the T14 (FreeBSD 15.1-RELEASE amd64) through
-three variant builds. Commit `15bb0b4` passed `python312-dependencies`;
+eight variant builds. Commit `15bb0b4` passed `python312-dependencies`;
 `python312-build` then stopped linking two modules with
 `ld: error: unable to find library -lmpdec` and `-lexpat`, although both
 libraries are installed in `/usr/local/lib`. Read-only diagnosis as the desktop
@@ -280,8 +290,32 @@ dependency list (`gmake`, `pkgconf`, `libxml2`) then stopped with
 for any request naming a locked package, before comparing versions or digests;
 it leaves a request's locked dependencies installed as they are.
 
-No package was built, installed or removed during either diagnosis. A native
-rerun must still build, install and accept the remaining 12 variants.
+With that fix, commit `d8f1ac5` passed `libxslt-dependencies` and built,
+installed and locked libxslt, libpsl, curl, cups and Imath. All eight installed
+variants carry the same recipe receipt. `ffmpeg-dependencies` then stopped with
+`Unreviewed package: frei0r. No packages installed.` Read-only checks as the
+desktop user found:
+
+- The pinned ports framework lists 42 direct dependencies for FFmpeg. frei0r is
+  the only one outside the reviewed list; it comes from the default FREI0R
+  option's build dependency on `frei0r.h`. The stock ffmpeg package does not
+  depend on frei0r.
+- The lists of all 15 variants were recorded. py312-ecdsa names py312-build and
+  py312-installer, and py312-build depends on py312-pyproject-hooks; none was
+  reviewed. No other list names or depends on an unreviewed package.
+- With both signed repository catalogues fetched into a private copy under
+  `/tmp` (2026-11-10), every installer request was replayed through
+  `package-policy.awk`: the 15 dependency and 15 variant requests, the desktop
+  list, gperf and the detected firmware. With the four additions every audit
+  passes, including the eight built variants' recorded dependency versions.
+- For every variant the framework reports the package name and version in
+  `packages.local`, an accepted license, a valid option set and no ignore,
+  broken or forbidden mark. The fetched catalogue satisfies all 49 versioned
+  dependency requirements in the 15 lists.
+
+No package was built, installed or removed during any diagnosis. A native rerun
+must still build, install and accept the remaining 7 variants; these checks do
+not compile them.
 
 ## Laptop acceptance after reinstall
 

@@ -232,6 +232,27 @@ Pull and rerun `--check` and `--apply` as above. The ports recipe is unchanged,
 so the three finished variants are not rebuilt: their completed port work is
 checked again, reinstalled from its archive and locked before libxslt continues.
 
+### Recover from a stop at ffmpeg-dependencies
+
+With that fixed, libxslt, libpsl, curl, CUPS and Imath build, install and lock.
+FFmpeg's dependency stage then stops before installing anything:
+
+```text
+Unreviewed package: frei0r. No packages installed.
+```
+
+The ports framework computes each variant's dependency list on FreeBSD. FFmpeg's
+default frei0r effects need the frei0r header to build. No reviewed package
+depends on frei0r, so resolving the stock packages never showed it. Python ECDSA,
+the last variant, would have stopped the same way on the framework's wheel
+tools: py312-build, py312-installer and py312-pyproject-hooks. All four are now
+reviewed stock packages. The 15 dependency lists recorded on the T14 are in
+`tests/variant-deps.txt`, and host tests check them against the reviewed list.
+
+Pull and rerun `--check` and `--apply` as above. The ports recipe is unchanged,
+so the eight finished variants are not rebuilt. The package policy changed: the
+retry publishes it and keeps the previous copy in that run's `policy-backup/`.
+
 ## Source exports
 
 From the development checkout, as its ordinary owner:

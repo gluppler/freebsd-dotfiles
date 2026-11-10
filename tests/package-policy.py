@@ -218,6 +218,60 @@ if true; then
             self.assertEqual(allowed[name], [name, origin, version, "local"])
         self.assertEqual(seen, {name for name, row in allowed.items() if row[3] == "local"})
 
+    def native_requests(self):
+        # The policy rows, then each variant's dependency list as recorded on FreeBSD.
+        allowed = {row[0]: row for line in (ROOT/'packages.allowed').read_text().splitlines()
+                   if line and not line.startswith('#') for row in [line.split('|')]}
+        lists = dict(line.split('|') for line in (ROOT/'tests/variant-deps.txt').read_text().splitlines()
+                     if line and not line.startswith('#'))
+        inputs = hashlib.sha256(b''.join(path.read_bytes() for path in (
+            ROOT/'ports.lock', ROOT/'packages.local', ROOT/'system/ports.conf',
+            *sorted((ROOT/'src/ports').glob('*.patch'))))).hexdigest()
+        self.assertEqual(lists.pop('inputs'), inputs, 'record tests/variant-deps.txt again on FreeBSD')
+        return allowed, {name: names.split() for name, names in lists.items()}
+
+    def test_native_dependency_lists_name_reviewed_packages_in_build_order(self):
+        # ffmpeg-dependencies stopped on frei0r, the header of a build-only option, and
+        # py312-ecdsa needs the framework's wheel tools. No reviewed package depends on them.
+        allowed, lists = self.native_requests()
+        order = [line.split('|')[0] for line in (ROOT/'packages.local').read_text().splitlines()
+                 if line and not line.startswith('#')]
+        self.assertEqual(list(lists), order)
+        for position, name in enumerate(order):
+            for dependency in lists[name]:
+                self.assertTrue(dependency in allowed, f'{name} needs the unreviewed {dependency}')
+                if allowed[dependency][3] == 'local':
+                    # The helper takes a variant only from its own finished build.
+                    self.assertLess(order.index(dependency), position, f'{name} needs {dependency} first')
+
+    def test_cached_catalog_closures_of_every_request_are_reviewed(self):
+        # Requested packages bring their own dependencies: py312-build needs
+        # py312-pyproject-hooks. Reads a catalog cached from the quarterly repository.
+        catalog = ROOT/'.build/packagesite.yaml'
+        if not catalog.is_file():
+            self.skipTest('the quarterly catalog is not cached')
+        with catalog.open(encoding='utf-8') as stream:
+            packages = {package['name']: package for package in map(json.loads, filter(str.strip, stream))}
+        allowed, lists = self.native_requests()
+        queue = [(line, 'packages.txt') for line in (ROOT/'packages.txt').read_text().splitlines()
+                 if line and not line.startswith('#')]
+        queue += [('gperf', 'install.sh'), *((name, 'packages.local') for name in lists)]
+        seen = set()
+        while queue:
+            name, requester = queue.pop()
+            if name in seen:
+                continue
+            seen.add(name)
+            self.assertTrue(name in allowed, f'{requester} needs the unreviewed {name}')
+            _, origin, version, kind = allowed[name]
+            if kind == 'local':
+                # Its archive is built here; the recorded list covers what it links and runs.
+                queue.extend((dependency, name) for dependency in lists[name])
+                continue
+            self.assertEqual(packages[name]['origin'], origin)
+            self.assertIn(version, ('*', packages[name]['version']), name)
+            queue.extend((dependency, name) for dependency in packages[name].get('deps') or ())
+
     def test_bootstrap_cleanup_preserves_user_roots_locks_and_consumers(self):
         source = (ROOT / 'scripts/packages.sh').read_text()
         branch = source.split('if [ "$action" = finish-bootstrap ]; then\n', 1)[1].split('\nif [ "$action" = import ]; then', 1)[0]

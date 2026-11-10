@@ -56,6 +56,7 @@ foot|x11/foot|*|stock
 fprintd|security/fprintd|*|stock
 freeglut|graphics/freeglut|*|stock
 freetype2|print/freetype2|*|stock
+frei0r|graphics/frei0r|*|stock
 fribidi|converters/fribidi|*|stock
 fusefs-libs3|filesystems/fusefs-libs3|*|stock
 fzf|textproc/fzf|*|stock
@@ -299,6 +300,7 @@ py312-ast-serialize|devel/py-ast-serialize|*|stock
 py312-astroid|devel/py-astroid|*|stock
 py312-autopep8|textproc/py-autopep8|*|stock
 py312-black|devel/py-black|*|stock
+py312-build|devel/py-build|*|stock
 py312-certifi|security/py-certifi|*|stock
 py312-charset-normalizer|textproc/py-charset-normalizer|*|stock
 py312-click|devel/py-click|*|stock
@@ -312,6 +314,7 @@ py312-flake8|devel/py-flake8|*|stock
 py312-idna|dns/py-idna|*|stock
 py312-imagesize|graphics/py-imagesize|*|stock
 py312-importlib-metadata|devel/py-importlib-metadata|*|stock
+py312-installer|devel/py-installer|*|stock
 py312-isort|devel/py-isort|*|stock
 py312-jedi|devel/py-jedi|*|stock
 py312-libevdev|devel/py-libevdev|*|stock
@@ -336,6 +339,7 @@ py312-pydocstyle|devel/py-pydocstyle|*|stock
 py312-pyflakes|devel/py-pyflakes|*|stock
 py312-pygments|textproc/py-pygments|*|stock
 py312-pygobject|devel/py-pygobject|*|stock
+py312-pyproject-hooks|devel/py-pyproject-hooks|*|stock
 py312-pysocks|net/py-pysocks|*|stock
 py312-pystemmer|textproc/py-pystemmer|*|stock
 py312-python-lsp-jsonrpc|textproc/py-python-lsp-jsonrpc|*|stock

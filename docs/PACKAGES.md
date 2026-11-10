@@ -44,7 +44,13 @@ gets them from `USES=localbase`.
 
 Builds run as the desktop user, using the pinned ports framework, native Clang,
 ordinary-user staging and `check-plist`. Dependency lists pass through the same
-root package gate. When pkg's advisory file (`/var/db/pkg/vuln.xml`, fetched by
+root package gate. The ports framework computes them on FreeBSD, and they name
+packages that no other reviewed package depends on: FFmpeg's default frei0r
+effects need the frei0r header, and Python ECDSA is built with py312-build and
+py312-installer. `tests/variant-deps.txt` records the 15 lists from the T14; host
+tests check them, and their dependencies in a cached catalogue, against
+`packages.allowed`. Record them again after changing the pinned tree, a variant,
+its options or a ports patch. When pkg's advisory file (`/var/db/pkg/vuln.xml`, fetched by
 the nightly security run) lists a variant, its build prints pkg's report and
 continues. The ports framework would otherwise refuse every later build of that
 variant, even a finished one, until a pinned tree carries a fix; stock packages
@@ -94,7 +100,7 @@ to pass the unchanged audit. Query failures stop the transaction before package
 installation. See [pkg's query implementation](https://github.com/freebsd/pkg/blob/2.8.4/src/query.c).
 
 Architecture-independent packages, such as fonts, headers and Python modules,
-carry pkg's `FreeBSD:15:*` ABI; 128 of the 507 reviewed repository packages do in
+carry pkg's `FreeBSD:15:*` ABI; 131 of the 511 reviewed repository packages do in
 the cached 2026Q4 catalogue. The audit accepts that exact FreeBSD 15 wildcard, as
 pkg does, and still rejects any other release, architecture or broader pattern.
 After installation, every audited package must be present with its reviewed
