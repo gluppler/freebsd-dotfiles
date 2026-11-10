@@ -94,6 +94,14 @@ command receives exactly one approval: a conflict that makes pkg propose a secon
 solution reads end-of-input and stops instead of being approved again. It records
 the exact graph, plans and archive hashes of its latest transaction under
 `/var/db/nostromo/packages/`.
+Each transaction works in a new private workspace that is removed afterwards. It
+downloads both signed catalogues again and fetches every stock package in its
+request's dependency closure, installed or not, so the installer's package
+stages repeat many of the same downloads. Nothing from an earlier transaction is
+reused. pkg 2.8.4 does not recheck the checksum of an archive it already holds
+at full size, and its queries expose neither archive checksums nor repository
+paths, so reusing archives between transactions would reduce that check to the
+file size.
 Existing system repository files are preserved.
 The private upstream names do not depend on the system repositories being named
 `FreeBSD`, `FreeBSD-ports` or `FreeBSD-ports-kmods`. Disabled pkgbase repositories

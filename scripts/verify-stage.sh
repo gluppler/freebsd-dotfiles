@@ -109,8 +109,13 @@ if [ "$mode" = --installed ]; then
         cmp -s "$repo/system/nostromo-$helper" "$file"
     done
     cmp -s "$repo/system/nostromo-suspend.conf" /usr/local/etc/devd/nostromo-suspend.conf
-    fc-match -f '%{family}\n' Michroma | grep -Fxq Michroma
-    fc-match -f '%{family}\n' 'Azeret Mono' | grep -Fxq 'Azeret Mono'
+    # Every instance of the variable Azeret Mono reports "Azeret Mono,Azeret Mono Thin".
+    for family in Michroma 'Azeret Mono'; do
+        fc-match -f '%{family}\n' "$family" | tr ',' '\n' | grep -Fxq "$family" || {
+            echo "Fontconfig does not resolve $family to the installed font." >&2
+            exit 1
+        }
+    done
     nostromo-dev health
 fi
 printf 'Native stage checks passed; login, rendering and hardware acceptance still require the laptop session.\n'

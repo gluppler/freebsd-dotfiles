@@ -83,7 +83,10 @@ case $power_gid in '' | *[!0-9]*) exit 1 ;; esac
 printf '%s\n' "$power_gid" >"$work/power-group"
 sf_put "$work/power-group" /usr/local/etc/nostromo/power-group 644
 # ABI receipt is produced by the ordinary user's native ldd checks, then validated.
-awk 'NF!=1 || $1 !~ /^lib[A-Za-z0-9_+.-]+\.so\.[0-9.]+$/ {bad=1} END{exit bad || NR==0}' "$repo/.build/local-libraries"
+# A library name need not carry a version: libwlroots-0.20.so, liblua-5.4.so.
+awk 'NF!=1 || $1 !~ /^lib[A-Za-z0-9_+.-]+\.so(\.[0-9]+)*$/ {print "Unexpected library name: " $0; bad=1}
+    END {if (NR==0) print "Staged validation recorded no libraries."; exit bad || NR==0}' \
+    "$repo/.build/local-libraries" >&2
 sf_put "$repo/.build/local-libraries" /usr/local/share/nostromo/policy/local-libraries 644
 printf '%s %s\n' "$uid" "$account" >"$work/mdo-account"
 sf_put "$work/mdo-account" /usr/local/etc/nostromo/mdo-account 600

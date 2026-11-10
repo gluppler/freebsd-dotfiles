@@ -1,6 +1,6 @@
 # Validation and native acceptance
 
-Updated **2026-11-10**. Native attempts first stopped at `python312-dependencies`,
+Updated **2026-11-11**. Native attempts first stopped at `python312-dependencies`,
 the first package transaction. The first misread pkg's empty dependency rows. With
 that fixed, commit `faef848` reaches the transaction and passes pkg an option that
 pkg 2.8.4 does not have. Both have source fixes and regression coverage below,
@@ -14,8 +14,13 @@ stages; the check now skips staged port trees. Commit `8bf9f2b` then built,
 installed and locked FFmpeg, wlroots 0.20 and Hunspell, eleven variants in all,
 and stopped at `fcitx5-build` on the port's file list. Before a rerun, every
 later stage was checked on the T14 or against its pinned sources, which found
-three more stops. The [native evidence](#native-evidence-from-the-t14) records
-each cause and fix. A native run of these fixes is pending. The KiCad PCB workflow has since been removed because PCB design
+three more stops. Commit `73816d3` then rebuilt all 15 variants with the fixed
+recipe, installed and locked them, passed every stage through `user-files` and
+stopped at `system-configuration`: its check of the library receipt rejected two
+library names without a version. A check of the remaining stages found one more
+stop, in the installed-stage font check. The
+[native evidence](#native-evidence-from-the-t14) records each cause and fix. A
+native run of these fixes is pending. The KiCad PCB workflow has since been removed because PCB design
 runs on a separate server: its packages, six native variants, ports patch, plugin,
 helper, guide and tests are gone. Host checks pass for the listed scopes. The full native
 FreeBSD package build/install, first login/reboot and hardware acceptance remain
@@ -26,6 +31,18 @@ measured battery-performance claim is made.
 
 ## Audit fixes
 
+- `system-configuration` checks each name in the library receipt that staged
+  validation writes before publishing it to the package helper. The pattern
+  required a version after `.so`, but wlroots 0.20 and Lua 5.4 install
+  `libwlroots-0.20.so` and `liblua-5.4.so`. On the T14 the check failed without a
+  message and the stage rolled back. It now accepts names without a version and
+  prints each line it rejects. A host test runs it on the T14's 78 names and on
+  paths, extra fields, missing prefixes, malformed versions and an empty receipt.
+- The installed-stage font check compared fontconfig's whole family list with
+  one name. Every instance of the variable Azeret Mono reports
+  `Azeret Mono,Azeret Mono Thin`, so the check would have stopped the same stage.
+  It now accepts any listed family and names a family that does not resolve. A
+  host test runs it with fontconfig on the shipped fonts and without Azeret Mono.
 - fcitx5's file list named its X11 session script and XCB/XIM add-ons
   unconditionally, so the reviewed Wayland-only build stopped in `check-plist`
   with five missing files. `src/ports/fcitx-x11.patch` marks them X11-only; the
@@ -175,7 +192,7 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | `python3 tests/helpers.py` | 8 passed: display-mode/scale rollback and last-output protection, SSID bytes/managed blocks, USB CAM filtering, unsafe argument rejection and default fallback for a saved wallpaper whose exports were removed |
 | `python3 tests/package-policy.py` | 27 passed: reported empty-list failure and actual resolver/query handling, kmods selection/catalogue, failure/signal cleanup, a lock reclaimed only after its boot with stale workspaces removed, only the latest transaction receipt kept, graph/identity/ABI/receipt validation including only the FreeBSD 15 `*` ABI, exact GNU roles/versions, stock conversion/cleanup, only an unreviewed, unused flavor of an audited origin replaceable, pkgbase separation, protected removal, transaction-guard dispatch, separate pkg self-upgrade, named origin/ABI mismatches, pending versions, preserved automatic/build-protection flags, stale ports-tree replacement that stops on changed, added or missing files, all seven ports patches on the cached pinned archive with search paths kept where Readline is dropped, listed advisories reported without stopping a variant build, the 15 dependency lists recorded on the T14 naming only reviewed packages and earlier variants, and the cached catalogue's dependencies of every installer request reviewed with matching origins and pinned versions |
 | `PKG=… python3 tests/pkg-integration.py` | 12 passed against pkg 2.8.4 built from source on this host, with disposable signed repositories: stock Git's flavor replaced by git-lite within one reviewed plan with its unused dependencies removed, the clean install keeping pkg, base, vital and firmware packages with their dependencies, the native locked-variant stop reproduced, then install/preview/update requests that keep a locked variant while stock packages and an unlocked variant still change and reinstall unlocks its own, `--no-remove` rejected as unrecognized, the five reported leaf dependencies installed twice, preview/reinstall/upgrade, existing automatic dependencies, a file conflict denied a second approval, real removal plans rejected, a `FreeBSD:15:*` archive audited and installed, an older dependency pkg keeps, and pkg's restart failing under one approval but passing as its own transaction |
-| `python3 tests/provisioning.py` | 18 passed: selective settings/SDDM/SSH/PF merges, the SSH `Include` walk over relative, quoted and self includes with unsafe paths refused, the clean-install offer removing earlier packages, package state and build output, a Python requirements check that sees system packages, helper/font/login/loader destinations, ambiguous input rejection, idempotency, rollback preserving later edits, legacy/current/interrupted log pruning that keeps no backup, signal cleanup, lock release, a lock reclaimed only after its boot, stale workspaces/locks, recovery archives, policy copies and Wi-Fi backups removed unless a setup holds its lock, this run's backups removed only after the final check, build leftovers cleaned only from an earlier boot with user-file backups removed, the final login/SDDM/variant check, the reboot prompt after the lock is released, and policy reuse/recovery |
+| `python3 tests/provisioning.py` | 20 passed: the library receipt check on the T14's names, including unversioned ones, and on malformed or empty receipts, the installed font check on fontconfig's family list for the variable Azeret Mono, selective settings/SDDM/SSH/PF merges, the SSH `Include` walk over relative, quoted and self includes with unsafe paths refused, the clean-install offer removing earlier packages, package state and build output, a Python requirements check that sees system packages, helper/font/login/loader destinations, ambiguous input rejection, idempotency, rollback preserving later edits, legacy/current/interrupted log pruning that keeps no backup, signal cleanup, lock release, a lock reclaimed only after its boot, stale workspaces/locks, recovery archives, policy copies and Wi-Fi backups removed unless a setup holds its lock, this run's backups removed only after the final check, build leftovers cleaned only from an earlier boot with user-file backups removed, the final login/SDDM/variant check, the reboot prompt after the lock is released, and policy reuse/recovery |
 | `python3 tests/network-menus.py` | 9 passed: actual fuzzel managers, byte-safe SSIDs, masked secrets, cancellation, scan recovery, phone/open/OWE hotspots, unprivileged portal dispatch, Bluetooth initialization/pairing, persistent WireGuard selection and status without authentication |
 | `python3 tests/bootstrap.py` | 8 passed: actual console/helper transactions with simulated native commands; missing WPA profile, hidden input, failed-auth rollback, DNS-failure retention, later rc overrides, open/OWE profiles, unsupported security rejection, unsafe paths and supported Intel Bluetooth initialization |
 | `python3 tests/security.py` | 8 passed: mdo migration, terminal/GUI authenticated command transport, failure/cancellation, all-socket lock checks, suspend cancellation/deadline, installed mergers/SSID decoder and native event dispatch/resume debounce |
@@ -187,7 +204,7 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | Offline package contents | Checked quarterly stdman archive renders its C++ examples through mandoc; Python pathlib text retains example blocks; the four added documentation packages have no dependencies |
 | POSIX shfmt + ShellCheck | 99 operational/build/source scripts and the two shell configuration files they source are clean at style severity; interactive oksh checked separately with ksh mode and `/bin/ksh -n` |
 | Fastfetch | Exact 2.69.0 parser accepts the detailed configuration; plain-output CLI flags checked with the host build. This does not verify FreeBSD sensor detection |
-| Ports recipes | `tests/package-policy.py` applies all seven ports patches to the checksum-verified pinned archive with zero fuzz. Eleven of the 15 variants have built, installed and locked natively, and fcitx5 built before its file-list check stopped; see [native evidence](#native-evidence-from-the-t14) |
+| Ports recipes | `tests/package-policy.py` applies all seven ports patches to the checksum-verified pinned archive with zero fuzz. All 15 variants have built, installed and locked natively with recipe `fbdbc508…`; see [native evidence](#native-evidence-from-the-t14) |
 | Reference sources | cppreference snapshot matches its pinned hash; extraction confines files to its declared directory |
 | `lua tests/viewer-title.lua` | Shipped Swayimg config exercises viewer/slideshow/gallery title updates, empty images and duplicate-redraw suppression with a small host API stand-in |
 | Lua parsing | Eight editor/loader/image-viewer files parsed; native clients are not installed on this host |
@@ -203,9 +220,9 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | HTML/start page | Actual QtWebEngine local page/font render and placeholder behavior checked; not a qutebrowser process |
 | Current artwork | Runtime logos/textures use PNG; native shared painters, idle bounce, QML login and browser page checked after conversion. Animated defaults and static/off overrides pass. Simulations are archived outside the source tree; regenerated previews stay in `.build/previews/` |
 
-The eleven Python suites total **128 passing cases**. Two package-policy cases
+The eleven Python suites total **130 passing cases**. Two package-policy cases
 read caches and skip without them: the checksum-verified ports archive and the
-quarterly catalogue. They use real local code and
+quarterly catalogue. The installed font check skips without fontconfig. They use real local code and
 small disposable command stand-ins where native devices/package managers are
 unavailable. They do not execute a root installer or alter this macOS machine.
 The separate pkg integration suite runs the transaction guard with the real pkg
@@ -233,8 +250,8 @@ The source archive was extracted into a new temporary directory without `.git`,
 copy byte for byte; archive ownership, permissions, metadata exclusions and
 SHA256 were checked. Source-manifest validation and the installer preview passed.
 The nine suites that need no prebuilt cache passed from that extraction:
-**98 cases**, including the export and terminal-idle regressions. They require
-host Python, Lua and a C compiler. The embedded suite retains
+**100 cases**, including the export and terminal-idle regressions. They require
+host Python, Lua, a C compiler and, for the font check, fontconfig. The embedded suite retains
 its separate compiler-rt/cache requirements.
 
 The public entry point is `install.sh`; user linking and desktop builds live
@@ -320,7 +337,7 @@ operational ShellCheck pass: they depend on FreeBSD rc libraries absent on macOS
 On FreeBSD, `scripts/verify-stage.sh` additionally requires native ELF programs,
 resolved shared libraries, all tools, foot/fuzzel config validation, actual oksh,
 Python imports, pinned editor plugins and `nostromo-docs --check`. The installed pass checks links, mdo,
-wheel/video/dialer membership and exact font families. Those checks are inside the
+wheel/video/dialer membership and the installed font families. Those checks are inside the
 installer and have not been executed here. Real native errors must stop the stage;
 no host result bypasses those gates.
 
@@ -446,6 +463,36 @@ which both use, led to the `LIBCLANG_PATH` fix instead.
 No package was built, installed or removed during any diagnosis. The fcitx5 patch
 changes the ports recipe, so the next run rebuilds all 15 variants; these checks
 do not compile them.
+
+Commit `73816d3` regenerated the tree for recipe `fbdbc508…`, built all 15
+variants, and installed and locked each with that recipe's receipt. It installed
+the desktop packages, replacing stock Git with git-lite, and passed the firmware,
+desktop build (tpass and rustup included), editor-plugin, development-tool,
+staged-validation and user-file stages. `system-configuration` then stopped with
+exit 1 and no message. Read-only checks as the desktop user found:
+
+- The receipt from staged validation lists 78 libraries. The stage's pattern
+  rejected exactly two, `libwlroots-0.20.so` and `liblua-5.4.so`. Installed
+  packages provide all 78, those two from wlroots020 and lua54, so the package
+  helper's checks of the published receipt pass.
+- The stage stopped before changing group memberships, mac_do or PF. Its
+  rollback removed the helpers, rc.d scripts and awk files it had installed and
+  the nostromo_power group it had created; mac_do is not loaded.
+- Every link in `links.txt` points into the checkout, and `nostromo-dev health`
+  passes.
+- Fontconfig 2.17.1 resolves both shipped families. Every instance of the
+  variable Azeret Mono reports `Azeret Mono,Azeret Mono Thin`, which the old
+  font check would have rejected.
+- Merging the shipped SDDM settings into the T14's 12-line stock `sddm.conf`
+  succeeds and keeps its other lines. The stage's destination directories are
+  root-owned and not group- or world-writable. `hwpstate_intel` is present, so
+  powerd stays disabled.
+- The final check's variant test passes: all 15 variants are installed, locked
+  and built from the checkout's recipe.
+
+The mdo rule, PF parsing, sshd's checks and `fc-cache` need root and run only
+inside the installer. Neither fix changes the ports recipe, so the next run
+reinstalls the 15 variants from their archives without rebuilding them.
 
 ## Laptop acceptance after reinstall
 

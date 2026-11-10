@@ -58,6 +58,64 @@ sf_put() {
             for relative in expected:
                 self.assertTrue((path/relative).is_file(),relative)
 
+    def test_library_receipt_accepts_unversioned_sonames(self):
+        # The T14's receipt at 73816d3: wlroots and Lua install libraries without a
+        # version suffix, and the stricter check stopped system-configuration.
+        native = '''libatk-1.0.so.0 libatk-bridge-2.0.so.0 libatspi.so.0 libbasu.so.0 libbrotlicommon.so.1
+            libbrotlidec.so.1 libcairo-gobject.so.2 libcairo.so.2 libdatrie.so.1 libdbus-1.so.3 libdisplay-info.so.4
+            libdrm.so.2 libEGL.so.1 libepoll-shim.so.0 libepoxy.so.0 libevdev.so.2 libexpat.so.1 libfcft.so.4
+            libffi.so.8 libfontconfig.so.1 libfreetype.so.6 libfribidi.so.0 libgbm.so.1 libgdk_pixbuf-2.0.so.0
+            libgdk-3.so.0 libgio-2.0.so.0 libGLdispatch.so.0 libGLESv2.so.2 libglib-2.0.so.0 libgmodule-2.0.so.0
+            libgobject-2.0.so.0 libgraphite2.so.3 libgtk-3.so.0 libgtk-layer-shell.so.0 libgtk-session-lock.so.0
+            libgudev-1.0.so.0 libharfbuzz.so.0 libiconv.so.2 libinput.so.10 libintl.so.8 liblcms2.so.2
+            libliftoff.so.0 liblua-5.4.so libmtdev.so.1 libpango-1.0.so.0 libpangocairo-1.0.so.0 libpangoft2-1.0.so.0
+            libpcre2-8.so.0 libpcsclite.so.1 libpixman-1.so.0 libpng16.so.16 libseat.so.1 libthai.so.0 libudev.so.0
+            libutf8proc.so.3 libwacom.so.9 libwayland-client.so.0 libwayland-cursor.so.0 libwayland-egl.so.1
+            libwayland-server.so.0 libwlroots-0.20.so libX11.so.6 libXau.so.6 libxcb-render.so.0 libxcb-shm.so.0
+            libxcb.so.1 libXcomposite.so.1 libXcursor.so.1 libXdamage.so.1 libXdmcp.so.6 libXext.so.6 libXfixes.so.3
+            libXi.so.6 libXinerama.so.1 libxkbcommon.so.0 libXrandr.so.2 libXrender.so.1 libXRes.so.1'''.split()
+        source = (ROOT/'scripts/configure-system.sh').read_text()
+        check = "awk 'NF!=1" + source.split("awk 'NF!=1",1)[1].split('sf_put "$repo/.build/local-libraries"',1)[0]
+        def run(lines):
+            with tempfile.TemporaryDirectory() as directory:
+                receipt = Path(directory)/'local-libraries'
+                receipt.write_text(''.join(line+'\n' for line in lines))
+                script = 'set -eu\n' + check.replace('"$repo/.build/local-libraries"',shlex.quote(str(receipt)))
+                return subprocess.run(['sh','-c',script],capture_output=True,text=True)
+        self.assertEqual(len(native),78)
+        result = run(native)
+        self.assertEqual((result.returncode,result.stderr),(0,''))
+        for bad in ('/usr/local/lib/libfoo.so.1','libfoo.so.1 extra','foo.so.1','libfoo.so.1a',
+                    'libfoo.so.','libfoo.so.1.','libfoo','libfoo.a',''):
+            result = run(['libgtk-3.so.0',bad])
+            self.assertNotEqual(result.returncode,0,bad)
+            self.assertIn('Unexpected library name: '+bad+'\n',result.stderr)
+        result = run([])
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('Staged validation recorded no libraries.',result.stderr)
+
+    def test_installed_font_check_accepts_variable_font_family_lists(self):
+        # Fontconfig names every instance of the variable Azeret Mono
+        # "Azeret Mono,Azeret Mono Thin" (2.17.1 on the T14).
+        if shutil.which('fc-match') is None:
+            self.skipTest('fontconfig is not installed')
+        source = (ROOT/'scripts/verify-stage.sh').read_text()
+        check = 'for family in Michroma' + source.split('    for family in Michroma',1)[1].split('    nostromo-dev health',1)[0]
+        def run(fonts):
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory)
+                (path/'fonts.conf').write_text('<?xml version="1.0"?>\n<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">\n'
+                    f'<fontconfig><dir>{fonts}</dir><cachedir>{path}/cache</cachedir></fontconfig>\n')
+                return subprocess.run(['sh','-c','set -eu\n'+check],capture_output=True,text=True,
+                    env={**os.environ,'FONTCONFIG_FILE':str(path/'fonts.conf')})
+        result = run(ROOT/'assets/fonts')
+        self.assertEqual((result.returncode,result.stderr),(0,''))
+        with tempfile.TemporaryDirectory() as fonts:
+            shutil.copy(ROOT/'assets/fonts/Michroma-Regular.ttf',fonts)
+            result = run(fonts)
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('Fontconfig does not resolve Azeret Mono to the installed font.',result.stderr)
+
     def installer_run(self, path, body, *, setup='', boot=1):
         source = (ROOT/'install.sh').read_text()
         lifecycle = source.split('mkdir -p /var/log/nostromo\n',1)[1].split('freebsd-version -kru',1)[0]

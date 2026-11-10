@@ -126,7 +126,8 @@ it too.
 Root stage logs are under `/var/log/nostromo/install-*`; native user build logs
 are under `.build/logs/`. Each finished run records `result`, `last-stage` and
 `exit-status`; `pkg-version` identifies the package manager used. Read the
-failing stage's log before rerunning the same command.
+failing stage's log before rerunning the same command. Builds print compiler and
+packaging warnings; a stage stops only when its command fails.
 
 The `cleanup` stage at the start of `--apply`, `final-cleanup` at its end and
 the exit handler prune logs under the installer lock. No other run can be active
@@ -375,6 +376,29 @@ Desktop packages also replace stock Git with the reviewed git-lite flavor.
 The patch changes the ports recipe, so the next run regenerates the tree and
 rebuilds all 15 variants, whether or not you choose a clean install. Pull and
 rerun `--check` and `--apply` as above.
+
+### Recover from a stop at system-configuration
+
+Commit `73816d3` rebuilt all 15 variants with that patch, installed and locked
+them, and passed every stage through `user-files`. `system-configuration` then
+stopped with exit 1 and no message, and rolled back the files it had installed.
+
+Staged validation records the `/usr/local` libraries that the desktop programs
+link. This stage checks each name before giving the list to the package helper.
+The check required a version after `.so`, but wlroots 0.20 and Lua 5.4 install
+`libwlroots-0.20.so` and `liblua-5.4.so`. It now accepts names without a version
+and prints each line it rejects. Installed packages provide all 78 recorded
+libraries.
+
+A check of the rest of the stage on the T14 found one more stop. The installed
+check compared fontconfig's family list with one name, and every instance of the
+variable Azeret Mono reports `Azeret Mono,Azeret Mono Thin`. It now accepts any
+listed family.
+
+Neither fix changes the ports recipe, so the next run reinstalls the 15 variants
+from their archives without rebuilding them. Answer no to the clean install
+offer, which would remove them and rebuild everything. Pull and rerun `--check`
+and `--apply` as above.
 
 ## Source exports
 

@@ -1,6 +1,6 @@
 # Nostromo — active FreeBSD / Wayland plan
 
-Updated **2026-11-10**. This document supersedes the active platform decisions
+Updated **2026-11-11**. This document supersedes the active platform decisions
 in `openbsd-dotfiles/PLANS.md` and the older archived FreeBSD/X11 project.
 Earlier user requirements continue unless explicitly superseded below.
 All user-facing configuration, documentation and menus remain in English.
@@ -39,15 +39,21 @@ marks them X11-only. A check of every later stage on the T14 then found three
 more stops, now fixed: an awk pattern FreeBSD rejects in the SSH merge, the LLVM
 ports' versioned manual name and a Python requirements check that ignored system
 packages. Desktop packages replace stock Git with git-lite, and `--apply` offers
-a clean install. The next native run must
+a clean install. Commit `73816d3` rebuilt, installed and locked all 15 variants,
+passed every stage through `user-files` and stopped at `system-configuration`:
+the library receipt check rejected `libwlroots-0.20.so` and `liblua-5.4.so`,
+which have no version suffix. It accepts them now, and the installed font check
+now accepts fontconfig's family list for the variable Azeret Mono, which would
+have stopped the same stage. The next native run must
 confirm these fixes before installation, login and reboot can be marked
 complete; see the
 [dependency](docs/INSTALL.md#recover-from-a-stop-at-python312-dependencies),
 [build](docs/INSTALL.md#recover-from-a-stop-at-python312-build),
 [locked-variant](docs/INSTALL.md#recover-from-a-stop-at-libxslt-dependencies),
 [unreviewed-dependency](docs/INSTALL.md#recover-from-a-stop-at-ffmpeg-dependencies),
-[checkout-permission](docs/INSTALL.md#recover-from-a-groupworld-writable-checkout-stop) and
-[file-list](docs/INSTALL.md#recover-from-a-stop-at-fcitx5-build)
+[checkout-permission](docs/INSTALL.md#recover-from-a-groupworld-writable-checkout-stop),
+[file-list](docs/INSTALL.md#recover-from-a-stop-at-fcitx5-build) and
+[system-configuration](docs/INSTALL.md#recover-from-a-stop-at-system-configuration)
 recovery instructions.
 
 **Latest scope clarification:** migrate every implemented workflow **and every
