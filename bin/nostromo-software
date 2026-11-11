@@ -1,0 +1,95 @@
+#!/bin/sh
+# Run in foot: one keyboard menu, one root policy gate for every mutation.
+set -eu
+umask 077
+[ "$#" -le 1 ] || exit 2
+action=${1:-menu}
+rootpkg() { nostromo-admin packages "$@"; }
+confirm() {
+    answer=$(printf '%s\n' CANCEL "$1" | fzf --prompt='Confirm: ') || return 1
+    [ "$answer" = "$1" ]
+}
+if [ "$action" = menu ]; then
+    choice=$(printf '%s\n' SEARCH INSTALL DETAILS UPDATE REMOVE PORTS 'BASE PATCHES' FIRMWARE |
+        fzf --prompt='Software: ') || exit
+    case $choice in
+    SEARCH) action=search ;; INSTALL) action=install ;; DETAILS) action=details ;;
+    UPDATE) action=update ;; REMOVE) action=remove ;; PORTS) action=ports ;;
+    'BASE PATCHES') action=patches ;; FIRMWARE) action=firmware ;; *) exit 2 ;;
+    esac
+fi
+case $action in
+search | install | details)
+    temp=$(mktemp -d "${TMPDIR:-/tmp}/nostromo-software.XXXXXXXX")
+    trap 'rm -rf "$temp"' 0
+    trap 'exit 130' INT
+    trap 'exit 143' HUP TERM
+    rootpkg catalog >"$temp/catalog"
+    selected=$(fzf --prompt='Package: ' --header='Name / version / policy / description' <"$temp/catalog") || exit
+    grep -Fxq -e "$selected" "$temp/catalog" || exit 2
+    tab=$(printf '\t')
+    name=${selected%%"$tab"*}
+    rootpkg details "$name"
+    if [ "$action" = install ] && confirm "INSTALL $name"; then rootpkg install "$name"; fi
+    ;;
+update)
+    confirm 'UPDATE REVIEWED PACKAGES' || exit
+    rootpkg update
+    ;;
+remove)
+    packages=$(pkg query -a '%n\t%v')
+    selected=$(printf '%s\n' "$packages" | fzf --prompt='Remove: ') || exit
+    printf '%s\n' "$packages" | grep -Fxq -e "$selected" || exit 2
+    tab=$(printf '\t')
+    name=${selected%%"$tab"*}
+    rootpkg remove-check "$name"
+    confirm "REMOVE $name" || exit
+    # Native pkg also asks before deletion; required/reverse dependencies remain protected.
+    rootpkg remove "$name"
+    ;;
+ports)
+    policy=/usr/local/share/nostromo/policy/packages.local
+    selected=$(awk -F '|' '!/^#/ && NF {print $1 "\t" $2 "\t" $3}' "$policy" |
+        fzf --prompt='Reviewed native ports: ') || exit
+    tab=$(printf '\t')
+    name=${selected%%"$tab"*}
+    origin=$(awk -F '|' -v name="$name" '$1==name {print $2;n++} END{exit n!=1}' "$policy")
+    printf '%s\n' "$origin"
+    confirm "BUILD $name" || exit
+    source=$(realpath "$0")
+    repo=$(CDPATH='' cd -- "$(dirname -- "$source")/.." && pwd -P)
+    [ -f "$repo/.install/scripts/ports-variants.sh" ] || {
+        echo 'Use the helper linked by install.sh.' >&2
+        exit 1
+    }
+    [ "$(sh "$repo/.install/scripts/recipe-hash.sh")" = "$(cat /usr/local/share/nostromo/policy/recipe.sha256)" ] || {
+        echo 'The recipe changed. Run install.sh --upgrade to review and publish the new policy first.' >&2
+        exit 1
+    }
+    temp=$(mktemp -d "${TMPDIR:-/tmp}/nostromo-port.XXXXXXXX")
+    trap 'rm -rf "$temp"' 0
+    trap 'exit 130' INT
+    trap 'exit 143' HUP TERM
+    sh "$repo/.install/scripts/ports-variants.sh" prepare
+    sh "$repo/.install/scripts/ports-variants.sh" deps "$name" >"$temp/dependencies"
+    set --
+    while IFS= read -r dependency; do
+        case $dependency in '' | *[!A-Za-z0-9_+.-]*) exit 1 ;; esac
+        set -- "$@" "$dependency"
+    done <"$temp/dependencies"
+    [ "$#" = 0 ] || rootpkg install --build "$@"
+    sh "$repo/.install/scripts/ports-variants.sh" build "$name"
+    version=$(awk -F '|' -v name="$name" '$1==name {print $3}' "$policy")
+    rootpkg import "$name" "$repo/.build/ports-packages/All/$name-$version.pkg"
+    rootpkg reinstall "$name"
+    ;;
+patches | firmware)
+    exec nostromo-admin maintenance "$action"
+    ;;
+*)
+    echo 'Use menu, search, install, details, update, remove, ports, patches or firmware.' >&2
+    exit 2
+    ;;
+esac
+printf '\nEnter to close '
+IFS= read -r answer || :

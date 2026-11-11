@@ -88,17 +88,18 @@ DISPLAYS queries the connected outputs/modes/scales. Temporary changes require
 KEEP within the confirmation timeout; cancellation restores the previous layout.
 The last enabled output cannot be disabled from this menu. `kanshi/config.local`
 is the optional place for your actual monitor profiles, not guessed EDIDs.
-CLAMSHELL offers the portable/docked policy after inspecting current outputs;
+CLAMSHELL (Super+Ctrl+Shift+D) offers the portable/docked policy after inspecting current outputs;
 confirm that external keyboard input works before closing the lid.
 
 AUDIO selects detected OSS output cards and available recording sources; hardware
-keys control volume, mute and microphone mute. PipeWire/WirePlumber and the native
+keys control volume, mute and microphone mute. Super+F1–F6 do the same for audio
+and brightness, in case FreeBSD does not report a ThinkPad hotkey as a key press. PipeWire/WirePlumber and the native
 portals are configured for supported application routing/capture. A missing mixer
 control is reported rather than mapped to an arbitrary device index. Brightness
 and temperatures use detected FreeBSD interfaces. Native capture depends on the
 specific camera/audio driver, not merely the presence of a bar icon.
 
-DEVICES opens explicit mount/unmount and USB-probe actions in foot. The mount
+DEVICES (Super+Ctrl+M) opens explicit mount/unmount and USB-probe actions in foot. The mount
 list is limited to CAM USB mass-storage devices with recognised FAT or UFS
 partitions. Choose read-only or read-write; mounts use `nosuid,noexec` under
 `/media/nostromo-DEVICE`. FAT grants only the selected account; UFS preserves

@@ -1,0 +1,79 @@
+#!/bin/sh
+set -eu
+case ${1:-menu} in
+menu) [ "$#" -le 1 ] || exit 2 ;;
+image)
+    # swayimg's y: copy the shown file with its own image type. It is only read.
+    [ "$#" = 2 ] || exit 2
+    file=$2
+    case $file in /*) ;; *) file=$(pwd -P)/$file ;; esac
+    [ -f "$file" ] || exit 1
+    type=$(file -bL --mime-type "$file")
+    case $type in image/?*) ;; *)
+        notify-send CLIPBOARD "Not an image: ${file##*/}" || :
+        exit 1
+        ;;
+    esac
+    wl-copy --type "$type" <"$file"
+    notify-send CLIPBOARD "Image copied: ${file##*/}" || :
+    exit
+    ;;
+page)
+    # Zathura's y: copy one page's text layer through MuPDF's mutool.
+    [ "$#" = 3 ] || exit 2
+    file=$2
+    page=$3
+    case $file in /*) ;; *) exit 2 ;; esac
+    case $page in '' | 0* | *[!0-9]*) exit 2 ;; esac
+    [ -f "$file" ] || exit 1
+    umask 077
+    work=$(mktemp -d "${TMPDIR:-/tmp}/nostromo-clipboard.XXXXXXXX")
+    trap 'rm -rf "$work"' 0
+    trap 'exit 130' INT
+    trap 'exit 143' HUP TERM
+    mutool draw -q -F txt -o "$work/page" "$file" "$page" || {
+        notify-send CLIPBOARD "Page $page could not be read." || :
+        exit 1
+    }
+    # MuPDF ends each page with a form feed.
+    tr -d '\f' <"$work/page" >"$work/text"
+    grep -q '[^[:space:]]' "$work/text" || {
+        notify-send CLIPBOARD "Page $page has no text layer." || :
+        exit 1
+    }
+    wl-copy --type 'text/plain;charset=utf-8' <"$work/text"
+    notify-send CLIPBOARD "Page $page text copied." || :
+    exit
+    ;;
+*) exit 2 ;;
+esac
+choice=$(printf '%s\n' 'SELECTION TO CLIPBOARD' 'CLIPBOARD TO SELECTION' CLEAR |
+    nostromo-picker -l 3 -p CLIPBOARD) || exit 0
+case $choice in
+'SELECTION TO CLIPBOARD')
+    from=primary
+    to=clipboard
+    ;;
+'CLIPBOARD TO SELECTION')
+    from=clipboard
+    to=primary
+    ;;
+CLEAR)
+    wl-copy --clear
+    wl-copy --primary --clear
+    exit
+    ;;
+*) exit 0 ;;
+esac
+umask 077
+temp=$(mktemp "${TMPDIR:-/tmp}/nostromo-clipboard.XXXXXXXX")
+trap 'rm -f "$temp"' 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
+set --
+[ "$from" != primary ] || set -- --primary
+# Read first so a missing source cannot erase the destination. Keep newlines.
+wl-paste "$@" --no-newline --type text >"$temp"
+set --
+[ "$to" != primary ] || set -- --primary
+wl-copy "$@" --type 'text/plain;charset=utf-8' <"$temp"

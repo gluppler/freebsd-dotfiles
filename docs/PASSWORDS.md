@@ -28,7 +28,7 @@ for key creation/export and supported smart cards. Enrollment is never automated
 FreeBSD prompts for the key passphrase invisibly in the terminal. An explicitly
 configured `PINENTRY_PROGRAM` remains possible; none is installed or started.
 
-The PASSWORDS menu lists names without decrypting previews and copies one chosen
+The PASSWORDS menu (Super+Shift+P) lists names without decrypting previews and copies one chosen
 entry. `nostromo-secret-copy` stores at most 1 MiB in memory, advertises a
 password-manager sensitivity hint and releases its **own** Wayland selection
 after 45 seconds by default (`PASSWORD_STORE_CLIP_TIME`, 1–3600 seconds).

@@ -1,0 +1,113 @@
+#!/bin/sh
+# Native workspace commands. Board choice and all flash actions are explicit.
+set -eu
+program=$(realpath "$0")
+repo=${program%/bin/*}
+[ -s "$repo/.install/sources.lock" ] || {
+    echo 'Keep this helper linked to its permanent checkout.' >&2
+    exit 1
+}
+revision=41d10b59730406bbab4ca9f1fbbe9e96aafb4966
+action=${1:-help}
+[ "$#" = 0 ] || shift
+case $action in
+profiles)
+    awk -F '|' '!/^#/{print $1}' "$repo/embedded/runtimes.txt"
+    exit
+    ;;
+runtime) exec sh "$repo/.install/scripts/embedded-runtime.sh" "$@" ;;
+init)
+    [ "$#" = 1 ] && [ "$(uname -s)" = FreeBSD ] && [ "$(id -u)" != 0 ] || exit 2
+    [ ! -e "$1" ] && [ ! -L "$1" ] || {
+        echo 'Choose a new workspace directory.' >&2
+        exit 1
+    }
+    west init -m https://github.com/zephyrproject-rtos/zephyr --mr "$revision" "$1"
+    cd "$1"
+    [ "$(git -C zephyr rev-parse HEAD)" = "$revision" ] || exit 1
+    west update
+    west zephyr-export
+    printf 'Workspace ready. Select an exact board and runtime profile; see EMBEDDED.md.\n'
+    exit
+    ;;
+boards | sync | rust | build | flash | debugserver | menuconfig) ;;
+*)
+    printf '%s\n' 'nostromo-zephyr init NEW-WORKSPACE' 'nostromo-zephyr profiles | runtime PROFILE' \
+        'Inside a workspace: boards | sync | rust | build PROFILE BOARD APP [CMAKE-ARG ...]' \
+        'flash BUILD-DIRECTORY [RUNNER-ARG ...] | debugserver BUILD-DIRECTORY [RUNNER-ARG ...] | menuconfig BUILD-DIRECTORY'
+    exit
+    ;;
+esac
+workspace=$(west topdir)
+[ "$(git -C "$workspace/zephyr" rev-parse HEAD)" = "$revision" ] || {
+    echo 'This helper is reviewed for Zephyr v4.5.0 only; use west directly for another version.' >&2
+    exit 1
+}
+export ZEPHYR_BASE="$workspace/zephyr"
+case $action in
+boards)
+    [ "$#" = 0 ] || exit 2
+    exec west boards
+    ;;
+sync)
+    [ "$#" = 0 ] || exit 2
+    exec west update
+    ;;
+rust)
+    [ "$#" = 0 ] || exit 2
+    # Preserve existing project filters rather than replacing them.
+    filter=$(west config manifest.project-filter 2>/dev/null || :)
+    case ,$filter, in *,+zephyr-lang-rust,*) ;; *)
+        west config manifest.project-filter "${filter:+$filter,}+zephyr-lang-rust"
+        ;;
+    esac
+    exec west update zephyr-lang-rust
+    ;;
+build)
+    [ "$#" -ge 3 ] || exit 2
+    profile=$1 board=$2 app=$3
+    shift 3
+    "$0" profiles | grep -Fxq -e "$profile" || exit 2
+    case $board in '' | *[!a-zA-Z0-9_./-]* | *..*) exit 2 ;; esac
+    [ -d "$app" ] || exit 1
+    runtime=$repo/.build/embedded/$profile
+    [ -s "$runtime/profile" ] || {
+        echo "Run nostromo-zephyr runtime $profile first." >&2
+        exit 1
+    }
+    directory=$workspace/build/$(printf '%s' "$board" | tr / _)-$profile
+    # Native tool binaries only; board-specific CMake may require additional tools.
+    # Zephyr's external toolchain root must also contain its compiler/linker
+    # implementations. Link those pinned upstream directories, never copy/edit them.
+    toolchain=$workspace/.nostromo-toolchain
+    [ ! -L "$toolchain" ] || exit 1
+    mkdir -p "$toolchain/cmake/toolchain"
+    for part in compiler linker bintools; do
+        link=$toolchain/cmake/$part
+        if [ -e "$link" ] || [ -L "$link" ]; then
+            [ -L "$link" ] && [ "$(realpath "$link")" = "$(realpath "$ZEPHYR_BASE/cmake/$part")" ] || exit 1
+        else ln -s "$ZEPHYR_BASE/cmake/$part" "$link"; fi
+    done
+    link=$toolchain/cmake/toolchain/nostromo-llvm
+    if [ -e "$link" ] || [ -L "$link" ]; then
+        [ -L "$link" ] && [ "$(realpath "$link")" = "$(realpath "$repo/embedded/cmake/toolchain/nostromo-llvm")" ] || exit 1
+    else ln -s "$repo/embedded/cmake/toolchain/nostromo-llvm" "$link"; fi
+    export ZEPHYR_TOOLCHAIN_VARIANT=nostromo-llvm TOOLCHAIN_ROOT="$toolchain"
+    export CLANG_ROOT_DIR=/usr/local/llvm21 LLVM_TOOLCHAIN_PATH=/usr/local/llvm21
+    PATH=/usr/local/llvm21/bin:$PATH
+    export PATH
+    exec west build -p auto -d "$directory" -b "$board" "$app" -- \
+        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DNOSTROMO_RUNTIME="$runtime" \
+        -DEXTRA_CONF_FILE="$repo/embedded/llvm-minimal.conf" "$@"
+    ;;
+flash | debugserver)
+    [ "$#" -ge 1 ] && [ -d "$1/zephyr" ] || exit 2
+    directory=$1
+    shift
+    exec west "$action" -d "$directory" "$@"
+    ;;
+menuconfig)
+    [ "$#" = 1 ] && [ -d "$1/zephyr" ] || exit 2
+    exec west build -d "$1" -t menuconfig
+    ;;
+esac

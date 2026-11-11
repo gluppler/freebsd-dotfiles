@@ -1,6 +1,6 @@
 # Current design and effects references
 
-The full acceptance list is in [PLANS](../PLANS.md). This migration preserves
+The full acceptance list is in [PLANS](PLANS.md). This migration preserves
 black/white, Michroma UI, Azeret Mono terminal/code, the hybrid orb, its default
 wallpaper and the exact later corrections to corners, rails and highlights.
 It does not revive the earlier red palette or add decorative text.
@@ -20,7 +20,7 @@ It does not revive the earlier red palette or add decorative text.
 | Vis dashboard | Original 2D orb with gentle floating idle cycle and plain menu; no option frames |
 | Dvtm | Connected panel junctions and reserved separator column; no opaque pane backgrounds |
 
-The [wedge reference](../assets/references/wedge_reference_extended_bar.png) is
+The [wedge reference](design/wedge_reference_extended_bar.png) is
 copied locally. Rails are compositor geometry; launchers/notifications are native
 client geometry. The right/left/bottom recess spans the middle **80%** of each
 rail, leaving **10% at each end**, with short diagonal shoulders. Its depth is
@@ -52,9 +52,6 @@ and [Dunst Wayland color alpha](https://dunst-project.org/documentation/).
 
 ## Existing references retained
 
-- Omarchy Weyland-Yutani CRT reference, revision
-  `c88479a05e208acca0725a640ffb280e8ce26a7a`, remains an effects reference.
-  Its MIT attribution is retained under assets/licenses.
 - Cyberpunk 2077's site informs motion and border treatment, not a font change,
   yellow palette or additional labels.
 - The default centered orb is the only wallpaper. The user's supplied monochrome
@@ -71,7 +68,7 @@ The README calls this a look/theme reference and says media files are not
 included. The linked video was **not viewed** (its MEGA embed could not be opened); motion below is inferred from
 the inspected GLSL/configuration, not claimed video observation.
 
-The useful source is [the copied original shader](../assets/references/space-dots-original.frag),
+The useful source is [the copied original shader](design/space-dots-original.frag),
 originally `.other/orig.frag`. Its header contains an MIT license, copyright
 2023 Maxim Samoliuk; keep that header in derived shader code. No blanket license
 is inferred for unrelated files. Its Hyprland configuration contains movement,
@@ -112,7 +109,7 @@ reference author's home path is imported as runtime configuration.
 - Idle: bouncing logo, stationary password prompt on input, authenticated lock
   owned by the actual lock client. A fullscreen animation is never called a lock.
 
-The actual renderer extension is in `src/dwl/crt.h` and `crt.frag`: GLES2 output
+The actual renderer extension is in `dwl/crt.h` and `crt.frag`: GLES2 output
 post-processing, actual output dimensions, monochrome scan/phosphor/noise,
 low-cost bloom and vignette, with a shared 12 Hz animation timer. Static/off stop
 animation; off restores ordinary composition. New windows have a 240 ms fade.
@@ -131,7 +128,7 @@ space_dots treatment while preserving its reflected bouncing path at 35 logical
 pixels/second horizontally and 27 vertically; it does not replace that movement
 with a different animation.
 
-`src/session/space-dots.h` is the native splash/lock painter; SDDM uses
+`session/space-dots.h` is the native splash/lock painter; SDDM uses
 `SpaceOrb.qml` and `SpaceDots.qml`. The entrance follows the inspected
 `winIn` cubic (.1, 1.1, .1, 1.1) over 1.2 seconds: a small pop-in/settle,
 not large jumps or sliced logo displacement. Shared treatment includes rolling

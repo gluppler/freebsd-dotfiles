@@ -6,23 +6,31 @@ set -eu
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
 export PATH
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
-mode=preview
-case ${1:-} in --help | -h)
-    printf 'Usage: %s [--preview|--check|--apply|--wifi] [account]\n' "$0"
-    echo 'Check and apply need the desktop account; none is built in.'
-    exit 0
-    ;;
---apply | --check | --wifi)
+usage() {
+    printf 'Usage: %s --preview [account] | --check account | --clean account | --upgrade account\n' "$0"
+    echo '  --preview  show the plan; changes nothing'
+    echo '  --check    read-only preflight on the laptop'
+    echo '  --clean    clean full install: remove earlier packages and build output, then install everything'
+    echo '  --upgrade  apply the configs, documents and pins of this checkout to the installed environment'
+    echo 'No account is built in; name the desktop account.'
+}
+mode=
+case ${1:-} in
+--preview | --check | --clean | --upgrade)
     mode=${1#--}
     shift
     ;;
---preview | --dry-run) shift ;; esac
-[ "$#" -le 1 ] || {
-    echo "Usage: $0 [--preview|--check|--apply|--wifi] [account]" >&2
+--help | -h)
+    usage
+    exit 0
+    ;;
+esac
+[ -n "$mode" ] && [ "$#" -le 1 ] || {
+    usage >&2
     exit 2
 }
 account=${1:-}
-case $mode:$account in check: | apply:)
+case $mode:$account in check: | clean: | upgrade:)
     echo "Name the desktop account: $0 --$mode account" >&2
     exit 2
     ;;
@@ -39,9 +47,11 @@ if [ "$mode" = preview ]; then
 FreeBSD 15.1-RELEASE amd64 / Wayland setup for $who:
   1. Check release, running kernel, account, permanent checkout and source files.
      Remove what earlier runs left: stale locks, workspaces, logs and backups.
-     Offer console Wi-Fi setup with a hidden password prompt before downloads.
-     Offer a clean install: remove every earlier package (stock Git too), the
-     package state and build output, then build and install everything again.
+     Without a working connection, set up Wi-Fi at the console before downloads;
+     the password prompt is hidden. A working connection is kept.
+     --clean then removes every earlier package (stock Git too), the package
+     state and build output, so everything is built and installed again.
+     --upgrade keeps them and applies what changed in this checkout.
   2. Bootstrap signed pkg; publish the reviewed package policy and preserve its prior version.
   3. Build the pinned native library variants as $who; audit every dependency before installation.
   4. Install the reviewed desktop/development roots and detected Intel firmware.
@@ -49,15 +59,16 @@ FreeBSD 15.1-RELEASE amd64 / Wayland setup for $who:
   6. Check every staged binary/configuration, then transactionally install user links.
   7. Back up and merge the listed system settings; configure mdo and the native login session.
   8. Verify the final configuration before enabling SDDM at boot. Keep console login/recovery.
-  9. Check the installed system again, remove every backup, then ask before rebooting into the desktop.
+  9. Check the installed system again, remove every backup and log, then ask before rebooting into the desktop.
 No partitioning, OS installation or server provisioning.
 See docs/BASE-SETUP.md for the separate manual installation and docs/VALIDATION.md for readiness.
-Preview only. On the laptop, run --check first, then --apply from its root console.
+Preview only. At the laptop's root console, run --check, then --clean for a
+full install or --upgrade to apply this checkout's changes.
 EOF
     exit
 fi
 [ "$(uname -s)" = FreeBSD ] && [ "$(uname -m)" = amd64 ] && [ "$(id -u)" = 0 ] || {
-    echo 'Run --check or --apply from a root console on the FreeBSD amd64 laptop.' >&2
+    echo 'Run --check, --clean or --upgrade from a root console on the FreeBSD amd64 laptop.' >&2
     exit 1
 }
 case $(freebsd-version -u) in 15.1-RELEASE*) ;; *)
@@ -80,9 +91,6 @@ service devd onestatus >/dev/null 2>&1 || {
     echo 'Run setup at the laptop console so network changes cannot disconnect this install.' >&2
     exit 1
 }
-if [ "$mode" = wifi ]; then
-    exec sh "$repo/scripts/setup-wifi.sh"
-fi
 [ "$(freebsd-version -k)" = "$(freebsd-version -r)" ] || {
     echo 'Reboot into the installed kernel first.' >&2
     exit 1
@@ -111,15 +119,15 @@ case $repo in *[[:space:]]* | *'|'*)
     exit 1
     ;;
 esac
-for script in scripts/configure-system.sh scripts/verify-stage.sh scripts/editor-plugins.sh \
-    scripts/development-tools.sh scripts/build-desktop.sh scripts/link-home.sh scripts/clean-build.sh \
-    scripts/checkout-modes.sh; do
+for script in configure-system verify-stage editor-plugins development-tools build-desktop link-home \
+    clean-build checkout-modes; do
+    script=.install/scripts/$script.sh
     [ -f "$repo/$script" ] || {
         echo "Incomplete checkout: $script. No system changes made." >&2
         exit 1
     }
 done
-sh "$repo/scripts/verify-stage.sh" --sources
+sh "$repo/.install/scripts/verify-stage.sh" --sources
 as_user() {
     env -i HOME="$account_home" USER="$account" LOGNAME="$account" SHELL=/bin/sh \
         PATH="$account_home/.local/bin:$PATH" LANG=en_US.UTF-8 TERM="${TERM:-vt100}" \
@@ -133,8 +141,12 @@ as_user '{ [ "$(id -u)" = "$NOSTROMO_UID" ] && [ -w "$HOME" ] && [ -w "$NOSTROMO
     [ -z "$foreign" ] || {
         printf "%s\n" "$foreign" | head -n 20 >&2
         echo "The checkout must belong to the desktop account. Check the ownership of the paths above before installing." >&2; exit 1; }'
-# Check lists what apply removes: group/world write that tools left in the checkout.
-as_user "sh scripts/checkout-modes.sh --$mode"
+# Check lists what clean and upgrade remove: group/world write that tools left in the checkout.
+if [ "$mode" = check ]; then
+    as_user 'sh .install/scripts/checkout-modes.sh --check'
+else
+    as_user 'sh .install/scripts/checkout-modes.sh --apply'
+fi
 umask 077
 for path in /var/log/nostromo /usr/local/share/nostromo; do
     parent=$path
@@ -222,11 +234,26 @@ sweep() {
             rm -rf "$previous" || return 1
             printf 'Removed a backup: %s\n' "$previous"
         done
+        # The package helper kept this run's downloads for its later transactions,
+        # and the last transaction's receipt, an audit record that nothing reads.
+        if [ ! -d /var/run/nostromo-packages.lock ]; then
+            for previous in /var/db/nostromo/packages/cache /var/db/nostromo/packages/transaction-*; do
+                [ -d "$previous" ] && [ ! -L "$previous" ] || continue
+                rm -rf "$previous" || return 1
+                case $previous in
+                */cache) printf 'Removed the package download cache: %s\n' "$previous" ;;
+                *) printf 'Removed a package transaction receipt: %s\n' "$previous" ;;
+                esac
+            done
+        fi
+        # A completed run keeps no desktop build logs either.
+        as_user 'sh .install/scripts/clean-build.sh --final' || return 1
+    else
+        as_user 'sh .install/scripts/clean-build.sh' || return 1
     fi
     prune_logs || return 1
-    as_user 'sh scripts/clean-build.sh' || return 1
     # Tools in this run's stages may have left group/world write again.
-    [ "${1:-}" != final ] || as_user 'sh scripts/checkout-modes.sh --apply'
+    [ "${1:-}" != final ] || as_user 'sh .install/scripts/checkout-modes.sh --apply'
 }
 # Like the package helper, ignore injected pkg configuration and environment.
 pkgtool() { env -i PATH="$PATH" HOME=/root LC_ALL=C /usr/local/sbin/pkg -C /dev/null "$@"; }
@@ -292,7 +319,7 @@ clean_install() {
         echo "Removed the build output: $NOSTROMO_REPO/.build"; fi'
 }
 final_check() {
-    as_user 'sh scripts/verify-stage.sh --installed' || return 1
+    as_user 'sh .install/scripts/verify-stage.sh --installed' || return 1
     [ "$(pw usershow "$account" -7 | cut -d: -f7)" = /usr/local/bin/oksh ] || {
         echo 'The login shell is not oksh.' >&2
         return 1
@@ -309,7 +336,7 @@ final_check() {
             printf 'The %s variant is not installed, locked and built from the current recipe.\n' "$name" >&2
             return 1
         }
-    done <"$repo/packages.local"
+    done <"$repo/.install/packages.local"
     printf 'Final checks passed for %s.\n' "$account"
 }
 finish() {
@@ -322,7 +349,15 @@ finish() {
             echo "Restore the package policy from $log/policy-backup before retrying." >&2
     fi
     [ -z "$policy" ] || rm -rf "$policy"
-    if [ -n "$log" ]; then
+    if [ -n "$log" ] && [ "$result" = 0 ] && [ "$stage" = reboot ]; then
+        # A completed run leaves no logs; a stopped one keeps its own for diagnosis.
+        if rm -rf "$log"; then
+            printf "Removed this run's logs: %s\n" "$log"
+            rmdir /var/log/nostromo 2>/dev/null || :
+        else
+            echo "Log removal was incomplete; remove $log." >&2
+        fi
+    elif [ -n "$log" ]; then
         printf '%s\n' "$stage" >"$log/last-stage"
         printf '%s\n' "$result" >"$log/exit-status"
         if [ "$result" = 0 ]; then outcome=completed; else outcome=failed; fi
@@ -331,12 +366,13 @@ finish() {
     fi
     if [ "$result" != 0 ] && [ -n "$log" ]; then
         printf 'Setup stopped at %s (exit %s). Logs: %s\n' "$stage" "$result" "$log" >&2
-        echo 'No reboot was requested. Resolve the reported stage and rerun the same command.' >&2
+        printf 'No reboot was requested. Resolve the reported stage, then run: sh %s/install.sh --%s %s\n' \
+            "$repo" "$next" "$account" >&2
     fi
     rm -f "$lock/pid"
     rmdir "$lock"
     if [ "$result" = 0 ] && [ "$stage" = reboot ]; then
-        # The log and lock are final. Like the Wi-Fi offer, this reads the console.
+        # The logs are gone and the lock is released. Like the Wi-Fi setup, this reads the console.
         { printf 'Reboot into the new desktop now? [Y/n] ' >/dev/tty; } 2>/dev/null &&
             IFS= read -r answer </dev/tty || answer=n
         case $answer in
@@ -346,6 +382,8 @@ finish() {
     fi
     exit "$result"
 }
+# A stopped clean install continues with --upgrade once its clean stage is done.
+next=$mode
 trap finish 0
 trap 'exit 130' INT
 trap 'exit 143' HUP TERM
@@ -366,28 +404,26 @@ freebsd-version -kru >"$log/release-before"
 id "$account" >"$log/account-before"
 run cleanup sweep
 # Prompts bypass tee/logging; the password is read only from the console.
-stage=wifi-setup
-sh "$repo/scripts/setup-wifi.sh" --offer
-stage=clean-offer
-{ printf '%s\n%s\n%s' 'A clean install removes every package except pkg, base and detected firmware,' \
-    'then the package state and build output; this run builds everything again.' \
-    'Start with a clean install? [y/N] ' >/dev/tty; } 2>/dev/null &&
-    IFS= read -r answer </dev/tty || answer=n
-case $answer in y | Y | yes | YES) run clean-install clean_install ;; esac
+stage=network
+sh "$repo/.install/scripts/setup-wifi.sh" --needed
+if [ "$mode" = clean ]; then
+    run clean-install clean_install
+    next=upgrade
+fi
 # Base pkg bootstrap verifies FreeBSD's repository signature. No doas/sudo bootstrap.
 run pkg-bootstrap env -i HOME=/root PATH="$PATH" /usr/sbin/pkg bootstrap -y
 pkg -v >"$log/pkg-version"
 stage=package-policy
 install -d -m 755 /usr/local/share/nostromo /usr/local/libexec
 policy=$(mktemp -d /usr/local/share/nostromo/.policy.XXXXXXXX)
-mkdir "$policy/scripts" "$policy/system" "$policy/src" "$policy/src/ports"
-for file in packages.allowed packages.local packages.txt ports.lock sources.lock; do install -m 644 "$repo/$file" "$policy/$file"; done
-for file in package-policy.awk ports-variants.sh recipe-hash.sh fetch-source.sh; do install -m 644 "$repo/scripts/$file" "$policy/scripts/$file"; done
-install -m 644 "$repo/system/ports.conf" "$policy/system/ports.conf"
-for file in "$repo"/src/ports/*.patch; do install -m 644 "$file" "$policy/src/ports/"; done
-sh "$repo/scripts/recipe-hash.sh" >"$policy/recipe.sha256"
+# The policy copies .install's layout, so its recipe-hash.sh digests the published inputs.
+mkdir "$policy/scripts" "$policy/ports"
+for file in packages.allowed packages.local packages.txt ports.lock sources.lock; do install -m 644 "$repo/.install/$file" "$policy/$file"; done
+for file in package-policy.awk ports-variants.sh recipe-hash.sh fetch-source.sh; do install -m 644 "$repo/.install/scripts/$file" "$policy/scripts/$file"; done
+for file in "$repo/.install/ports/ports.conf" "$repo"/.install/ports/*.patch; do install -m 644 "$file" "$policy/ports/"; done
+sh "$repo/.install/scripts/recipe-hash.sh" >"$policy/recipe.sha256"
 printf 'Nostromo managed package policy\n' >"$policy/managed"
-chmod 755 "$policy" "$policy/scripts" "$policy/system" "$policy/src" "$policy/src/ports"
+chmod 755 "$policy" "$policy/scripts" "$policy/ports"
 chmod 644 "$policy/recipe.sha256" "$policy/managed"
 if [ -e /usr/local/share/nostromo/policy ]; then
     [ ! -L /usr/local/share/nostromo/policy ] &&
@@ -429,19 +465,19 @@ if [ -d "$policy" ]; then
     }
 fi
 policy=
-install -m 755 "$repo/scripts/packages.sh" /usr/local/libexec/nostromo-packages
+install -m 755 "$repo/.install/scripts/packages.sh" /usr/local/libexec/nostromo-packages
 packages=/usr/local/libexec/nostromo-packages
-run prepare-ports as_user 'sh scripts/ports-variants.sh prepare'
+run prepare-ports as_user 'sh .install/scripts/ports-variants.sh prepare'
 while IFS='|' read -r component _origin version; do
     case $component in '' | '#'*) continue ;; esac
-    run "$component-dependency-list" as_user 'sh scripts/ports-variants.sh deps "$NOSTROMO_COMPONENT" > .build/variant-deps'
+    run "$component-dependency-list" as_user 'sh .install/scripts/ports-variants.sh deps "$NOSTROMO_COMPONENT" > .build/variant-deps'
     set --
     while IFS= read -r dependency; do
         case $dependency in '' | [!A-Za-z0-9]* | *[!A-Za-z0-9_+.-]*) exit 1 ;; esac
         set -- "$@" "$dependency"
     done <"$repo/.build/variant-deps"
     [ "$#" = 0 ] || run "$component-dependencies" "$packages" install --build "$@"
-    run "$component-build" as_user 'sh scripts/ports-variants.sh build "$NOSTROMO_COMPONENT"'
+    run "$component-build" as_user 'sh .install/scripts/ports-variants.sh build "$NOSTROMO_COMPONENT"'
     run "$component-import" "$packages" import "$component" "$repo/.build/ports-packages/All/$component-$version.pkg"
     if pkg info -e "$component"; then operation=reinstall; else operation=install; fi
     run "$component-install" "$packages" "$operation" --build "$component"
@@ -450,12 +486,12 @@ while IFS='|' read -r component _origin version; do
     if [ "$component" = curl ] && ! pkg info -e git-lite && ! pkg info -e git; then
         run git-lite "$packages" install git-lite
     fi
-done <"$repo/packages.local"
+done <"$repo/.install/packages.local"
 set --
 while IFS= read -r name; do
     case $name in '' | '#'*) continue ;; esac
     set -- "$@" "$name"
-done <"$repo/packages.txt"
+done <"$repo/.install/packages.txt"
 run desktop-packages "$packages" install "$@"
 run embedded-build-tools "$packages" install --build gperf
 run finish-bootstrap "$packages" finish-bootstrap
@@ -467,17 +503,17 @@ while IFS= read -r name; do
     set -- "$@" "$name"
 done <"$log/firmware-request"
 run firmware "$packages" install "$@"
-run desktop-build as_user 'sh scripts/build-desktop.sh'
-run editor-plugins as_user 'sh scripts/editor-plugins.sh'
-run development-tools as_user 'sh scripts/development-tools.sh'
-run staged-validation as_user 'sh scripts/verify-stage.sh'
-run user-files as_user 'sh scripts/link-home.sh --apply'
-run system-configuration sh "$repo/scripts/configure-system.sh" "$account" "$log"
+run desktop-build as_user 'sh .install/scripts/build-desktop.sh'
+run editor-plugins as_user 'sh .install/scripts/editor-plugins.sh'
+run development-tools as_user 'sh .install/scripts/development-tools.sh'
+run staged-validation as_user 'sh .install/scripts/verify-stage.sh'
+run user-files as_user 'sh .install/scripts/link-home.sh --apply'
+run system-configuration sh "$repo/.install/scripts/configure-system.sh" "$account" "$log"
 run login-shell pw usermod "$account" -s /usr/local/bin/oksh
 # Activation is the last change; the current console/desktop keeps running until reboot.
 run enable-login sysrc sddm_enable=YES
 run final-check final_check
 run final-cleanup sweep final
-printf 'Setup completed for %s. Logs: %s\n' "$account" "$log"
-# The exit handler offers the reboot after recording the result and releasing the lock.
+printf 'Setup completed for %s.\n' "$account"
+# The exit handler removes this run's logs, releases the lock and offers the reboot.
 stage=reboot

@@ -1,6 +1,6 @@
 # Native WireGuard client
 
-`nostromo-vpn` and the VPN menu use FreeBSD's `wg(4)`. The source recipe builds
+`nostromo-vpn` and the VPN menu (Super+Ctrl+V) use FreeBSD's `wg(4)`. The source recipe builds
 only `wg` with base Clang and libnv. It does not install wg-quick or Bash.
 There is no alternative mesh client or server/router provisioning here.
 

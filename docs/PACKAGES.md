@@ -1,11 +1,11 @@
 # Packages, dependency policy and maintenance
 
-The executable manifests are `packages.txt` (desktop/development roots),
-`packages.local` (15 ordered native variants), and `packages.allowed` (reviewed
+The executable manifests are `.install/packages.txt` (desktop/development roots),
+`.install/packages.local` (15 ordered native variants), and `.install/packages.allowed` (reviewed
 names, origins, version constraints and roles). The installer resolves the actual
 FreeBSD quarterly dependency graph and checks every archive before installation.
-These rules are implemented; a complete native build/install has not run on the
-laptop. A cached catalog or an older OpenBSD audit is not that result.
+A complete native build and install ran on the T14 at commit `17fb366`;
+[VALIDATION](VALIDATION.md#native-evidence-from-the-t14) records it.
 
 ## Scope of the GNU exceptions
 
@@ -30,11 +30,11 @@ build scripts are GNU-free. No Bash/GCC/GnuPG toolchain is added by default.
 
 ## Native variants
 
-`ports.lock` pins the FreeBSD ports archive to commit
+`.install/ports.lock` pins the FreeBSD ports archive to commit
 `92ed857ab5f20e13114a4c01193751e7f0866a36`, with SHA256 verification. The variants
 are Python 3.12, CMake, libxml2, libxslt, libpsl, curl, CUPS, Imath, FFmpeg,
 wlroots 0.20, Hunspell, fcitx5, PipeWire, PyQt6 and Python ECDSA.
-`system/ports.conf` and `src/ports/` are the reviewed options/patches: libedit in
+`.install/ports/` holds the reviewed options (`ports.conf`) and patches: libedit in
 place of Readline where supported, ICU/OpenSSL where appropriate, reduced Qt
 bindings and disabled optional GNU-heavy or X11 features. ECDSA uses its native
 Python implementation without optional GMPY/GMPY2. Readline's ports module also
@@ -47,9 +47,9 @@ ordinary-user staging and `check-plist`. Dependency lists pass through the same
 root package gate. The ports framework computes them on FreeBSD, and they name
 packages that no other reviewed package depends on: FFmpeg's default frei0r
 effects need the frei0r header, and Python ECDSA is built with py312-build and
-py312-installer. `tests/variant-deps.txt` records the 15 lists from the T14; host
+py312-installer. `.install/tests/variant-deps.txt` records the 15 lists from the T14; host
 tests check them, and their dependencies in a cached catalogue, against
-`packages.allowed`. Record them again after changing the pinned tree, a variant,
+`.install/packages.allowed`. Record them again after changing the pinned tree, a variant,
 its options or a ports patch. When pkg's advisory file (`/var/db/pkg/vuln.xml`, fetched by
 the nightly security run) lists a variant, its build prints pkg's report and
 continues. The ports framework would otherwise refuse every later build of that
@@ -82,7 +82,7 @@ more, such as stock Git's Perl modules, and reports the replacement.
 
 ## Transaction and update behavior
 
-`scripts/packages.sh` uses the signed FreeBSD 15 amd64 quarterly repository,
+`.install/scripts/packages.sh` uses the signed FreeBSD 15 amd64 quarterly repository,
 with kernel-module packages selected from `kmods_quarterly_${VERSION_MINOR}`
 (`kmods_quarterly_1` on FreeBSD 15.1),
 checks each package identity/ABI/dependency edge and rejects unknown origins,
@@ -95,13 +95,24 @@ solution reads end-of-input and stops instead of being approved again. It record
 the exact graph, plans and archive hashes of its latest transaction under
 `/var/db/nostromo/packages/`.
 Each transaction works in a new private workspace that is removed afterwards. It
-downloads both signed catalogues again and fetches every stock package in its
-request's dependency closure, installed or not, so the installer's package
-stages repeat many of the same downloads. Nothing from an earlier transaction is
-reused. pkg 2.8.4 does not recheck the checksum of an archive it already holds
-at full size, and its queries expose neither archive checksums nor repository
-paths, so reusing archives between transactions would reduce that check to the
-file size.
+resolves every stock package in its request's dependency closure, installed or
+not. During an install run, the transactions share one cache in
+`/var/db/nostromo/packages/cache/`. It holds the catalogue database, which pkg
+downloads again only when the repository has changed, and each archive at the
+hashed path that the signed catalogue gives it. A rebuilt package therefore gets
+a new path. pkg 2.8.4 rechecks an archive it already holds only when the same
+request also downloads another one. The helper therefore checks every archive
+itself, whether kept or just downloaded, against the BLAKE2b checksum in the
+current catalogue record (`pkg search -R`). A kept archive that does not match is
+downloaded again. A download that does not match stops the transaction. The
+installer removes the cache after its final check, with the last transaction's
+receipt. A stopped run leaves the cache for the next run, and the receipt until
+the next transaction replaces it. Outside an install run, the helper removes it the next time it
+reads the catalogue. By the catalogue's archive sizes, the installer's 32
+transactions used to download about 4.7 GiB. Only 1.9 GiB of that is distinct,
+and the cache downloads each archive once. Archives are still downloaded one at
+a time. On the T14 (2026-11-11), one connection reached 2.5 MiB/s and four
+parallel connections 2.6 MiB/s, so a single connection already fills the link.
 Existing system repository files are preserved.
 The private upstream names do not depend on the system repositories being named
 `FreeBSD`, `FreeBSD-ports` or `FreeBSD-ports-kmods`. Disabled pkgbase repositories
@@ -143,10 +154,10 @@ include consumers. The menu never requests forced, recursive or orphan removal.
 Updates stop when a reviewed version/ABI no longer fits; they do not relax policy
 to make the update succeed. Review new versions and rebuild affected consumers.
 
-SOFTWARE (`Super+F5`, or `software` in oksh) provides search, install, details,
+SOFTWARE (Super+Ctrl+U, or `software` in oksh) provides search, install, details,
 update, **remove**, reviewed ports, base patches and firmware. Unknown catalog
 entries are visible as unreviewed but cannot be installed until their full graph
-is reviewed. PORTS rebuilds the selected maintained variant; it does not execute
+is reviewed. Super+Ctrl+Shift+U starts UPDATE directly. PORTS rebuilds the selected maintained variant; it does not execute
 arbitrary Makefiles as root. Privileged actions use base **mdo**.
 
 ## Does an update need to run twice?

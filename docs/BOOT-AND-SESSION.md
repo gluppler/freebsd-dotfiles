@@ -23,7 +23,7 @@ through FreeBSD's loader extension mechanism.
 
 ## Login and session
 
-`system/sddm/nostromo.conf` explicitly selects `DisplayServer=wayland`, cage,
+`sddm/nostromo.conf` explicitly selects `DisplayServer=wayland`, cage,
 Qt's Wayland backend, the Nostromo QML theme and the one managed Wayland session.
 No X11 session or automatic login is configured. The login shows the retained orb,
 Michroma Login/Password fields, bottom-right cuts and animated outside brackets.

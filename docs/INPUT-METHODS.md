@@ -1,7 +1,7 @@
 # English, Japanese and Korean on Wayland
 
 The physical keyboard remains US. Super+Ctrl+Space cycles US → JP → KR;
-LANGUAGE opens the direct chooser. `nostromo-language` reads the actual running
+Super+Ctrl+Shift+Space or LANGUAGE opens the direct chooser. `nostromo-language` reads the actual running
 engine and verifies a change; it reports `--` if the input-method service is
 unavailable. It does not pretend that changing a keyboard layout supplies
 Japanese conversion.

@@ -1,0 +1,71 @@
+#!/bin/sh
+set -eu
+[ "$#" -le 1 ] || exit 2
+control() { nostromo-admin bluetooth "$@"; }
+if [ "${1:-menu}" = status ]; then
+    # The bar reads driver presence without authentication. Link details stay in STATUS.
+    sysctl -aN | awk '/^dev\.ubt\.[0-9]+\.%driver$/ {found=1} END {print found?"HCI":"--"}'
+    exit
+fi
+[ "${1:-menu}" = menu ] || exit 2
+# shellcheck source=bin/lib/network-menu.sh
+. "${XDG_DATA_HOME:-$HOME/.local/share}/nostromo/network-menu.sh"
+trap 'unset pin' 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
+node=
+while :; do
+    if [ -z "$node" ]; then
+        nodes=$(network_capture 'Bluetooth controllers' control nodes) || exit 1
+        if [ -z "$nodes" ]; then
+            action=$(network_choice 'No Bluetooth controller' "$(printf '%s\n' INITIALIZE RETRY EXIT)") || exit 0
+            case $action in
+            INITIALIZE) network_run 'Bluetooth initialization' control setup ;;
+            RETRY) ;;
+            *) exit 0 ;;
+            esac
+            continue
+        fi
+        node=$(network_choice 'Bluetooth controller' "$nodes") || exit 0
+    fi
+    action=$(network_choice "Bluetooth / $node" "$(printf '%s\n' SCAN 'PAIR CLASSIC PIN' 'CONNECT ACL' 'CONFIGURE CLASSIC HID' DISCONNECT STATUS CONTROLLER EXIT)") || exit 0
+    case $action in
+    STATUS)
+        network_run 'Bluetooth links' control status "$node"
+        continue
+        ;;
+    CONTROLLER)
+        node=
+        continue
+        ;;
+    EXIT) exit 0 ;;
+    DISCONNECT)
+        result=$(network_capture 'Bluetooth links' control status "$node") || continue
+        rows=$(printf '%s\n' "$result" | awk '$1 ~ /:/ && $2 ~ /^[0-9]+$/')
+        row=$(network_choice 'Disconnect link' "$rows") || continue
+        handle=$(printf '%s\n' "$row" | awk '{print $2}')
+        network_run 'Bluetooth disconnect' control disconnect "$node" "$handle"
+        continue
+        ;;
+    SCAN | 'PAIR CLASSIC PIN' | 'CONNECT ACL' | 'CONFIGURE CLASSIC HID') ;;
+    *) exit 2 ;;
+    esac
+    network_busy Bluetooth
+    result=$(network_capture 'Bluetooth scan' control scan "$node") || continue
+    addresses=$(printf '%s\n' "$result" | awk '/BD_ADDR:/ {print $2}' | sort -u)
+    address=$(network_choice 'Device address' "$addresses") || continue
+    if [ "$action" = SCAN ]; then
+        action=$(network_choice "$address" "$(printf '%s\n' 'PAIR CLASSIC PIN' 'CONNECT ACL' 'CONFIGURE CLASSIC HID' BACK)") || continue
+    fi
+    case $action in
+    'CONNECT ACL') network_run 'Bluetooth connection request' control connect "$node" "$address" ;;
+    'CONFIGURE CLASSIC HID') network_run 'Bluetooth HID setup' control hid "$node" "$address" ;;
+    'PAIR CLASSIC PIN')
+        pin=$(nostromo-picker --password -p 'Device PIN') || continue
+        printf '%s\n' "$pin" | network_run 'Bluetooth PIN pairing' control pair "$node" "$address"
+        unset pin
+        ;;
+    BACK) ;;
+    *) exit 2 ;;
+    esac
+done

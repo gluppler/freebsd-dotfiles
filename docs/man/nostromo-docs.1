@@ -1,9 +1,9 @@
-.Dd November 10, 2026
+.Dd November 11, 2026
 .Dt NOSTROMO-DOCS 1
 .Os
 .Sh NAME
 .Nm nostromo-docs
-.Nd read local programming manuals and examples
+.Nd read local programming manuals, standards, books and examples
 .Sh SYNOPSIS
 .Nm
 .Op Cm menu
@@ -14,65 +14,144 @@
 .Cm rust
 .Ar book | std | reference | rust-by-example | embedded-book
 .Nm
-.Cm llvm | freebsd | --check
+.Cm llvm | freebsd | lua | versions | --check
 .Nm
 .Cm language
 .Ar c | cpp
 .Nm
 .Cm python-book
-.Ar tutorial | reference | library | c-api | extending | howto | using | whatsnew
+.Ar tutorial | reference | library | c-api | extending | howto | using | faq | whatsnew
 .Nm
-.Cm go-language | versions
+.Cm go-language
+.Op Ar spec | memory-model | assembler | godebug
+.Nm
+.Cm go-help | go-by-example | knowledge
+.Ar topic
+.Nm
+.Cm library
+.Op Ar document
+.Nm
+.Cm electronics
+.Op Ar chapter
+.Nm
+.Cm manual
+.Ar file.pdf
 .Sh DESCRIPTION
 With no arguments,
 .Nm
 opens a terminal topic picker.
 .Cm menu
 opens the graphical picker and launches a separate documentation window.
-Manuals and Markdown examples use the terminal pager.
-Rust books and the
-.Fx
-Handbook open local HTML in qutebrowser.
-The C/C++ archive, Go specification and Python books also use
-local HTML. The versions action reports installed toolchains and the dated
-cppreference snapshot. The Rust picker includes the books actually present in
-the selected compiler's sysroot, including Cargo, rustc, rustdoc and Clippy.
+Manuals, Markdown and plain text use the terminal pager.
+Local HTML opens in qutebrowser and PDF documents open in zathura.
+Every reference is read from local files; nothing is downloaded.
+.Pp
+The language references are the C and C++ manual pages and the cppreference
+archive, the C23 (N3220) and C++23 (N4950) working drafts, POSIX.1-2024, the
+C++ Core Guidelines, the Rust books present in the selected compiler's sysroot,
+the Go specification, memory model, assembler guide and GODEBUG history,
+.Cm go doc ,
+.Cm go help
+and Go by Example, the Python library, books and FAQ, the Lua 5.4 manual,
+the Arm procedure call standards and System V ABI for AArch64, the CMake
+manuals and the Google style guides.
+.Pp
+.Cm library
+opens a document of the offline library, given by its path under
+.Pa ~/.local/share/nostromo/library .
+Without a document it offers each library entry and then its chapters,
+titled by their headings and in the reading order of the book's table of
+contents.
+The SYSTEMS LIBRARY entry holds the System Design Primer and its solutions,
+Awesome Scalability, HTTP/2 and HTTP/3 explained, what happens when a URL is
+opened, a database built from scratch, Kubernetes the Hard Way, The Art of
+Command Line and the pure sh bible.
+CIRCUITS LIBRARY holds the MIT 6.002 lecture notes, Lessons in Electric
+Circuits and the Logisim guide; ROBOTICS LIBRARY holds books on feedback
+control, robotic manipulation, autonomous robots and motion planning; and
+PCB AND BADGES holds a PCB design tutorial, the Tildagon badge documentation
+and two Hackaday badge schematics.
+.Cm electronics
+opens a chapter of the electronics guide in qutebrowser, named by its file
+without
+.Pa .html ,
+such as
+.Ar 02-dc ;
+without one it opens the contents.
+Its figures are drawn and animated without scripts, and its formula sheet
+links every named equation to its explanation.
+.Cm knowledge
+opens a chapter of the committed extract of The Book of Secret Knowledge:
+tools, services, howtos, lists, one-liners or shell-tricks.
+.Cm manual
+opens a PDF saved in
+.Pa ~/.local/share/nostromo/manuals .
 .Pp
 The
 .Cm examples
 topics are c, cpp, rust, go, python, shell, assembly, vis and zephyr.
 Code blocks keep their indentation.
+Embedded HTML and Jekyll tags in Markdown are reduced to their text, and code
+is shown as written.
+MkDocs notes are shown as quoted notes and content tabs as titled sections.
 No example is executed by the reader.
 .Pp
 Go queries disable module and toolchain downloads.
+.Cm go-by-example
+takes an example's name in lowercase with hyphens, such as
+.Ar closures ,
+and shows each program followed by its recorded run.
 Python library queries read the installed text manual without importing modules.
-Install the documentation packages while online before using this command
-offline.
+CMake manuals are manual pages:
+.Cm man Ar cmake-commands .
+.Cm versions
+reports the installed toolchains, the documentation packages, the pinned
+standards and the checksum of each library archive.
 .Ss Keys
 Use j and k to scroll, / to search, n for the next result and q to close
 the pager.
 Left and right scroll long example lines.
-In vis, Space od opens the documentation menu.
+On the desktop, Super+D opens the documentation menu.
+In vis, Space od opens it.
 In dvtm, Ctrl+B d opens a documentation pane.
 .Sh FILES
 .Bl -tag -width Ds
 .It Pa ~/.local/share/nostromo/reference
 Markdown examples shipped with the dotfiles.
+.It Pa ~/.local/share/nostromo/library
+The pinned offline library that the installer downloads and checks.
+.It Pa ~/.local/share/nostromo/secret-knowledge
+The selected chapters of The Book of Secret Knowledge and their license.
+.It Pa ~/.local/share/nostromo/electronics
+The electronics guide, generated by the dotfiles from
+.Pa .install/electronics .
+.It Pa ~/.local/share/nostromo/manuals
+PDF manuals saved by the user.
 .It Pa ~/.local/share/nostromo/OFFLINE-DOCS.md
 Installed references, commands and update instructions.
 .It Pa ~/.local/share/man
 Manual pages for the locally built desktop programs.
 .El
+.Sh EXIT STATUS
+.Ex -std
+An invalid or unknown topic exits 2.
 .Sh EXAMPLES
 .Bd -literal -offset indent
 nostromo-docs c malloc
 nostromo-docs cpp std::vector
 nostromo-docs go fmt.Printf
-nostromo-docs go-examples fmt
+nostromo-docs go-help modules
+nostromo-docs go-by-example goroutines
 nostromo-docs python pathlib
+nostromo-docs man cmake-buildsystem
+nostromo-docs library posix/index.html
+nostromo-docs library c-standard.pdf
+nostromo-docs knowledge one-liners
+nostromo-docs electronics 10-pcb
 nostromo-docs examples assembly
 .Ed
 .Sh SEE ALSO
 .Xr apropos 1 ,
 .Xr man 1 ,
-.Xr mandoc 1
+.Xr mandoc 1 ,
+.Xr zathura 1

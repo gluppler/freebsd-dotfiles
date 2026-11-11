@@ -1,6 +1,6 @@
 # Laptop information
 
-Run `fetch`, `nostromo-fetch`, or **SYSTEM INFO** in the launcher. Fastfetch uses
+Run `fetch`, `nostromo-fetch`, **SYSTEM INFO** in the launcher, or press Super+Ctrl+I. Fastfetch uses
 a detailed profile with the original monochrome 2D orb and Azeret Mono font.
 In an interactive terminal, the report opens beside the gently floating orb.
 Narrow windows put the orb above the information; very small windows prioritize
@@ -33,6 +33,6 @@ It runs as the ordinary user and does not prompt for root. Local IP/MAC and Wi-F
 details can appear in the report, so review an output before sharing it publicly.
 For raw fields supplied by each module, use `nostromo-fetch --format json`.
 
-Configuration: `home/.config/fastfetch/config.jsonc`, checked against fastfetch
+Configuration: `fastfetch/config.jsonc`, checked against fastfetch
 2.69.0's schema and parser. The wrapper accepts normal fastfetch overrides.
 See the [upstream configuration reference](https://github.com/fastfetch-cli/fastfetch/wiki/Configuration).

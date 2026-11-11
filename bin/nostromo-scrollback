@@ -1,0 +1,13 @@
+#!/bin/sh
+# Foot pipe-scrollback: dvtm's vis copy mode for a plain terminal, in a new
+# window. v selects, y or Enter copies to the Wayland clipboard, q cancels.
+set -eu
+umask 077
+history=$(mktemp "${TMPDIR:-/tmp}/nostromo-scrollback.XXXXXXXX")
+trap 'rm -f "$history"' 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
+cat >"$history"
+# The child shell expands the path, a positional parameter, never command text.
+# shellcheck disable=SC2016
+foot -e /bin/sh -c 'exec nostromo-copy-editor <"$1" >/dev/null' sh "$history"

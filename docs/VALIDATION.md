@@ -1,6 +1,6 @@
 # Validation and native acceptance
 
-Updated **2026-11-11**. Native attempts first stopped at `python312-dependencies`,
+Updated **2026-11-12**. Native attempts first stopped at `python312-dependencies`,
 the first package transaction. The first misread pkg's empty dependency rows. With
 that fixed, commit `faef848` reaches the transaction and passes pkg an option that
 pkg 2.8.4 does not have. Both have source fixes and regression coverage below,
@@ -22,11 +22,11 @@ stop, in the installed-stage font check. With both fixed (`e32612f`), `--check`
 stopped on two lock files that uv had created mode 0666 in the development
 environments. The installer now removes group/world write from the checkout
 instead of stopping, and no longer builds in an account name. The
-[native evidence](#native-evidence-from-the-t14) records each cause and fix. A
-native run of these fixes is pending. The KiCad PCB workflow has since been removed because PCB design
+[native evidence](#native-evidence-from-the-t14) records each cause and fix.
+Commit `17fb366` then completed every stage on the T14 in one run. The KiCad PCB workflow has since been removed because PCB design
 runs on a separate server: its packages, six native variants, ports patch, plugin,
-helper, guide and tests are gone. Host checks pass for the listed scopes. The full native
-FreeBSD package build/install, first login/reboot and hardware acceptance remain
+helper, guide and tests are gone. Host checks pass for the listed scopes. The
+first reboot into the desktop, login and hardware acceptance remain
 **incomplete**. The installer performs
 additional native stage/ABI/configuration checks before enabling SDDM; that is
 not a substitute for testing the actual session. No zero-error, all-board or
@@ -34,16 +34,47 @@ measured battery-performance claim is made.
 
 ## Audit fixes
 
+- The installer has exactly four modes: `--preview`, `--check`, `--clean` and
+  `--upgrade`. `--clean` is the clean full install that `--apply` used to offer
+  at a prompt; `--upgrade` is the ordinary run that applies a pulled checkout.
+  The separate `--wifi` mode and the Wi-Fi prompt are gone: both installing
+  modes keep a working connection, a default route and DNS for
+  `pkg.FreeBSD.org`, and otherwise go straight into the console Wi-Fi setup. A
+  stopped run names the command that continues it: `--upgrade`, or `--clean`
+  when a clean install stopped before its clean stage finished.
+- The checkout is laid out as dotfiles: a folder for each program (`dwl/`,
+  `foot/`, `vis/` and so on) with its configuration and, for a program built
+  here, its patches and upstream license; `bin/`, `fonts/`, `wallpapers/` and
+  `art/`; and `.install/` for the installer's scripts, tests, link manifest,
+  package policy and pins. Home destinations are unchanged. On the next
+  `--upgrade`, `link-home.sh` points each link at its new source and removes the
+  former `~/.local/share/nostromo/assets` link, now `wallpapers`. The ports
+  recipe digests the moved scripts' contents, so that run builds the 15 variants
+  once more. The published policy copies `.install`'s layout, so its own
+  `recipe-hash.sh` reproduces the recipe. A host test now requires a reader for
+  every file in a program folder. It found `gtklock/pam.patch`, which no build
+  had applied since v1.0: the installed `system/pam.d/gtklock` carries the same
+  `unix-selfauth` rule. That patch, unused orb XBM/XPM/text derivatives, a
+  duplicate orb PNG and dunst notice, and the OpenBSD project's OpenSSL notice
+  are removed; the ISC text is in [COPYING](../COPYING.md#isc-license).
+- A completed install still left logs: its own stage logs, the newest desktop
+  build log and the package helper's last receipt. The exit handler now removes
+  this run's logs, and `/var/log/nostromo` once it is empty, before the reboot
+  prompt; `final-cleanup` removes the desktop build logs and the receipt. A
+  stopped run keeps its logs for diagnosis. Installer tools also wrote to the
+  desktop account's home: Go's caches and usage counters, uv's cache and
+  rustup's settings. They now stay in `.build` or a stage workspace, and a host
+  test keeps every Go and rustup command there.
 - Tools can make paths group/world-writable whatever the umask: uv 0.12.19
   created both development environments' lock files mode 0666, and the next
-  `--check` stopped on them. `scripts/checkout-modes.sh` now finds such paths in
-  the checkout. `--check` lists them without changing anything; `--apply` removes
-  group/world write before installing, and `final-cleanup` does it again for
+  `--check` stopped on them. `.install/scripts/checkout-modes.sh` now finds such paths in
+  the checkout. `--check` lists them without changing anything; `--clean` and
+  `--upgrade` remove group/world write before installing, and `final-cleanup` does it again for
   whatever a stage left. Staged port trees keep their packages' modes, symlinks
   are not followed, a mode that cannot change stops the run, and a path owned by
   another account still stops it.
 - No account name is built in. `install.sh` used to default to the author's
-  account; `--check` and `--apply` now require the name, and docs and tests use
+  account; `--check`, `--clean` and `--upgrade` now require the name, and docs and tests use
   placeholders. The account check spells out its characters: in en_US.UTF-8,
   sh ranges follow collation, so `[a-z]` also accepted `A`, `é` and `ß`, though
   no punctuation.
@@ -61,13 +92,13 @@ measured battery-performance claim is made.
   host test runs it with fontconfig on the shipped fonts and without Azeret Mono.
 - fcitx5's file list named its X11 session script and XCB/XIM add-ons
   unconditionally, so the reviewed Wayland-only build stopped in `check-plist`
-  with five missing files. `src/ports/fcitx-x11.patch` marks them X11-only; the
+  with five missing files. `.install/ports/fcitx-x11.patch` marks them X11-only; the
   port substitutes `%%X11%%` because it sets `OPTIONS_SUB`.
 - A check of every later stage before rerunning found three more stops:
   - `system-configuration`: FreeBSD's awk ends a regular expression at any
     unescaped slash, even inside brackets, so the pattern that validates SSH
     `Include` paths was a syntax error. The slash is now escaped. A host test
-    parses all 124 awk programs in the installer, and another runs the SSH merge
+    parses every awk program in the installer and helpers, and another runs the SSH merge
     with relative, quoted and self includes and with unsafe paths.
   - `staged-validation`: FreeBSD's LLVM ports install each manual under a
     versioned name, `llvm-mc21(1)` for llvm21, so `nostromo-docs --check` could
@@ -85,13 +116,13 @@ measured battery-performance claim is made.
   unlocked, non-vital flavor with no consumers. Its unreviewed automatic
   dependencies that nothing uses any more are removed afterwards. pkgbase
   packages are now recognized by their origin, which has no category.
-- `--apply` offers a [clean install](INSTALL.md#clean-install) after the Wi-Fi
-  offer. It restores Git as git-lite once the curl variant is installed.
+- `--clean` performs a [clean install](INSTALL.md#clean-install). It restores
+  Git as git-lite once the curl variant is installed.
 - The checkout mode check scanned staged port trees. CUPS stages its spool and
   cache directories group-writable, as its package installs them, so the first
   `--check` after CUPS was built stopped. The check now skips
   `.build/ports-work/*/work/stage` and `work-*/stage` and lists each path it
-  finds, which `--apply` now repairs (first item). Port build directories and the rest of the checkout are still checked,
+  finds, which `--clean` and `--upgrade` now repair (see the uv lock files above). Port build directories and the rest of the checkout are still checked,
   and so is ownership of everything. A find failure now stops the check instead
   of passing it, and the account/write test, which never stopped on its first
   two conditions, now does.
@@ -109,7 +140,8 @@ measured battery-performance claim is made.
   the final check passes. Both cleanup stages also remove user-file backups and
   Wi-Fi backups; a Wi-Fi setup still holding its lock keeps its backup. The
   recovery directory and `policy.previous.*` copies from earlier installers are
-  removed too. The package helper keeps only its latest transaction receipt.
+  removed too. The package helper keeps only its latest transaction receipt,
+  and a completed install removes that one too (see the logs above).
 - After SDDM is enabled, a final check reruns the installed-stage verification
   and confirms the oksh login shell, SDDM at boot and all 15 variants installed,
   locked and built from the current recipe. With the result recorded and the
@@ -121,7 +153,7 @@ measured battery-performance claim is made.
   the unreviewed frei0r, whose header FFmpeg's default frei0r effects build
   against; py312-ecdsa would have stopped on the framework's wheel tools. frei0r,
   py312-build, py312-installer and py312-pyproject-hooks are now reviewed stock
-  packages. `tests/variant-deps.txt` records all 15 lists from the T14. Host
+  packages. `.install/tests/variant-deps.txt` records all 15 lists from the T14. Host
   tests check them against the reviewed list and, with the cached catalogue,
   check every package the installer's requests depend on.
 - Later dependency lists, the desktop list and updates name variants that
@@ -173,7 +205,7 @@ measured battery-performance claim is made.
   trees stop for review and are never reset.
 - Reruns after an update no longer leave removed links behind or stop on an
   earlier editor-plugin pin. The link stage records the links it applied and
-  removes one that leaves `links.txt` while it still points to the same checkout
+  removes one that leaves `.install/links.txt` while it still points to the same checkout
   file; a failed run restores it. A new vis-lspc or dkjson pin replaces an
   unedited staged copy, checked against its receipt. Edits stop the stage. dkjson
   now explains each stop, including a download that fails its checksum.
@@ -204,39 +236,41 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 
 | Check | Result and scope |
 | --- | --- |
-| `python3 tests/check.py` | 26 passed: links/assets/fonts, manifest coverage, every declared home destination, browser arguments/schema, CWD encoding, shell syntax, all 124 awk programs parsed by the host's one-true-awk, fixed LLVM paths naming an installed package, user-link preflight/rollback/idempotency, former-link removal/restoration/directory conversion/mid-run change, receipt-checked plugin pins and dkjson checksum stops |
-| `python3 tests/helpers.py` | 8 passed: display-mode/scale rollback and last-output protection, SSID bytes/managed blocks, USB CAM filtering, unsafe argument rejection and default fallback for a saved wallpaper whose exports were removed |
-| `python3 tests/package-policy.py` | 27 passed: reported empty-list failure and actual resolver/query handling, kmods selection/catalogue, failure/signal cleanup, a lock reclaimed only after its boot with stale workspaces removed, only the latest transaction receipt kept, graph/identity/ABI/receipt validation including only the FreeBSD 15 `*` ABI, exact GNU roles/versions, stock conversion/cleanup, only an unreviewed, unused flavor of an audited origin replaceable, pkgbase separation, protected removal, transaction-guard dispatch, separate pkg self-upgrade, named origin/ABI mismatches, pending versions, preserved automatic/build-protection flags, stale ports-tree replacement that stops on changed, added or missing files, all seven ports patches on the cached pinned archive with search paths kept where Readline is dropped, listed advisories reported without stopping a variant build, the 15 dependency lists recorded on the T14 naming only reviewed packages and earlier variants, and the cached catalogue's dependencies of every installer request reviewed with matching origins and pinned versions |
-| `PKG=… python3 tests/pkg-integration.py` | 12 passed against pkg 2.8.4 built from source on this host, with disposable signed repositories: stock Git's flavor replaced by git-lite within one reviewed plan with its unused dependencies removed, the clean install keeping pkg, base, vital and firmware packages with their dependencies, the native locked-variant stop reproduced, then install/preview/update requests that keep a locked variant while stock packages and an unlocked variant still change and reinstall unlocks its own, `--no-remove` rejected as unrecognized, the five reported leaf dependencies installed twice, preview/reinstall/upgrade, existing automatic dependencies, a file conflict denied a second approval, real removal plans rejected, a `FreeBSD:15:*` archive audited and installed, an older dependency pkg keeps, and pkg's restart failing under one approval but passing as its own transaction |
-| `python3 tests/provisioning.py` | 20 passed: the library receipt check on the T14's names, including unversioned ones, and on malformed or empty receipts, the installed font check on fontconfig's family list for the variable Azeret Mono, final cleanup removing loose checkout modes and stopping when it cannot, selective settings/SDDM/SSH/PF merges, the SSH `Include` walk over relative, quoted and self includes with unsafe paths refused, the clean-install offer removing earlier packages, package state and build output, a Python requirements check that sees system packages, helper/font/login/loader destinations, ambiguous input rejection, idempotency, rollback preserving later edits, legacy/current/interrupted log pruning that keeps no backup, signal cleanup, lock release, a lock reclaimed only after its boot, stale workspaces/locks, recovery archives, policy copies and Wi-Fi backups removed unless a setup holds its lock, this run's backups removed only after the final check, build leftovers cleaned only from an earlier boot with user-file backups removed, the final login/SDDM/variant check, the reboot prompt after the lock is released, and policy reuse/recovery |
-| `python3 tests/network-menus.py` | 9 passed: actual fuzzel managers, byte-safe SSIDs, masked secrets, cancellation, scan recovery, phone/open/OWE hotspots, unprivileged portal dispatch, Bluetooth initialization/pairing, persistent WireGuard selection and status without authentication |
-| `python3 tests/bootstrap.py` | 8 passed: actual console/helper transactions with simulated native commands; missing WPA profile, hidden input, failed-auth rollback, DNS-failure retention, later rc overrides, open/OWE profiles, unsupported security rejection, unsafe paths and supported Intel Bluetooth initialization |
-| `python3 tests/security.py` | 8 passed: mdo migration, terminal/GUI authenticated command transport, failure/cancellation, all-socket lock checks, suspend cancellation/deadline, installed mergers/SSID decoder and native event dispatch/resume debounce |
-| `python3 tests/embedded.py` | 3 passed: scoped Rust dispatch, Zephyr architecture/word-size/float-ABI guards, real ARM compiler-rt bare-metal ELF link |
-| `python3 tests/offline-docs.py` | 9 passed: literal/invalid topics, Go offline environment, pager cleanup, Python text lookup, encoded local language-book URLs, the LLVM ports' versioned manual name, `--check` requiring every local reference, examples, cancellation and separate-window dispatch |
-| `python3 tests/release.py` | 9 passed: complete home dotfiles in exports, private/generated file exclusions even when tracked, credential-pattern rejection without disclosure, file modes, symlink parents, installer host guards that require a named, exactly validated account, the read-only preflight stop point, the ownership preflight, and checkout modes listed by check and removed by apply outside staged port trees, without following links and stopping on a mode that cannot change |
-| `python3 tests/terminal-idle.py` | 4 passed: clock cleanup/static mode, actual PTY viewer scrolling/resizing/control filtering/signal restoration, bounded vis pages with pending-key/edit guards, and unchanged plain/JSON fetch dispatch |
-| `python3 tests/reference-examples.py` | C syntax, C++/Rust compilation and execution, Go example test, Python/shell/Lua syntax, x86-64/Thumb/AArch64 assembly passed with host tools; this host Clang lacks MIPS, and Zephyr requires a real board build |
-| Offline package contents | Checked quarterly stdman archive renders its C++ examples through mandoc; Python pathlib text retains example blocks; the four added documentation packages have no dependencies |
-| POSIX shfmt + ShellCheck | 99 operational/build/source scripts and the two shell configuration files they source are clean at style severity; interactive oksh checked separately with ksh mode and `/bin/ksh -n` |
+| `python3 .install/tests/check.py` | 33 passed: link sources and fonts, a reader for every file in a program folder, every declared home destination, every user guide, the Secret Knowledge chapters, the electronics guide and the offline library linked where the docs reader finds them, browser arguments/schema, CWD encoding, shell syntax, all 140 awk programs parsed by the host's one-true-awk, fixed LLVM paths naming an installed package, every installer Go, uv and rustup command keeping its state out of the home, user-link preflight/rollback/idempotency, former-link removal/restoration/directory conversion/mid-run change, receipt-checked plugin pins and dkjson checksum stops, and keyboard reach: unique dwl chords with tag/console macros expanded, a key for every menu, bar, notification-click and mouse action, foot bindings that collide with neither each other nor foot 1.28's defaults, and a reference row for every menu action |
+| `python3 .install/tests/helpers.py` | 14 passed: display-mode/scale rollback and last-output protection, SSID bytes/managed blocks, USB CAM filtering, unsafe argument rejection, default fallback for a saved wallpaper whose exports were removed, image bytes/types and PDF page text reaching the clipboard without MuPDF's form feeds, refused non-images, bad pages and empty text layers, the scrollback copy mode leaving no file, and running multiplexer sessions listed first so Enter reattaches |
+| `python3 .install/tests/package-policy.py` | 30 passed: reported empty-list failure and actual resolver/query handling, kmods selection/catalogue, failure/signal cleanup, a lock reclaimed only after its boot with stale workspaces removed, only the latest transaction receipt kept, each archive downloaded once per run and checked against the catalogue with libpkg's checksum encoding, kept downloads used only during an install run, graph/identity/ABI/receipt validation including only the FreeBSD 15 `*` ABI, exact GNU roles/versions, stock conversion/cleanup, only an unreviewed, unused flavor of an audited origin replaceable, pkgbase separation, protected removal, transaction-guard dispatch, separate pkg self-upgrade, named origin/ABI mismatches, pending versions, preserved automatic/build-protection flags, stale ports-tree replacement that stops on changed, added or missing files, all seven ports patches on the cached pinned archive with search paths kept where Readline is dropped, listed advisories reported without stopping a variant build, the 15 dependency lists recorded on the T14 naming only reviewed packages and earlier variants, and the cached catalogue's dependencies of every installer request reviewed with matching origins and pinned versions |
+| `PKG=… python3 .install/tests/pkg-integration.py` | 12 passed against pkg 2.8.4 built from source on this host, with disposable signed repositories: stock Git's flavor replaced by git-lite within one reviewed plan with its unused dependencies removed, the clean install keeping pkg, base, vital and firmware packages with their dependencies, the native locked-variant stop reproduced, then install/preview/update requests that keep a locked variant while stock packages and an unlocked variant still change and reinstall unlocks its own, `--no-remove` rejected as unrecognized, the five reported leaf dependencies installed twice, preview/reinstall/upgrade, existing automatic dependencies, a file conflict denied a second approval, real removal plans rejected, a `FreeBSD:15:*` archive audited and installed, an older dependency pkg keeps, and pkg's restart failing under one approval but passing as its own transaction |
+| `python3 .install/tests/provisioning.py` | 20 passed: the library receipt check on the T14's names, including unversioned ones, and on malformed or empty receipts, the installed font check on fontconfig's family list for the variable Azeret Mono, final cleanup removing loose checkout modes and stopping when it cannot, selective settings/SDDM/SSH/PF merges, the SSH `Include` walk over relative, quoted and self includes with unsafe paths refused, `--clean` removing earlier packages, package state and build output while `--upgrade` keeps them, a stopped run naming the mode that continues it, a Python requirements check that sees system packages, helper/font/login/loader destinations, ambiguous input rejection, idempotency, rollback preserving later edits, legacy/current/interrupted log pruning that keeps no backup, signal cleanup, lock release, a lock reclaimed only after its boot, stale workspaces/locks, recovery archives, policy copies and Wi-Fi backups removed unless a setup holds its lock, this run's backups removed only after the final check, a completed run removing its own logs, every desktop build log and the package receipt before the reboot prompt while a stopped run keeps its logs, build leftovers cleaned only from an earlier boot with user-file backups removed and symlinked log directories left alone, the final login/SDDM/variant check, the reboot prompt after the lock is released, and policy reuse/recovery |
+| `python3 .install/tests/network-menus.py` | 9 passed: actual fuzzel managers, byte-safe SSIDs, masked secrets, cancellation, scan recovery, phone/open/OWE hotspots, unprivileged portal dispatch, Bluetooth initialization/pairing, persistent WireGuard selection and status without authentication |
+| `python3 .install/tests/bootstrap.py` | 8 passed: actual console/helper transactions with simulated native commands; missing WPA profile, hidden input, failed-auth rollback, DNS-failure retention, later rc overrides, open/OWE profiles, unsupported security rejection, a working connection kept without a question and the setup started when the route or package-host DNS is missing, unsafe paths and supported Intel Bluetooth initialization |
+| `python3 .install/tests/security.py` | 8 passed: mdo migration, terminal/GUI authenticated command transport, failure/cancellation, all-socket lock checks, suspend cancellation/deadline, installed mergers/SSID decoder and native event dispatch/resume debounce |
+| `python3 .install/tests/embedded.py` | 3 passed: scoped Rust dispatch, Zephyr architecture/word-size/float-ABI guards, real ARM compiler-rt bare-metal ELF link |
+| `python3 .install/tests/offline-docs.py` | 30 passed: literal/invalid topics, Go offline environment, pager cleanup, Python text lookup, encoded local language-book URLs, the LLVM ports' versioned manual name, `--check` requiring every local reference, library document, example and the electronics guide, examples shown without running them, Markdown shown without its markup and MkDocs notes and content tabs as text rather than code, cancellation and separate-window dispatch, library documents in the reader that suits them, chapters titled in their books' reading order, the Go language documents, command help and Go by Example programs, Secret Knowledge chapters, electronics chapters offered by title and opened in their own window, saved manuals, CMake pages through man, every pinned reference in the version list, an action for every menu entry, the library downloader keeping each checked document once, following its pins and leaving the library as it was after an unsafe tree or bad download, extracting only the named directory of a larger archive and refusing one that leaves its archive, links outside itself, holds special files or is missing, and the electronics guide matching its source, running no scripts and loading nothing, every link and anchor landing, every figure titled and drawn inside its frame at every animation keyframe, and the formula sheet linking every named equation |
+| `python3 .install/tests/release.py` | 9 passed: complete home dotfiles in exports, private/generated file exclusions even when tracked, credential-pattern rejection without disclosure, file modes, symlink parents, only the four installer modes, installer host guards that require a named, exactly validated account, the read-only preflight stop point, the ownership preflight, and checkout modes listed by check and removed by apply outside staged port trees, without following links and stopping on a mode that cannot change |
+| `python3 .install/tests/terminal-idle.py` | 4 passed: clock cleanup/static mode, actual PTY viewer scrolling/resizing/control filtering/signal restoration, bounded vis pages with pending-key/edit guards, and unchanged plain/JSON fetch dispatch |
+| `python3 .install/tests/reference-examples.py` | C syntax, C++/Rust compilation and execution, Go example test, Python/shell/Lua syntax, x86-64/Thumb/AArch64 assembly passed with host tools; this host Clang lacks MIPS, and Zephyr requires a real board build |
+| Offline package contents | Checked quarterly stdman archive renders its C++ examples through mandoc; Python pathlib text retains example blocks; the five added documentation packages have no dependencies |
+| POSIX shfmt + ShellCheck | 102 operational/build/source scripts and the two shell configuration files they source are clean at style severity; interactive oksh checked separately with ksh mode and `/bin/ksh -n` |
 | Fastfetch | Exact 2.69.0 parser accepts the detailed configuration; plain-output CLI flags checked with the host build. This does not verify FreeBSD sensor detection |
-| Ports recipes | `tests/package-policy.py` applies all seven ports patches to the checksum-verified pinned archive with zero fuzz. All 15 variants have built, installed and locked natively with recipe `fbdbc508…`; see [native evidence](#native-evidence-from-the-t14) |
+| Ports recipes | `.install/tests/package-policy.py` applies all seven ports patches to the checksum-verified pinned archive with zero fuzz. All 15 variants have built, installed and locked natively with recipe `fbdbc508…`; see [native evidence](#native-evidence-from-the-t14) |
 | Reference sources | cppreference snapshot matches its pinned hash; extraction confines files to its declared directory |
-| `lua tests/viewer-title.lua` | Shipped Swayimg config exercises viewer/slideshow/gallery title updates, empty images and duplicate-redraw suppression with a small host API stand-in |
+| Electronics library | The 40 records added for circuits, robotics and boards match their reviewed downloads, and every new catalogue entry resolves. The real `docs-library.sh` and `fetch-source.sh` installed the Tildagon archive and Logisim's guide, taken alone from its jar, with no link or special file and no archive left |
+| Electronics guide | `build.py --check` passes; every page was rendered with Qt WebEngine on the Mac, with its figures at several animation times, and checked for overlapping labels. Viewing on the T14 is pending |
+| `lua .install/tests/viewer-title.lua` | Shipped Swayimg config exercises viewer/slideshow/gallery title updates, empty images and duplicate-redraw suppression with a small host API stand-in; its `y` key passes a path with quotes and command syntax through the real `/bin/sh` unchanged |
 | Lua parsing | Eight editor/loader/image-viewer files parsed; native clients are not installed on this host |
-| `tests/rail-geometry.c` | Actual right/left/bottom painters checked at 1x/2x/4x: unchanged 80% recess, square outer corners, modest depth, centered directory/title pixels, title sanitization, responsive panel dimensions, 90% panel alpha, solid rails and no doubled foot alpha |
-| `python3 tests/scene-input.py` | Patched dwl hit-test function exercised with client, decorative rail and empty nodes; rails neither dereference a missing surface nor pass input to a window below |
-| `tests/space-dots.c` | Shared native effect stays monochrome, animated frames change, static/off stay stable, saved modes are honored and splash finishes transparent |
-| `tests/freebsd-compile.py` | Eleven component groups pass against FreeBSD 15.1 amd64 headers, including the new terminal viewer; details below |
-| `tests/pam-auth.c` | Mock PAM conversation, multiple prompts, malformed requests, failed passwords, expired accounts and cleanup errors pass |
-| `tests/password-store.py` | Real disposable OpenPGP round trips/interoperability, recipient/path protections, tamper rejection, wrong credentials, copy/move/edit failure and mocked clipboard expiry pass |
+| `.install/tests/rail-geometry.c` | Actual right/left/bottom painters checked at 1x/2x/4x: unchanged 80% recess, square outer corners, modest depth, centered directory/title pixels, title sanitization, responsive panel dimensions, 90% panel alpha, solid rails and no doubled foot alpha |
+| `python3 .install/tests/scene-input.py` | Patched dwl hit-test function exercised with client, decorative rail and empty nodes; rails neither dereference a missing surface nor pass input to a window below |
+| `.install/tests/space-dots.c` | Shared native effect stays monochrome, animated frames change, static/off stay stable, saved modes are honored and splash finishes transparent |
+| `.install/tests/freebsd-compile.py` | Eleven component groups pass against FreeBSD 15.1 amd64 headers, including the new terminal viewer; details below |
+| `.install/tests/pam-auth.c` | Mock PAM conversation, multiple prompts, malformed requests, failed passwords, expired accounts and cleanup errors pass |
+| `.install/tests/password-store.py` | Real disposable OpenPGP round trips/interoperability, recipient/path protections, tamper rejection, wrong credentials, copy/move/edit failure and mocked clipboard expiry pass |
 | Rust source builds | Pinned tpass/tcli/tclig and patched rustup built on the host; rustup warning fix verified with a locked offline rebuild |
-| GLSL | `src/dwl/crt.frag` passes glslangValidator fragment validation; no native GPU execution |
+| GLSL | `dwl/crt.frag` passes glslangValidator fragment validation; no native GPU execution |
 | QML login | Actual theme rendered at 1080p/1440p/4K/8K plus 90-frame motion GIF; keyboard focus, masked input, dispatch, failed-login recovery and static/off pass without theme warnings |
-| HTML/start page | Actual QtWebEngine local page/font render and placeholder behavior checked; not a qutebrowser process |
+| HTML/start page | Actual QtWebEngine render where the home links the page: fonts, the orb beside it and placeholder behavior checked; not a qutebrowser process |
 | Current artwork | Runtime logos/textures use PNG; native shared painters, idle bounce, QML login and browser page checked after conversion. Animated defaults and static/off overrides pass. Simulations are archived outside the source tree; regenerated previews stay in `.build/previews/` |
 
-The eleven Python suites total **131 passing cases**. Two package-policy cases
+The eleven Python suites total **159 passing cases**. Two package-policy cases
 read caches and skip without them: the checksum-verified ports archive and the
 quarterly catalogue. The installed font check skips without fontconfig. They use real local code and
 small disposable command stand-ins where native devices/package managers are
@@ -266,12 +300,12 @@ The source archive was extracted into a new temporary directory without `.git`,
 copy byte for byte; archive ownership, permissions, metadata exclusions and
 SHA256 were checked. Source-manifest validation and the installer preview passed.
 The nine suites that need no prebuilt cache passed from that extraction:
-**101 cases**, including the export and terminal-idle regressions. They require
+**126 cases**, including the export and terminal-idle regressions. They require
 host Python, Lua, a C compiler and, for the font check, fontconfig. The embedded suite retains
 its separate compiler-rt/cache requirements.
 
 The public entry point is `install.sh`; user linking and desktop builds live
-under `scripts/`. A regression test checks that permission inspection cannot
+under `.install/scripts/`. A regression test checks that permission inspection cannot
 overwrite the selected `--check` mode and continue into installation. The full
 native preflight still requires FreeBSD and its real account/filesystem state.
 
@@ -284,7 +318,7 @@ remain included. No Git commit or push was performed.
 
 ## FreeBSD API and embedded evidence
 
-`tests/freebsd-compile.py` applies pinned patches with zero fuzz and checks
+`.install/tests/freebsd-compile.py` applies pinned patches with zero fuzz and checks
 x86_64-unknown-freebsd15.1 using the official base archive and 46 checksum-checked
 header packages. It covers dwl/control/secret-copy, dwlb, gtklock, dvtm, nnn,
 Dunst Wayland, fuzzel, session event/splash helpers, the terminal idle viewer,
@@ -295,7 +329,7 @@ FreeBSD linking, execution, PAM authentication or GPU testing.
 
 Base archive SHA256:
 `3768988b151c20f965679062b065c63a977d6bbb9f47fd83695ec2c40790c18f`.
-Header versions/checksums are in `tests/freebsd-headers.json`. The cached quarterly
+Header versions/checksums are in `.install/tests/freebsd-headers.json`. The cached quarterly
 catalog is research evidence, not a completed native dependency certificate.
 The installer re-resolves and audits actual signed archives independently.
 
@@ -310,20 +344,20 @@ builds and exact board/probe acceptance.
 ## Reproduce the relevant checks
 
 ```sh
-python3 tests/check.py
-python3 tests/helpers.py
-python3 tests/package-policy.py
-PKG=/path/to/pkg-2.8.4/src/pkg python3 tests/pkg-integration.py
-python3 tests/provisioning.py
-python3 tests/network-menus.py
-python3 tests/bootstrap.py
-python3 tests/security.py
-python3 tests/embedded.py
-python3 tests/offline-docs.py
-python3 tests/release.py
-python3 tests/terminal-idle.py
-python3 tests/reference-examples.py
-sh scripts/verify-stage.sh --sources
+python3 .install/tests/check.py
+python3 .install/tests/helpers.py
+python3 .install/tests/package-policy.py
+PKG=/path/to/pkg-2.8.4/src/pkg python3 .install/tests/pkg-integration.py
+python3 .install/tests/provisioning.py
+python3 .install/tests/network-menus.py
+python3 .install/tests/bootstrap.py
+python3 .install/tests/security.py
+python3 .install/tests/embedded.py
+python3 .install/tests/offline-docs.py
+python3 .install/tests/release.py
+python3 .install/tests/terminal-idle.py
+python3 .install/tests/reference-examples.py
+sh .install/scripts/verify-stage.sh --sources
 sh install.sh --preview
 ```
 
@@ -334,9 +368,9 @@ host-built tpass and tcli. Previews are development output under `.build/preview
 they are not included in source exports. Generate them with:
 
 ```sh
-.build/qt-preview/bin/python tests/qml-preview.py
-.build/qt-preview/bin/python tests/browser-preview.py
-python3 tests/render-current.py
+.build/qt-preview/bin/python .install/tests/qml-preview.py
+.build/qt-preview/bin/python .install/tests/browser-preview.py
+python3 .install/tests/render-current.py
 ```
 
 The renderer needs Cairo/Pango/Fontconfig, Lua, Lowdown and ffmpeg, plus the
@@ -344,13 +378,13 @@ prepared sources from the cross-compile check. Set `LOWDOWN` to its executable
 if it is not on PATH. QML/HTML checks need PySide6 and QtWebEngine. These are host
 test dependencies. SVG originals and earlier simulated captures are archived
 outside the repository; no native laptop screenshots have been produced.
-Run `python3 tests/scene-input.py` after the cross-compile step has prepared the
+Run `python3 .install/tests/scene-input.py` after the cross-compile step has prepared the
 patched dwl source. Painter tests need their pkg-config libraries; the space_dots
-test also needs `-Isrc/session`. `mandoc -Tlint -Wwarning docs/man/nostromo-docs.1`
+test also needs `-Isession`. `mandoc -Tlint -Wwarning docs/man/nostromo-docs.1`
 passes for the new manual. Upstream research snapshots are excluded from the
 operational ShellCheck pass: they depend on FreeBSD rc libraries absent on macOS.
 
-On FreeBSD, `scripts/verify-stage.sh` additionally requires native ELF programs,
+On FreeBSD, `.install/scripts/verify-stage.sh` additionally requires native ELF programs,
 resolved shared libraries, all tools, foot/fuzzel config validation, actual oksh,
 Python imports, pinned editor plugins and `nostromo-docs --check`. The installed pass checks links, mdo,
 wheel/video/dialer membership and the installed font families. Those checks are inside the
@@ -404,7 +438,7 @@ desktop user found:
   list, gperf and the detected firmware. With the four additions every audit
   passes, including the eight built variants' recorded dependency versions.
 - For every variant the framework reports the package name and version in
-  `packages.local`, an accepted license, a valid option set and no ignore,
+  `.install/packages.local`, an accepted license, a valid option set and no ignore,
   broken or forbidden mark. The fetched catalogue satisfies all 49 versioned
   dependency requirements in the 15 lists.
 
@@ -494,7 +528,7 @@ exit 1 and no message. Read-only checks as the desktop user found:
 - The stage stopped before changing group memberships, mac_do or PF. Its
   rollback removed the helpers, rc.d scripts and awk files it had installed and
   the nostromo_power group it had created; mac_do is not loaded.
-- Every link in `links.txt` points into the checkout, and `nostromo-dev health`
+- Every link in `.install/links.txt` points into the checkout, and `nostromo-dev health`
   passes.
 - Fontconfig 2.17.1 resolves both shipped families. Every instance of the
   variable Azeret Mono reports `Azeret Mono,Azeret Mono Thin`, which the old
@@ -516,11 +550,41 @@ mode 0666 and dated 01:32:17 on 2026-11-11, during that run's
 `development-tools` stage; the T14 has uv 0.12.19. Nothing else in the checkout
 is group/world-writable outside the staged port trees. A manual `rm -rf` had left
 both in place; the message's paths are relative to the checkout. The new mode
-script ran on the T14 against a disposable checkout under `/tmp`. `--check`
-listed the loose paths and changed nothing. `--apply` set them to 0644, kept a
+script ran on the T14 against a disposable checkout under `/tmp`. Its `--check`
+listed the loose paths and changed nothing; its `--apply` set them to 0644, kept a
 staged 1770 directory and left a 0666 file outside the checkout untouched
 through a symlink. `/tmp` there does not support file flags, so the stop on an
 unchangeable mode was tested on the host.
+
+Commit `17fb366` then completed every stage on the T14 in one run, through
+`final-check` and `final-cleanup`, and offered the reboot. Read-only checks
+afterwards found what a completed run still left:
+
+- its root stage logs in `/var/log/nostromo`, one desktop build log in
+  `.build/logs` and the package helper's last transaction receipt. A completed
+  run now removes all three before the reboot prompt; a stopped run keeps its
+  logs.
+- tool state in the desktop account's home from the `development-tools`,
+  `desktop-build` and validation stages: Go's module cache (`~/go`, 1.8 MiB) and
+  build cache (`~/.cache/go-build`, 57 MiB), uv's download cache, Go's usage
+  counters in `~/.config/go/telemetry` and a rustup settings file in
+  `~/.rustup`. These now stay in `.build` or the stage's temporary workspace,
+  which the clean install removes. The installer leaves the old copies, which it
+  cannot tell from the user's own; [INSTALL](INSTALL.md#upgrade-after-a-pull)
+  gives the command that removes them.
+
+Before the electronics library first ran natively, `docs-library.sh` ran on the
+T14 as the desktop user in a disposable `/tmp` checkout, with the base system's
+fetch, sha256 and bsdtar 3.8.7. The MIT, Lessons in Electric Circuits and
+Logisim records installed; the Logisim guide came out of its jar with 353 files
+and no links or special files. The Caltech books then stopped it:
+`www.cds.caltech.edu` sends a chain without InCommon RSA Server CA 2, and
+fetch(1) does not download a missing intermediate as browsers do. With that one
+certificate from `.install/intermediates.crt` and the base roots in `/etc/ssl/certs` the
+script finished in 21 seconds: both Caltech books, the two records it had not
+reached and an archive through `fetch-source.sh` matched their pins. Every one
+of the 58 library URLs answered under those settings; with the intermediate
+alone, and no base roots, verification failed.
 
 ## Laptop acceptance after reinstall
 
@@ -552,6 +616,6 @@ unchangeable mode was tested on the host.
     view, including static/off, resizing, keyboard navigation, closing and sensor
     availability. Host Lua tests use an API stand-in, not a running native editor.
 
-The installer has not yet completed on the laptop, none of these acceptance
-checks has run, and no zero-error guarantee is made for a machine that has not
-booted this environment.
+The installer has completed on the laptop, but it has not yet booted this
+environment. None of these acceptance checks has run, and no zero-error
+guarantee is made for a machine that has not booted it.

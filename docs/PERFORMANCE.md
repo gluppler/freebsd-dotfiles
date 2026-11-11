@@ -54,7 +54,7 @@ A whole-output CRT pass can prevent direct scanout and increase redraw/power.
 Measure the tradeoff. The space_dots reference has a nominal 96-sample bloom,
 time-dependent full-screen effects and fixed dimensions; it cannot be dropped
 unchanged into a battery-conscious dwl renderer. See [DESIGN.md](DESIGN.md).
-Animated/static/off modes are implemented in `src/dwl/crt.h`. Animated mode
+Animated/static/off modes are implemented in `dwl/crt.h`. Animated mode
 requests up to 12 effect refreshes/second; static/off disarm that timer. The short
 map fade shares this timer and finishes when effects become static/off. Cap effect refresh independently from input/render latency
 when that is possible without visual damage. The 90% panel opacity remains in

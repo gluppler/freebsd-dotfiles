@@ -3,7 +3,7 @@
 Updated **2026-11-04**. Primary project documentation/FreeBSD ports were used for
 the migration decisions. URLs following main/latest may change; locally saved
 research files are evidence snapshots, not an install lock or approval of their
-whole dependency closure. Exact source/ports pins are in `sources.lock` and `ports.lock`; runtime package
+whole dependency closure. Exact source/ports pins are in `.install/sources.lock` and `.install/ports.lock`; runtime package
 transactions independently verify signatures, policy and native ABI.
 
 ## Platform and hardware
@@ -40,10 +40,11 @@ transactions independently verify signatures, policy and native ABI.
 
 ## Artwork/effects
 
-The retained asset licenses are under assets/licenses and assets/fonts.
-The original [Omarchy shader reference](https://github.com/abaidan/omarchy-weyland-yutani-theme/blob/c88479a05e208acca0725a640ffb280e8ce26a7a/crt.glsl)
-and user-supplied [Cyberpunk](https://www.cyberpunk.net/en) styling reference
-remain design context, not runtime dependencies.
+The orb's FreeBSD glyph comes from Font Logos (Nerd Fonts 3.0.2, U+F30C); its
+public-domain notice and the FreeBSD trademark statement are in
+`art/licenses/font-logos.txt`. The fonts keep their OFL licenses in `fonts/`.
+The user-supplied [Cyberpunk](https://www.cyberpunk.net/en) styling reference
+is design context, not a runtime dependency.
 
 New reference: [space_dots](https://github.com/vdawg-git/space_dots), local revision
 `c7775088bdb07824aeaaf41f25308c71b1f98996`. Inspected `.other/orig.frag`,
@@ -52,7 +53,7 @@ or view its linked video. Copied shader SHA256:
 `f5b7d8fbd29f5a697b99ee5a6522578d80688a97628b9b6f9817edbeb6c4ef17`.
 The file's MIT header identifies Maxim Samoliuk (2023) and is retained.
 
-The new directory's assets/configuration are adapted from the current local
+The new directory's artwork and configuration are adapted from the current local
 OpenBSD project for visuals and portable tools. The archived FreeBSD installer
 and manual setup guides are the explicitly requested installation starting point;
 their obsolete application stages have been replaced by the current native pipeline.
@@ -86,9 +87,54 @@ the retained PNG artwork keeps the same attribution and usage terms.
   and [Go toolchain selection](https://go.dev/doc/toolchain): local references and
   disabled documentation-time downloads.
 - The checked quarterly documentation archives were stdman 2024.07.05,
-  python-doc-text/python-doc-html 3.12.15 and en-freebsd-doc 20260814,1. Their
-  manifests had no package dependencies. Checksums were verified against the
-  cached catalog; the native installer repeats signed archive/graph checks.
+  python-doc-text/python-doc-html 3.12.15, en-freebsd-doc 20260814,1 and
+  cmake-man 3.31.12. Their manifests had no package dependencies. Checksums were
+  verified against the cached catalog; the native installer repeats signed
+  archive/graph checks.
+- Offline library, reviewed 2026-11-11 and pinned by SHA256 in `.install/sources.lock`:
+  [C23 draft N3220](https://www.open-std.org/jtc1/sc22/wg14/www/docs/n3220.pdf),
+  [C++23 draft N4950](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2023/n4950.pdf),
+  [POSIX.1-2024](https://pubs.opengroup.org/onlinepubs/9799919799/),
+  [Arm ABI 2026Q3](https://github.com/ARM-software/abi-aa/releases/tag/2026Q3),
+  [C++ Core Guidelines](https://github.com/isocpp/CppCoreGuidelines),
+  [Go by Example](https://github.com/mmcgrana/gobyexample),
+  [Google style guides](https://github.com/google/styleguide),
+  [System Design Primer](https://github.com/donnemartin/system-design-primer),
+  [Awesome Scalability](https://github.com/binhnguyennus/awesome-scalability),
+  [HTTP/2 explained](https://github.com/bagder/http2-explained),
+  [HTTP/3 explained](https://github.com/bagder/http3-explained),
+  [What happens when](https://github.com/alex/what-happens-when),
+  [Let's Build a Simple Database](https://github.com/cstack/db_tutorial),
+  [Kubernetes the Hard Way](https://github.com/kelseyhightower/kubernetes-the-hard-way),
+  [The Art of Command Line](https://github.com/jlevy/the-art-of-command-line) and
+  [pure sh bible](https://github.com/dylanaraps/pure-sh-bible). Each archive
+  passed the fetcher's member rule and the library's link and special-file rule,
+  and every catalogue entry and Go by Example program resolved, on the Mac.
+- Electronics library, reviewed 2026-11-11 and pinned the same way:
+  [MIT 6.002 lecture notes](https://ocw.mit.edu/courses/6-002-circuits-and-electronics-spring-2007/pages/lecture-notes/),
+  [Lessons in Electric Circuits](https://www.ibiblio.org/kuphaldt/electricCircuits/),
+  the guide inside [Logisim 2.7.1](https://cburch.com/logisim/index.html)'s jar,
+  [Feedback Systems](https://www.cds.caltech.edu/~murray/books/AM08/pdf/fbs-public_24Jul2020.pdf),
+  [A Mathematical Introduction to Robotic Manipulation](https://www.cds.caltech.edu/~murray/books/MLS/pdf/mls94-complete.pdf),
+  [Introduction to Autonomous Robots 3.0](https://github.com/Introduction-to-Autonomous-Robots/Introduction-to-Autonomous-Robots/releases/tag/v3.0),
+  [Planning Algorithms](https://lavalle.pl/planning/),
+  [PCB Design Tutorial](https://www.alternatezone.com/electronics/files/PCBDesignTutorialRevA.pdf),
+  the [Tildagon documentation](https://github.com/emfcamp/badge-2024-documentation) at `da28c27669cc`,
+  the [2025 Communicator badge](https://github.com/Hack-a-Day/2025-Communicator_Badge) at `6e923e9074f1`
+  and the [Vectorscope badge](https://github.com/Hack-a-Day/Vectorscope) at `ea5fab24017a`.
+  The electronics guide's SAO pinout follows the Communicator schematic's
+  `Simple_Addon_v2` connector; its hexpansion shape, pins, power, EEPROM header
+  and rules follow the Tildagon hexpansion documentation, and its header code
+  reproduces that documentation's example bytes. The Art of Electronics was not
+  added: it is in print, and the archive.org copy offered is a user upload.
+  `www.cds.caltech.edu` leaves its intermediate certificate out of its TLS chain,
+  which browsers complete and FreeBSD's fetch(1) does not. `.install/intermediates.crt`
+  holds that certificate, InCommon RSA Server CA 2, from the leaf's CA Issuers
+  URL; it was checked against the USERTrust root before it was committed.
+  `docs-library.sh` adds it to the base system's roots, so chains still end there.
+- [The Book of Secret Knowledge](https://github.com/trimstray/the-book-of-secret-knowledge)
+  at commit `7d37069a361d`: `.install/scripts/import-secret-knowledge.py` regenerates the
+  committed chapters from a local clone, and every link was compared with the source.
 - [Intel graphics](https://docs.freebsd.org/en/books/handbook/x11/#x-graphic-card-drivers)
   and [Wayland setup](https://docs.freebsd.org/en/books/handbook/wayland/):
   i915kms, firmware discovery, seatd and video-group access for the confirmed Iris Xe GPU.

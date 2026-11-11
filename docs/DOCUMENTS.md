@@ -8,5 +8,6 @@ FreeBSD vis/Lowdown combination still needs validation.
 
 PDF reading remains **Zathura + MuPDF**, using its GTK Wayland backend and the
 copied monochrome configuration. Preserve search, page movement, links, fit to
-width/window and optional recoloring. It must launch through the local file/MIME
+width/window and optional recoloring. `y` copies the current page's text layer to
+the clipboard through MuPDF's `mutool`. It must launch through the local file/MIME
 workflow without starting an X server. See [DEVELOPMENT](DEVELOPMENT.md).

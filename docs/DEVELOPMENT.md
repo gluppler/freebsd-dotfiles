@@ -49,7 +49,7 @@ same dispatch helpers for build, formatting and LSP processes.
 
 ## Offline references
 
-**DOCS** in the desktop menu or **Space od** in vis opens installed manuals,
+**Super+D**, **DOCS** in the desktop menu or **Space od** in vis opens installed manuals,
 language references and Markdown example templates alongside the editor.
 **Ctrl+B d** opens the reference picker in a dvtm pane. C/C++ manuals, Rust books
 and API docs, Go documentation/example sources, Python library manuals, LLVM and

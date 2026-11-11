@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+config=${XDG_CONFIG_HOME:-$HOME/.config}/nostromo
+# shellcheck source=nostromo/services.conf
+. "$config/services.conf"
+# Optional user overrides are outside this checkout.
+# shellcheck source=/dev/null
+[ ! -r "$config/services.local" ] || . "$config/services.local"
+case $SERVER_HOST in
+'' | -* | *[!A-Za-z0-9._@:-]*)
+    message='Set SERVER_HOST to an SSH alias or user@host in ~/.config/nostromo/services.local.'
+    echo "$message" >&2
+    # Super+R's terminal closes on exit; the notification stays readable.
+    notify-send SERVER "$message" 2>/dev/null || :
+    exit 1
+    ;;
+esac
+exec ssh "$SERVER_HOST" "$@"

@@ -5,10 +5,10 @@ together. No Firefox, LibreWolf or Chromium application is added as a fallback.
 QtWebEngine is qutebrowser's rendering dependency, not a separately installed
 Chromium browser. Its package/library closure passes through the FreeBSD transaction gate; native browser acceptance remains pending.
 
-The initial [configuration](../home/.config/qutebrowser/config.py) sets native
+The initial [configuration](../qutebrowser/config.py) sets native
 Wayland, Michroma GUI/web defaults, Azeret Mono fixed-width text, monochrome
 chrome, tab focus inversion and the local Nostromo start page. The
-[launcher](../home/.local/bin/nostromo-browser) sets Qt's Wayland backend, quotes
+[launcher](../bin/nostromo-browser) sets Qt's Wayland backend, quotes
 arguments, rejects option-looking input and opens the encoded local file URL
 when no URL is provided. There is no XCB fallback or browser sandbox-disable flag.
 Qutebrowser requires Python for its own config; this is application configuration,
@@ -23,7 +23,7 @@ native Qt/portal/media tests.
 ## Start page
 
 The existing local HTML/CSS/JavaScript design is retained under
-`home/.local/share/nostromo/start/`, with the same orb, typography, monochrome
+`qutebrowser/start/`, with the same orb, typography, monochrome
 CRT treatment and six placeholder tiles. `links.js` remains user-editable data
 for Containers, Pods, Files, AI, Discord and Services. No service connection or
 health result is fabricated, and no server-side setup is included.
@@ -46,6 +46,9 @@ Do not globally rebind j/k to start-page JavaScript and break normal web navigat
 | Ctrl+G | Open URL command line |
 | Ctrl+Shift+H / L | Explicit previous / next tab |
 | Ctrl+Shift+Enter | New tab/start page |
+| yy / yt | Copy the page URL / title |
+| ;y | Copy a link address through hints |
+| v, v, y | Caret mode: mark text with the keyboard, then copy it |
 | i / Escape | Pass input to page / return to normal mode |
 | Ctrl+E in insert mode | External editor; configured as foot + vis |
 | :help / :version | Native help / backend and version diagnostics |

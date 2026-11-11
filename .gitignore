@@ -30,5 +30,5 @@ id_ed25519*
 .ssh/
 .gnupg/
 .password-store/
-/home/**/?*.local
-/home/**/local.lua
+/[!.]*/**/?*.local
+/[!.]*/**/local.lua

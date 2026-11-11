@@ -1,0 +1,707 @@
+#!/bin/sh
+set -eu
+reference=${NOSTROMO_DOCS_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/nostromo/reference}
+cppreference=${NOSTROMO_CPPREFERENCE_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/nostromo/cppreference}
+library=${NOSTROMO_LIBRARY_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/nostromo/library}
+# Guides, the Secret Knowledge chapters, the electronics guide and saved manuals
+# sit beside the examples.
+data=${reference%/reference}
+knowledge=$data/secret-knowledge
+electronics=$data/electronics
+manuals=$data/manuals
+export GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off
+gui=no
+tmp=
+trap '[ -z "$tmp" ] || rm -rf "$tmp"' 0
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
+
+choose() {
+    if [ "$gui" = yes ]; then
+        nostromo-picker -i -l 12 -p "$1"
+    else fzf --prompt="$1 > "; fi
+}
+ask() {
+    if [ "$gui" = yes ]; then
+        nostromo-picker --input -p "$1"
+    else
+        printf '%s > ' "$1" >&2
+        IFS= read -r answer
+        printf '%s\n' "$answer"
+    fi
+}
+tell() {
+    if [ "$gui" = yes ]; then
+        notify-send 'DOCS' "$1"
+    else printf '%s\n' "$1" >&2; fi
+}
+package_file() {
+    files=$(pkg query '%Fp' "$1") || return
+    path=$(printf '%s\n' "$files" | awk -v suffix="$2" '
+        length($0) >= length(suffix) && substr($0, length($0)-length(suffix)+1) == suffix {print; exit}')
+    [ -n "$path" ] && [ -r "$path" ] || {
+        printf 'Missing local document from %s: %s\n' "$1" "$2" >&2
+        return 1
+    }
+    printf '%s\n' "$path"
+}
+rust_file() {
+    sysroot=$(rustc --print sysroot) || return
+    path=$sysroot/share/doc/rust/html/$1/index.html
+    [ -r "$path" ] || {
+        echo 'Rust documentation is missing for this toolchain. See OFFLINE-DOCS.md.' >&2
+        return 1
+    }
+    printf '%s\n' "$path"
+}
+# FreeBSD's LLVM ports move each manual into the shared tree under a versioned
+# name: /usr/local/llvm21/bin/llvm-mc is documented by llvm-mc21(1).
+llvm_manual() {
+    tool=$(nostromo-tool --path llvm-mc) || return
+    directory=${tool%/bin/*}
+    name=llvm-mc
+    case $directory in /usr/local/llvm[0-9]*) name=llvm-mc${directory#/usr/local/llvm} ;; esac
+    MANPATH="$directory/share/man${MANPATH:+:$MANPATH}:" man "$@" "$name"
+}
+rust_topics() {
+    for topic in book reference rust-by-example embedded-book std core alloc cargo rustc rustdoc \
+        clippy nomicon edition-guide style-guide unstable-book; do
+        if rust_file "$topic" >/dev/null 2>&1; then printf '%s\n' "$topic"; fi
+    done
+}
+python_books() { printf '%s\n' tutorial reference library c-api extending howto using faq whatsnew; }
+go_document() {
+    root=$(go env GOROOT) || return
+    case $1 in
+    spec) printf '%s\n' "$root/doc/go_spec.html" ;;
+    memory-model) printf '%s\n' "$root/doc/go_mem.html" ;;
+    assembler) printf '%s\n' "$root/doc/asm.html" ;;
+    godebug) printf '%s\n' "$root/doc/godebug.md" ;;
+    *) return 2 ;;
+    esac
+}
+go_topics() {
+    go help | awk '/^(The commands are|Additional help topics):$/ {list = 1; next} list && /^\t[a-z]/ {print $1}'
+}
+cmake_topics() {
+    printf '%s\n' cmake ctest cpack ccmake cmake-language cmake-commands cmake-variables cmake-properties \
+        cmake-modules cmake-generator-expressions cmake-buildsystem cmake-toolchains cmake-presets \
+        cmake-packages cmake-policies cmake-generators cmake-compile-features cmake-cxxmodules \
+        cmake-env-variables cmake-file-api cpack-generators
+}
+# Library documents by menu entry: entry|title|path under $library. A * in the
+# path offers each matching document.
+catalogue() {
+    cat <<'EOF'
+C STANDARD|C23: ISO/IEC 9899:2024 working draft N3220|c-standard.pdf
+POSIX|POSIX.1-2024: The Open Group Base Specifications Issue 8|posix/index.html
+C++ STANDARD|C++23 working draft N4950|cpp-standard.pdf
+C++ GUIDELINES|C++ Core Guidelines|cpp-guidelines/CppCoreGuidelines.md
+ARM ABI|AAPCS32: procedure call standard for 32-bit Arm|aapcs32.pdf
+ARM ABI|AAPCS64: procedure call standard for AArch64|aapcs64.pdf
+ARM ABI|System V ABI for AArch64|sysvabi64.pdf
+STYLE GUIDES|C++|styleguide/cppguide.md
+STYLE GUIDES|Python|styleguide/pyguide.md
+STYLE GUIDES|Shell|styleguide/shellguide.md
+STYLE GUIDES|Go|styleguide/go/*.md
+STYLE GUIDES|Rust|styleguide/rustguide.md
+STYLE GUIDES|Documentation|styleguide/docguide/*.md
+STYLE GUIDES|Every language|styleguide/*guide.md
+SYSTEMS LIBRARY|System Design Primer|system-design/README.md
+SYSTEMS LIBRARY|System design interview solutions|system-design/solutions/system_design/*/README.md
+SYSTEMS LIBRARY|Awesome Scalability|scalability/README.md
+SYSTEMS LIBRARY|HTTP/2 explained|http2/en/*.md
+SYSTEMS LIBRARY|HTTP/3 explained|http3/en/*.md
+SYSTEMS LIBRARY|What happens when you type a URL and press Enter|what-happens-when/README.rst
+SYSTEMS LIBRARY|Let's Build a Simple Database|db-tutorial/_parts/*.md
+SYSTEMS LIBRARY|Kubernetes the Hard Way|kubernetes/docs/*.md
+SYSTEMS LIBRARY|The Art of Command Line|command-line/README.md
+SYSTEMS LIBRARY|Pure sh bible|pure-sh/README.md
+CIRCUITS LIBRARY|MIT 6.002 lecture 1: Introduction and lumped circuit abstraction|mit6002-l01.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 2: Basic circuit analysis (KVL and KCL)|mit6002-l02.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 3: Superposition, Thévenin and Norton|mit6002-l03.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 4: The digital abstraction|mit6002-l04.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 5: Inside the digital gate|mit6002-l05.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 6: Nonlinear analysis|mit6002-l06.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 7: Incremental analysis|mit6002-l07.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 8: Dependent sources and amplifiers|mit6002-l08.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 9: MOSFET amplifier large-signal analysis|mit6002-l09.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 10: Amplifiers, small-signal model|mit6002-l10.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 11: Small-signal circuits|mit6002-l11.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 12: Capacitors and first-order systems|mit6002-l12.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 13: Digital circuit speed|mit6002-l13.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 14: State and memory|mit6002-l14.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 15: Second-order systems|mit6002-l15.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 15b: Damped second-order systems|mit6002-l15b.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 16: Sinusoidal steady state|mit6002-l16.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 17: The impedance model|mit6002-l17.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 18: Filters|mit6002-l18.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 19: The operational amplifier abstraction|mit6002-l19.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 20: Operational amplifier circuits|mit6002-l20.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 21: Op-amps and positive feedback|mit6002-l21.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 22: Energy and power|mit6002-l22.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 23: Energy and CMOS|mit6002-l23.pdf
+CIRCUITS LIBRARY|MIT 6.002 lecture 25: Violating the abstraction barrier|mit6002-l25.pdf
+CIRCUITS LIBRARY|Lessons in Electric Circuits I: DC|liec-dc.pdf
+CIRCUITS LIBRARY|Lessons in Electric Circuits II: AC|liec-ac.pdf
+CIRCUITS LIBRARY|Lessons in Electric Circuits III: Semiconductors|liec-semi.pdf
+CIRCUITS LIBRARY|Lessons in Electric Circuits IV: Digital|liec-digital.pdf
+CIRCUITS LIBRARY|Lessons in Electric Circuits V: Reference|liec-reference.pdf
+CIRCUITS LIBRARY|Lessons in Electric Circuits VI: Experiments|liec-experiments.pdf
+CIRCUITS LIBRARY|Logisim: beginner's tutorial|logisim/html/guide/tutorial/index.html
+CIRCUITS LIBRARY|Logisim: user's guide|logisim/html/guide/index.html
+CIRCUITS LIBRARY|Logisim: component library reference|logisim/html/libs/index.html
+ROBOTICS LIBRARY|Feedback Systems: an introduction for scientists and engineers|feedback-systems.pdf
+ROBOTICS LIBRARY|A Mathematical Introduction to Robotic Manipulation|robot-manipulation.pdf
+ROBOTICS LIBRARY|Introduction to Autonomous Robots|autonomous-robots.pdf
+ROBOTICS LIBRARY|Planning Algorithms|planning-algorithms.pdf
+PCB AND BADGES|PCB Design Tutorial|pcb-design-tutorial.pdf
+PCB AND BADGES|Tildagon badge: hexpansion add-on boards|tildagon/docs/hexpansions/*.md
+PCB AND BADGES|Tildagon badge: hardware and programming reference|tildagon/docs/tildagon-apps/reference/*.md
+PCB AND BADGES|Tildagon badge: assembly, repair and use|tildagon/docs/using-the-badge/*.md
+PCB AND BADGES|Tildagon badge: writing apps|tildagon/docs/tildagon-apps/*.md
+PCB AND BADGES|Tildagon badge: app examples|tildagon/docs/tildagon-apps/examples/*.md
+PCB AND BADGES|Hackaday 2025 Communicator badge schematic|communicator-schematic.pdf
+PCB AND BADGES|Hackaday 2023 Vectorscope badge board layers|vectorscope-board.pdf
+EOF
+}
+# The documents a catalogue path names, in the order of the book's GitBook table
+# of contents when it has one.
+documents() {
+    summary=$library/${1%%/*}/SUMMARY.md
+    [ -f "$summary" ] || summary=/dev/null
+    # The catalogue's own path is the pattern.
+    # shellcheck disable=SC2086
+    for file in "$library"/$1; do
+        [ ! -f "$file" ] || printf '%s\n' "${file#"$library"/}"
+    done | sort -V | awk -v book="${1%%/*}/" '
+        !listed {
+            while (match($0, /\]\([^)]*\)/)) {
+                path = book substr($0, RSTART + 2, RLENGTH - 3)
+                $0 = substr($0, RSTART + RLENGTH)
+                if (!(path in rank)) rank[path] = ++count
+            }
+            next
+        }
+        $0 in rank {ordered[rank[$0]] = $0; next}
+        {rest[++others] = $0}
+        END {
+            for (i = 1; i <= count; i++) if (i in ordered) print ordered[i]
+            for (i = 1; i <= others; i++) print rest[i]
+        }' "$summary" listed=1 -
+}
+# path|title for each document: its front-matter title or first heading, else
+# its file name. A repeated title gets a number.
+chapter_titles() {
+    while IFS= read -r path; do
+        title=
+        case $path in *.md) title=$(awk '
+            NR == 1 && $0 == "---" {front = 1; next}
+            front && $0 == "---" {front = 0; next}
+            front {if (sub(/^title:[ \t]*/, "")) {gsub(/^"|"$/, ""); print; exit} next}
+            /^[ \t]*(```|~~~)/ {fence = !fence; next}
+            fence {next}
+            sub(/^##?[ \t]+/, "") {print; exit}
+            /^=+[ \t]*$/ && previous != "" {print previous; exit}
+            {previous = $0}' "$library/$path") ;;
+        esac
+        printf '%s|%s\n' "$path" "${title:-${path##*/}}"
+    done | awk -F '|' '{path = $1; sub(/^[^|]*[|]/, ""); if (seen[$0]++) $0 = $0 " (" seen[$0] ")"; print path "|" $0}'
+}
+# A library entry's document: its title when there are several, then its chapter.
+library_pick() {
+    count=$(catalogue | awk -F '|' -v entry="$1" '$1 == entry {n++} END {print n + 0}')
+    title=$(catalogue | awk -F '|' -v entry="$1" '$1 == entry {print $2}')
+    if [ "$count" -gt 1 ]; then title=$(printf '%s\n' "$title" | choose "$1") || return 1; fi
+    pattern=$(catalogue | awk -F '|' -v entry="$1" -v title="$title" '$1 == entry && $2 == title {print $3; exit}')
+    case $pattern in
+    '') return 1 ;;
+    *'*'*)
+        chapters=$(documents "$pattern" | chapter_titles)
+        chapter=$(printf '%s\n' "$chapters" | cut -d '|' -f 2- | choose "$title") || return 1
+        printf '%s\n' "$chapters" | CHAPTER=$chapter awk '{path = $0; sub(/[|].*/, "", path); sub(/^[^|]*[|]/, "")}
+            $0 == ENVIRON["CHAPTER"] {print path; exit}'
+        ;;
+    *) printf '%s\n' "$pattern" ;;
+    esac
+}
+# Go by Example's titles in reading order, after the directory each names.
+go_examples() {
+    awk '{id = tolower($0); gsub(/\047/, "", id); gsub(/[^a-z0-9]+/, "-", id)
+        sub(/^-/, "", id); sub(/-$/, "", id); print id "|" $0}' "$library/go-by-example/examples.txt"
+}
+go_example() {
+    for file in "$1"/*.go; do
+        [ ! -f "$file" ] || { printf '// %s\n\n' "${file##*/}" && cat -- "$file" && printf '\n'; }
+    done
+    for file in "$1"/*.sh; do
+        [ ! -f "$file" ] || { printf '# Running it: %s\n\n' "${file##*/}" && cat -- "$file" && printf '\n'; }
+    done
+}
+knowledge_topics() {
+    for file in "$knowledge"/*.md; do
+        name=${file##*/}
+        [ ! -f "$file" ] || [ "$name" = LICENSE.md ] || printf '%s\n' "${name%.md}"
+    done
+}
+# The electronics guide's chapters in reading order: file name|title.
+electronics_chapters() {
+    for file in "$electronics"/*.html; do
+        [ -f "$file" ] || continue
+        name=${file##*/}
+        awk -v name="${name%.html}" 'match($0, /<title>[^<]+<\/title>/) {
+            print name "|" substr($0, RSTART + 7, RLENGTH - 15); exit}' "$file"
+    done
+}
+guides() {
+    for file in "$data"/*.md; do
+        name=${file##*/}
+        name=${name%.md}
+        # Ranges such as A-Z also match other letters in UTF-8 locales.
+        case $name in '' | *[!ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-]*) ;; *) [ ! -f "$file" ] || printf '%s\n' "$name" ;; esac
+    done
+}
+saved_manuals() {
+    for file in "$manuals"/*.pdf; do
+        [ ! -f "$file" ] || printf '%s\n' "${file##*/}"
+    done
+}
+versions() {
+    printf 'cppreference HTML snapshot: 2025-02-09 (see OFFLINE-DOCS.md)\n'
+    printf 'C standard: ISO/IEC 9899:2024 (C23) working draft N3220\n'
+    printf 'C++ standard: C++23 working draft N4950\n'
+    printf 'POSIX: POSIX.1-2024, The Open Group Base Specifications Issue 8\n'
+    printf 'Arm ABI: 2026Q3 release\n'
+    for marker in "$library"/.*.sha256; do
+        [ -f "$marker" ] || continue
+        item=${marker##*/.}
+        printf 'Library %s: archive sha256 %.12s\n' "${item%.sha256}" "$(cat "$marker")"
+    done
+    pkg query '%n %v' stdman python-doc-html python-doc-text en-freebsd-doc cmake-man lua54
+    rustc --version
+    go version
+    python3 --version
+    clang --version
+}
+book() {
+    [ -r "$1" ] || {
+        echo "Missing local book: $1" >&2
+        return 1
+    }
+    encoded=$(printf '%s' "$1" | LC_ALL=C od -An -v -tx1 |
+        awk '{for(i=1;i<=NF;i++) if ($i=="2f") printf "/"; else printf "%%%s",$i}')
+    QT_QPA_PLATFORM=wayland qutebrowser --target window -- "file://$encoded"
+}
+workspace() {
+    [ -n "$tmp" ] || tmp=$(mktemp -d "${TMPDIR:-/tmp}/nostromo-docs.XXXXXXXX")
+}
+page() {
+    workspace
+    "$@" >"$tmp/page"
+    less -iMRS -- "$tmp/page"
+}
+# The terminal reader would print embedded HTML and Jekyll tags as written. Keep
+# what they say instead: text, image descriptions and code, which stays as is.
+plain() {
+    awk '
+    function attribute(tag, name) {
+        if (match(tag, name "=\"[^\"]*\"") || match(tag, name "=\047[^\047]*\047"))
+            return substr(tag, RSTART + length(name) + 2, RLENGTH - length(name) - 3)
+        return ""
+    }
+    function text(s,    out, tag, name, value) {
+        out = ""
+        while (match(s, /<\/?[a-z][a-z0-9]*([ \t][^<>]*)?\/?>|[{]%[^%]*%[}]|[{]:[^}]*[}]/)) {
+            tag = substr(s, RSTART, RLENGTH)
+            out = out substr(s, 1, RSTART - 1)
+            s = substr(s, RSTART + RLENGTH)
+            if (tag ~ /^[{]/) {
+                if (tag ~ /^[{]%[ \t]*include[ \t]+image/) out = out "[image: " attribute(tag, "description") "]"
+                continue
+            }
+            name = tag
+            sub(/^<\/?/, "", name)
+            sub(/[^a-z0-9].*/, "", name)
+            if (name == "img") {
+                value = attribute(tag, "alt")
+                out = out (value == "" ? "[image]" : "[image: " value "]")
+            } else if (name == "br") out = out " "
+            else if (name == "code") out = out "`"
+            else if (name == "b" || name == "strong") out = out "**"
+            else if (name == "i" || name == "em") out = out "*"
+            else if (name == "sup") out = out (tag ~ /^<\// ? "" : "^")
+            else if (name !~ /^(a|abbr|big|blockquote|caption|center|dd|del|details|div|dl|dt|font|h[1-6]|hr|ins|kbd|li|ol|p|pre|s|small|span|strike|sub|summary|table|tbody|td|tfoot|th|thead|tr|tt|u|ul|var)$/)
+                out = out tag
+        }
+        return out s
+    }
+    function line(s,    out, start, size) {
+        out = ""
+        while (match(s, /`[^`]*`/)) {
+            # text() matches too, so keep this match first.
+            start = RSTART
+            size = RLENGTH
+            out = out text(substr(s, 1, start - 1)) substr(s, start, size)
+            s = substr(s, start + size)
+        }
+        return out text(s)
+    }
+    NR == 1 && $0 == "---" {front = 1; next}
+    front {
+        if ($0 == "---") front = 0
+        else if (sub(/^title:[ \t]*/, "")) {gsub(/^"|"$/, ""); print "# " $0; print ""}
+        next
+    }
+    comment {
+        if (!index($0, "-->")) next
+        comment = 0
+        $0 = substr($0, index($0, "-->") + 3)
+    }
+    # A directive that spans lines goes like a one-line one.
+    directive {
+        if (!index($0, "%}")) next
+        directive = 0
+        $0 = substr($0, index($0, "%}") + 2)
+    }
+    # MkDocs notes ("!!! tip" over an indented block) stay notes, and content
+    # tabs (=== "Linux" over one) titled text, not code.
+    block {
+        if ($0 ~ /^[ \t]*$/) {blank++; next}
+        if ($0 ~ /^(    |\t)/) {
+            for (; blank; blank--) print (lead == "" ? "" : ">")
+            sub(/^(    |\t)/, "")
+        } else {
+            # Without a blank line the next paragraph would continue the note.
+            for (blank += !blank; blank; blank--) print ""
+            block = 0
+            lead = ""
+        }
+    }
+    /^[ \t]*(```|~~~)/ {fence = !fence; print lead $0; next}
+    fence || /^(    |\t)/ {print lead $0; next}
+    /^(!!!|[?][?][?][+]?)[ \t]+[a-z]/ {
+        title = $0
+        sub(/^[!?+]+[ \t]+/, "", title)
+        if (match(title, /"[^"]*"/)) title = substr(title, RSTART + 1, RLENGTH - 2)
+        else {
+            sub(/[ \t].*/, "", title)
+            title = toupper(substr(title, 1, 1)) substr(title, 2)
+        }
+        print (title == "" ? ">" : "> **" title "**")
+        block = 1
+        blank = 0
+        lead = "> "
+        next
+    }
+    /^===[!+]?[ \t]+"[^"]*"/ {
+        match($0, /"[^"]*"/)
+        print "**" substr($0, RSTART + 1, RLENGTH - 2) "**"
+        print ""
+        block = 1
+        blank = 0
+        lead = ""
+        next
+    }
+    {
+        while ((start = index($0, "<!--"))) {
+            rest = substr($0, start + 4)
+            if (!(end = index(rest, "-->"))) {comment = 1; $0 = substr($0, 1, start - 1); break}
+            $0 = substr($0, 1, start - 1) substr(rest, end + 3)
+        }
+        if ((start = index($0, "{%")) && !index(substr($0, start), "%}")) {
+            directive = 1
+            $0 = substr($0, 1, start - 1)
+        }
+        print lead line($0)
+    }' "$1"
+}
+markdown() {
+    columns=$(tput cols 2>/dev/null || printf '80')
+    case $columns in '' | *[!0-9]*) columns=80 ;; esac
+    [ "$columns" -ge 20 ] || columns=20
+    workspace
+    plain "$1" >"$tmp/document.md"
+    page lowdown -Tterm --term-no-colour --term-hpadding=1 --term-width="$columns" "$tmp/document.md"
+}
+# Open a local document in the reader that suits it.
+document() {
+    [ -f "$1" ] && [ -r "$1" ] || {
+        printf 'Missing local document: %s\n' "$1" >&2
+        return 1
+    }
+    case $1 in
+    *.md) markdown "$1" ;;
+    *.html) book "$1" ;;
+    *.pdf) zathura -- "$1" ;;
+    *) less -iMRS -- "$1" ;;
+    esac
+}
+# Actions that open their own window; the rest run in a terminal.
+graphical() {
+    case $1:${2:-} in
+    rust:* | freebsd:* | language:* | python-book:* | lua:* | go-language: | go-language:spec | \
+        go-language:memory-model | go-language:assembler | library:*.html | library:*.pdf | manual:* | \
+        electronics:*) return 0 ;;
+    *) return 1 ;;
+    esac
+}
+
+action=${1:-menu}
+if [ "$#" -gt 0 ]; then
+    [ "$action" != menu ] || gui=yes
+    shift
+fi
+if [ "$action" = --hold ]; then
+    if "$0" "$@"; then exit 0; fi
+    printf '\nPress Enter to close. ' >&2
+    IFS= read -r answer || :
+    exit 1
+fi
+case $action in menu | --check | llvm | freebsd | lua | versions) [ "$#" = 0 ] || exit 2 ;; esac
+if [ "$action" = menu ]; then
+    choice=$(printf '%s\n' 'C FUNCTIONS' 'C LANGUAGE' 'C STANDARD' 'POSIX' 'C++ LIBRARY' 'C++ LANGUAGE' \
+        'C++ STANDARD' 'C++ GUIDELINES' 'RUST BOOK' 'RUST API' 'GO PACKAGES' 'GO LANGUAGE' 'GO COMMAND' \
+        'GO EXAMPLES' 'GO BY EXAMPLE' 'PYTHON LIBRARY' 'PYTHON BOOK' 'LUA MANUAL' 'SHELL AND TOOLS' 'CMAKE' \
+        'LLVM ASSEMBLER' 'ARM ABI' 'STYLE GUIDES' 'EXAMPLE TEMPLATES' 'SYSTEMS LIBRARY' 'ELECTRONICS GUIDE' \
+        'CIRCUITS LIBRARY' 'ROBOTICS LIBRARY' 'PCB AND BADGES' 'SECRET KNOWLEDGE' 'FREEBSD HANDBOOK' \
+        'SAVED MANUALS' 'PROJECT GUIDES' 'REFERENCE VERSIONS' |
+        choose DOCS) || exit 0
+    case $choice in
+    'C FUNCTIONS') set -- c "$(ask 'C function, e.g. malloc')" ;;
+    'C LANGUAGE') set -- language c ;;
+    'C++ LIBRARY') set -- cpp "$(ask 'C++ name, e.g. std::vector')" ;;
+    'C++ LANGUAGE') set -- language cpp ;;
+    'C STANDARD' | POSIX | 'C++ STANDARD' | 'C++ GUIDELINES' | 'ARM ABI' | 'STYLE GUIDES' | 'SYSTEMS LIBRARY' | \
+        'CIRCUITS LIBRARY' | 'ROBOTICS LIBRARY' | 'PCB AND BADGES')
+        topic=$(library_pick "$choice") || exit 0
+        set -- library "$topic"
+        ;;
+    'ELECTRONICS GUIDE')
+        title=$(electronics_chapters | cut -d '|' -f 2- | choose 'ELECTRONICS GUIDE') || exit 0
+        set -- electronics "$(electronics_chapters | TITLE=$title awk -F '|' '$2 == ENVIRON["TITLE"] {print $1; exit}')"
+        ;;
+    'RUST BOOK')
+        topic=$(rust_topics | choose RUST) || exit 0
+        set -- rust "$topic"
+        ;;
+    'RUST API') set -- rust std ;;
+    'GO PACKAGES') set -- go "$(ask 'Go package or symbol, e.g. fmt.Printf')" ;;
+    'GO LANGUAGE')
+        topic=$(printf '%s\n' spec memory-model assembler godebug | choose GO) || exit 0
+        set -- go-language "$topic"
+        ;;
+    'GO COMMAND')
+        topic=$(go_topics | choose 'GO COMMAND') || exit 0
+        set -- go-help "$topic"
+        ;;
+    'GO EXAMPLES') set -- go-examples "$(ask 'Go package, e.g. fmt')" ;;
+    'GO BY EXAMPLE')
+        title=$(go_examples | cut -d '|' -f 2- | choose 'GO BY EXAMPLE') || exit 0
+        set -- go-by-example "$(go_examples | TITLE=$title awk -F '|' '$2 == ENVIRON["TITLE"] {print $1; exit}')"
+        ;;
+    'PYTHON LIBRARY') set -- python "$(ask 'Python module, e.g. pathlib')" ;;
+    'PYTHON BOOK')
+        topic=$(python_books | choose PYTHON) || exit 0
+        set -- python-book "$topic"
+        ;;
+    'LUA MANUAL') set -- lua ;;
+    'EXAMPLE TEMPLATES')
+        topic=$(printf '%s\n' c cpp rust go python shell assembly vis zephyr | choose EXAMPLES) || exit 0
+        set -- examples "$topic"
+        ;;
+    'SHELL AND TOOLS')
+        topic=$(printf '%s\n' sh oksh make git ssh pf.conf wg vis dvtm foot fuzzel nostromo-docs | choose MANUAL) || exit 0
+        set -- man "$topic"
+        ;;
+    'CMAKE')
+        topic=$(cmake_topics | choose CMAKE) || exit 0
+        set -- man "$topic"
+        ;;
+    'LLVM ASSEMBLER') set -- llvm ;;
+    'SECRET KNOWLEDGE')
+        topic=$(knowledge_topics | choose 'SECRET KNOWLEDGE') || exit 0
+        set -- knowledge "$topic"
+        ;;
+    'FREEBSD HANDBOOK') set -- freebsd ;;
+    'SAVED MANUALS')
+        [ -n "$(saved_manuals)" ] || {
+            tell "No saved manuals yet. Save PDF manuals in $manuals to open them here."
+            exit 0
+        }
+        topic=$(saved_manuals | choose MANUAL) || exit 0
+        set -- manual "$topic"
+        ;;
+    'REFERENCE VERSIONS') set -- versions ;;
+    'PROJECT GUIDES')
+        topic=$(guides | choose GUIDE) || exit 0
+        set -- guide "$topic"
+        ;;
+    *) exit 0 ;;
+    esac
+    [ "$#" != 2 ] || [ -n "$2" ] || exit 0
+    if [ "$gui" = yes ]; then
+        (
+            if graphical "$@"; then "$0" "$@"; else foot -e "$0" --hold "$@"; fi ||
+                notify-send 'DOCS' 'Could not open the reference. Run nostromo-docs in a terminal for details.'
+        ) </dev/null >/dev/null 2>&1 &
+        exit 0
+    fi
+    action=$1
+    shift
+fi
+
+if [ "$action" = --check ]; then
+    {
+        printf '%s\n' clang rustc cargo git sh oksh make ssh pf.conf wg vis dvtm abduco \
+            dwl dwlb foot fuzzel gtklock dunst nnn nostromo-docs
+        cmake_topics
+    } | while IFS= read -r name; do man -w "$name" >/dev/null; done
+    man -w 3 malloc >/dev/null
+    man -w 3 'std::vector' >/dev/null
+    for topic in book std reference rust-by-example embedded-book; do rust_file "$topic" >/dev/null; done
+    llvm_manual -w >/dev/null
+    package_file python-doc-text /library/pathlib.txt >/dev/null
+    python_books | while IFS= read -r topic; do
+        package_file python-doc-html "/$topic/index.html" >/dev/null
+    done
+    package_file lua54 /lua/manual.html >/dev/null
+    test -s "$cppreference/en/c.html"
+    test -s "$cppreference/en/cpp.html"
+    for topic in spec memory-model assembler godebug; do test -s "$(go_document "$topic")"; done
+    go_topics | grep -Fxq build
+    package_file en-freebsd-doc /en/books/handbook/index.html >/dev/null
+    for topic in c cpp rust go python shell assembly vis zephyr; do test -s "$reference/$topic.md"; done
+    catalogue | while IFS='|' read -r _ _ pattern; do
+        [ -n "$(documents "$pattern")" ] || {
+            printf 'Missing library document: %s\n' "$pattern" >&2
+            exit 1
+        }
+    done
+    go_examples | while IFS='|' read -r id _; do
+        [ -d "$library/go-by-example/examples/$id" ] || {
+            printf 'Missing Go by Example entry: %s\n' "$id" >&2
+            exit 1
+        }
+    done
+    [ -n "$(knowledge_topics)" ] && test -s "$knowledge/LICENSE.md"
+    electronics_chapters | grep -q '^00-contents|' || {
+        printf 'Missing electronics guide: %s\n' "$electronics" >&2
+        exit 1
+    }
+    GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off go doc fmt.Printf >/dev/null
+    printf 'Offline manuals, examples, language references and the library are available.\n'
+    exit
+fi
+[ "$#" -le 1 ] || {
+    echo 'Use nostromo-docs [menu|ACTION [TOPIC]]. See man nostromo-docs.' >&2
+    exit 2
+}
+topic=${1:-}
+# Arguments go to man/go or a known reference directory, never to a shell.
+# Saved manuals keep the file names they were saved under.
+invalid=no
+if [ "$action" = manual ]; then
+    case $topic in '' | -* | .* | */* | *'
+'*) invalid=yes ;; esac
+else
+    case $topic in -* | *[!A-Za-z0-9_:.+/-]* | *'..'* | /*) invalid=yes ;; esac
+fi
+[ "$invalid" = no ] || {
+    echo 'Invalid documentation topic.' >&2
+    exit 2
+}
+case $action in
+c | cpp | man)
+    [ -n "$topic" ] || exit 2
+    export MANPAGER='less -iMR'
+    if [ "$action" = man ]; then exec man "$topic"; else exec man 3 "$topic"; fi
+    ;;
+examples)
+    case $topic in c | cpp | rust | go | python | shell | assembly | vis | zephyr) ;; *) exit 2 ;; esac
+    document "$reference/$topic.md"
+    ;;
+rust)
+    rust_topics | grep -Fxq -e "$topic" || exit 2
+    book "$(rust_file "$topic")"
+    ;;
+language)
+    case $topic in c | cpp) ;; *) exit 2 ;; esac
+    book "$cppreference/en/$topic.html"
+    ;;
+go-language)
+    file=$(go_document "${topic:-spec}") || exit 2
+    document "$file"
+    ;;
+python-book)
+    python_books | grep -Fxq -e "$topic" || exit 2
+    book "$(package_file python-doc-html "/$topic/index.html")"
+    ;;
+lua) book "$(package_file lua54 /lua/manual.html)" ;;
+library)
+    if [ -z "$topic" ]; then
+        entry=$(catalogue | awk -F '|' '!seen[$1]++ {print $1}' | choose LIBRARY) || exit 0
+        topic=$(library_pick "$entry") || exit 0
+    fi
+    document "$library/$topic"
+    ;;
+knowledge)
+    knowledge_topics | grep -Fxq -e "$topic" || exit 2
+    document "$knowledge/$topic.md"
+    ;;
+electronics)
+    topic=${topic:-00-contents}
+    electronics_chapters | cut -d '|' -f 1 | grep -Fxq -e "$topic" || exit 2
+    book "$electronics/$topic.html"
+    ;;
+manual)
+    case $topic in *.pdf) ;; *) exit 2 ;; esac
+    document "$manuals/$topic"
+    ;;
+versions) page versions ;;
+go | go-examples)
+    [ -n "$topic" ] || exit 2
+    export GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off
+    if [ "$action" = go ]; then
+        page go doc -all "$topic"
+    else
+        directory=$(go list -f '{{.Dir}}' "$topic")
+        example=$(for file in "$directory"/*example*_test.go; do
+            [ ! -f "$file" ] || printf '%s\n' "$file"
+        done | choose EXAMPLE) || exit 0
+        [ -f "$example" ] || {
+            echo 'No installed example_test.go for this package.' >&2
+            exit 1
+        }
+        less -iMRS -- "$example"
+    fi
+    ;;
+go-help)
+    go_topics | grep -Fxq -e "$topic" || exit 2
+    page go help "$topic"
+    ;;
+go-by-example)
+    case $topic in '' | *[!abcdefghijklmnopqrstuvwxyz0123456789-]*) exit 2 ;; esac
+    directory=$library/go-by-example/examples/$topic
+    [ -d "$directory" ] || {
+        printf 'No Go by Example entry: %s\n' "$topic" >&2
+        exit 1
+    }
+    page go_example "$directory"
+    ;;
+python)
+    [ -n "$topic" ] || topic=index
+    file=$(package_file python-doc-text "/library/$topic.txt")
+    less -iMRS -- "$file"
+    ;;
+llvm) llvm_manual ;;
+freebsd) book "$(package_file en-freebsd-doc /en/books/handbook/index.html)" ;;
+guide)
+    topic=${topic:-OFFLINE-DOCS}
+    guides | grep -Fxq -e "$topic" || exit 2
+    document "$data/$topic.md"
+    ;;
+*)
+    echo 'Use nostromo-docs menu, or read man nostromo-docs.' >&2
+    exit 2
+    ;;
+esac

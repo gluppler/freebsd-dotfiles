@@ -8,7 +8,7 @@ case ${1:-} in '' | --bus) ;; *) exit 2 ;; esac
 set +u
 # shellcheck source=/dev/null
 [ ! -r /etc/profile ] || . /etc/profile
-# shellcheck source=home/.profile
+# shellcheck source=oksh/profile
 [ ! -r "$HOME/.profile" ] || . "$HOME/.profile"
 set -u
 case ${XDG_RUNTIME_DIR:-} in /*) ;; *)

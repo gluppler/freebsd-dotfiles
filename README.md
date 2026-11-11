@@ -9,10 +9,12 @@ The desktop uses **dwl, foot, qutebrowser, oksh, vis and abduco/dvtm**, with
 fuzzel, fastfetch, zoxide, nnn, Git/lazygit, LLVM, uv and native WireGuard.
 Michroma and Azeret Mono, monochrome artwork, custom window bars and adjustable
 CRT effects are animated by default. Development tools cover C/C++, Rust, Go, Python,
-shell, assembly and the documented Zephyr/Rust embedded workflows.
+shell, assembly and the documented Zephyr/Rust embedded workflows. Offline
+references include an illustrated electronics guide to circuits, robotics, PCBs
+and badges.
 
-Native FreeBSD builds, first login, reboot and hardware acceptance are still
-pending; see [validation](docs/VALIDATION.md). Simulated screenshots and SVG
+The installer has completed natively on the T14. First reboot, login and
+hardware acceptance are still pending; see [validation](docs/VALIDATION.md). Simulated screenshots and SVG
 originals are archived outside this repository. Installed artwork uses PNG.
 
 ## Install
@@ -32,15 +34,19 @@ with the desktop account's login name:
 
 ```sh
 sh install.sh --check <account>
-sh install.sh --apply <account>
+sh install.sh --clean <account>
 ```
 
-Boot normally into multi-user mode first. `sh install.sh --wifi` provides
-standalone console Wi-Fi setup; `--apply` offers it before downloads, then offers
-a clean install that removes earlier packages and build output first.
-`--check` performs read-only native preflight. `--apply` installs packages,
-builds as the ordinary user and enables login after validation. It keeps backups
-of replaced files only until its final check passes. Base `mdo` grants limited ACPI access; administrative changes use
+After a `git pull`, `sh install.sh --upgrade <account>` applies what changed.
+
+Boot normally into multi-user mode first. `--check` performs read-only native
+preflight. `--clean` is a clean full install: it removes earlier packages and
+build output, installs packages, builds as the ordinary user and enables login
+after validation. `--upgrade` applies the checkout's changed configuration,
+documents and pins to the installed environment, and continues a run that
+stopped. Without a working connection, both set up Wi-Fi at the console before
+downloading. They keep backups of replaced files only until the final check
+passes, and logs only when a stage stops. Base `mdo` grants limited ACPI access; administrative changes use
 base `su`/PAM authentication. No existing privilege wrapper is needed.
 It does not partition disks; after a final check it asks before rebooting.
 Read the [installation and recovery
@@ -49,19 +55,26 @@ user files and built programs link into it.
 
 ## Layout
 
+Each program has its own folder: its configuration, and for the programs built
+here, the patches and headers that build them. `.install/links.txt` names where
+each file is linked in your home, for example `foot/foot.ini` at
+`~/.config/foot/foot.ini` and `bin/` in `~/.local/bin`.
+
 | Path | Contents |
 | --- | --- |
 | `install.sh` | Root installer and read-only preview/preflight |
-| `home/` | User dotfiles, mirroring their locations under `$HOME` |
-| `system/` | System settings, privileged helpers, login theme and boot assets |
-| `src/` | Source patches, compositor configuration and shared drawing code |
-| `scripts/` | Build, provisioning, validation, linking and export helpers |
-| `assets/` | Fonts, artwork, the default wallpaper and attribution |
-| `docs/`, `tests/` | Setup guides, references, previews and verification |
-| `links.txt` | Explicit user-file installation manifest |
-| `packages.*`, `ports.lock`, `sources.lock` | Package policy and pinned build inputs |
+| `dwl/`, `foot/`, `vis/`, `qutebrowser/`, … | One program each: configuration, patches and its upstream license |
+| `oksh/` | Interactive shell and the login profile |
+| `bin/` | Desktop helpers and toolchain wrappers |
+| `session/` | Small session programs: splash, idle viewer, clipboard, events and control |
+| `sddm/` | Login greeter theme and settings |
+| `system/` | System settings, privileged helpers and boot files |
+| `embedded/` | Zephyr and bare-metal toolchain files |
+| `fonts/`, `wallpapers/`, `art/` | Typefaces, wallpapers, the orb and their attribution |
+| `docs/` | Guides, the offline references and design notes |
+| `.install/` | The installer's scripts, tests and generators, the link manifest, package policy and pinned sources |
 
-Build output stays in `.build/`. `sh scripts/export.sh` creates a checked source
+Build output stays in `.build/`. `sh .install/scripts/export.sh` creates a checked source
 archive under `.dist/`, with a SHA256 checksum and file list. Both directories
 are excluded from Git. The archive contains everything needed from this project;
 installation still downloads native packages and pinned sources. No archived
@@ -76,8 +89,8 @@ and [licenses and attribution](COPYING.md) before publishing changes.
 
 - [Keyboard controls](docs/KEYBINDINGS.md), [editor and development](docs/DEVELOPMENT.md), [embedded Rust/Zephyr](docs/EMBEDDED.md)
 - [First-run requirements](docs/FIRST-RUN.md), [full laptop information](docs/SYSTEM-INFO.md)
-- [Offline manuals and formatted examples](docs/OFFLINE-DOCS.md), [password store](docs/PASSWORDS.md)
+- [Offline manuals, formatted examples and the electronics guide](docs/OFFLINE-DOCS.md), [password store](docs/PASSWORDS.md)
 - [Packages and GNU exceptions](docs/PACKAGES.md), [boot and session](docs/BOOT-AND-SESSION.md)
 - [Hardware](docs/HARDWARE.md), [performance](docs/PERFORMANCE.md), [fingerprint/FIDO](docs/AUTHENTICATION.md)
 - [Wi-Fi](docs/WIFI.md), [WireGuard](docs/WIREGUARD.md), [Bluetooth](docs/BLUETOOTH.md)
-- [Requirements](PLANS.md), [migration coverage](docs/MIGRATION-COVERAGE.md), [validation](docs/VALIDATION.md)
+- [Requirements](docs/PLANS.md), [migration coverage](docs/MIGRATION-COVERAGE.md), [validation](docs/VALIDATION.md)

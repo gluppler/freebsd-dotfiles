@@ -197,17 +197,17 @@ blindly run `pkg install fwget` as a fallback. If firmware/networking fails,
 capture the driver/PCI ID and error and use wired/offline bootstrap rather than
 repeat the earlier failing command without diagnosis.
 
-Once the checkout is available, `sh install.sh --wifi` runs console Wi-Fi setup
-without installing packages. The normal `--apply` path offers the same setup
-before downloading anything. Enter the detected radio, country if needed, exact
-SSID and security mode. The password prompt disables terminal echo. The setup
-creates the missing WPA file, preserves unrelated profiles and rc.conf settings,
-uses the native per-interface service, and saves the new network only after
-successful authentication. It then checks DNS separately. The checkout can be
-copied from USB if networking is needed before Git is available.
+When there is no working connection, `install.sh --clean` and `--upgrade` start
+with console Wi-Fi setup, before downloading anything. Enter the detected radio,
+country if needed, exact SSID and security mode. The password prompt disables
+terminal echo. The setup creates the missing WPA file, preserves unrelated
+profiles and rc.conf settings, uses the native per-interface service, and saves
+the new network only after successful authentication. It then checks DNS
+separately. The checkout can be copied from USB if networking is needed before
+Git is available.
 
-If the base installer already configured Wi-Fi, preserve it and decline that
-prompt. Loading `if_iwlwifi` alone does not authenticate to an access point.
+If the base installer already configured a working connection, the installer
+keeps it and asks nothing. Loading `if_iwlwifi` alone does not authenticate to an access point.
 If configuring manually, and
 `net.wlan.devices` lists `iwlwifi0`, the intended persistent values are
 `wlans_iwlwifi0="wlan0"` and `ifconfig_wlan0="WPA DHCP"`. Create the cloned

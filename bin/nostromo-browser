@@ -1,0 +1,51 @@
+#!/bin/sh
+# Sole browser launcher. Never fall back to X11 or interpret a URL as an option.
+set -eu
+case ${1:-} in
+--discord)
+    [ "$#" -eq 1 ] || {
+        echo 'Usage: nostromo-browser [URL ...|--discord]' >&2
+        exit 2
+    }
+    config=${XDG_CONFIG_HOME:-$HOME/.config}/nostromo
+    # shellcheck source=nostromo/services.conf
+    . "$config/services.conf"
+    # shellcheck source=/dev/null
+    [ ! -r "$config/services.local" ] || . "$config/services.local"
+    case ${DISCORD_URL:-} in
+    https://?* | http://?*) set -- "$DISCORD_URL" ;;
+    *)
+        message='Set DISCORD_URL in ~/.config/nostromo/services.local.'
+        echo "$message" >&2
+        # Super+Shift+D has no terminal to show the message in.
+        notify-send DISCORD "$message" 2>/dev/null || :
+        exit 1
+        ;;
+    esac
+    ;;
+esac
+for url; do
+    # qutebrowser also accepts :commands as positional arguments after --.
+    case $url in '' | -* | :*)
+        echo 'Expected a URL or search string, not an option or browser command.' >&2
+        exit 2
+        ;;
+    esac
+done
+if [ "$#" -eq 0 ]; then
+    page=${XDG_DATA_HOME:-$HOME/.local/share}/nostromo/start/index.html
+    case $page in /*) ;; *)
+        echo 'XDG_DATA_HOME must be absolute.' >&2
+        exit 2
+        ;;
+    esac
+    [ -r "$page" ] || {
+        echo "Missing local start page: $page" >&2
+        exit 1
+    }
+    # Escape bytes without losing URL delimiters in arbitrary home paths.
+    encoded=$(printf '%s' "$page" | LC_ALL=C od -An -v -tx1 | awk '{for(i=1;i<=NF;i++) if ($i=="2f") printf "/"; else printf "%%%s",$i}')
+    set -- "file://$encoded"
+fi
+export QT_QPA_PLATFORM=wayland
+exec qutebrowser -- "$@"

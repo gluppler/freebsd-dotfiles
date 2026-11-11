@@ -3,8 +3,8 @@
 *.md text eol=lf
 *.awk text eol=lf
 *.patch text eol=lf
-home/.profile text eol=lf
-home/.local/bin/* text eol=lf
+oksh/profile text eol=lf
+bin/** text eol=lf
 system/nostromo-* text eol=lf
 system/rc.d/* text eol=lf
 *.png binary

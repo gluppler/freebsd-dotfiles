@@ -13,7 +13,7 @@ before enabling graphical login.
 
 | Old component / workflow | FreeBSD / Wayland destination | Current state |
 | --- | --- | --- |
-| dwm tags, random floating, explicit tiling, focus, resize, monitor movement | `src/dwl/`, no Xwayland | Implemented: full bindings, scratchpad, gaps and typed IPC; native behavior pending |
+| dwm tags, random floating, explicit tiling, focus, resize, monitor movement | `dwl/`, no Xwayland | Implemented: full bindings, scratchpad, gaps and typed IPC; native behavior pending |
 | dwm white outline, terminal CWD rail, blank app top rail; new viewer bottom rail | dwl scene buffers and validated OSC-title path | Implemented: scene decorations, bounded encoded CWD, centered top-to-bottom text, square outer corners, 80% recess/10% end caps, body-only outlines and viewer bottom title rail; native mixed-DPI/hotplug pending |
 | slstatus and clickable readings | dwlb + FreeBSD status producer | Implemented: active tag fill, scale-aware bar, allowlisted actions and detected readings; hardware pending |
 | dmenu combined app/action/file/content search and project selector | fuzzel + POSIX helpers, no resident index | Implemented: combined search/project helpers and content-sized native cut/wedge panel |

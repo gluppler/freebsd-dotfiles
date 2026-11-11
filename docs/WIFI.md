@@ -1,7 +1,8 @@
 # Wi-Fi menu and recovery
 
-Before the desktop is installed, run `sh install.sh --wifi` as root in a normal
-multi-user console. `--apply` offers this same setup before downloading packages.
+Without a working connection, a default route and DNS for `pkg.FreeBSD.org`,
+`install.sh --clean` and `--upgrade` start with this console setup before
+downloading packages; a working connection is kept and nothing is asked.
 It discovers the radio and an existing matching wlan interface, creates one if
 needed, asks for the SSID/security/password, and configures the native rc services.
 The password is hidden and the prompt bypasses installer logs. Failed
@@ -10,7 +11,7 @@ under `/var/backups/nostromo`; the installer's cleanup removes these backups. A 
 saved network and stops the download stage for diagnosis. See
 [Base-Setup](BASE-SETUP.md) for read-only filesystems and single-user recovery.
 
-Super+F2, Super+Ctrl+W and the Wi-Fi status action open the same native fuzzel panel. It uses the launcher's content-sized shape,
+Super+Ctrl+W and the Wi-Fi status action open the same native fuzzel panel. It uses the launcher's content-sized shape,
 left divot rail, Michroma font and bottom-right body cut. Enter selects,
 Up/Down or Ctrl+P/N navigate, and Esc cancels. Operations return to the menu;
 ADAPTER switches radios. Privileged operations open a foot prompt for the root
