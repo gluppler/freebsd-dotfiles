@@ -18,8 +18,10 @@ trap 'exit 0' HUP INT TERM
 # Consume dwl's legacy stdout pipe; the bar itself uses typed Wayland IPC.
 cat >/dev/null &
 children="$children $!"
+# An optional step that fails is logged to session.log: under set -e it would end
+# this script, whose trap stops the bar and services, leaving bare dwl on screen.
 dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE \
-    GDK_BACKEND QT_QPA_PLATFORM
+    GDK_BACKEND QT_QPA_PLATFORM || printf '%s\n' 'D-Bus activation environment not updated.' >&2
 start dwlb
 start dunst
 nostromo-crt apply || printf '%s\n' 'CRT unavailable; normal composition remains active.' >&2
@@ -28,12 +30,12 @@ start wireplumber
 start fcitx5 --disable=xcb,xim --verbose default=3
 start swayidle -w timeout 300 'nostromo-lock'
 # The compositor must already have enumerated outputs before selecting exports.
-nostromo-wallpaper apply
+nostromo-wallpaper apply || printf '%s\n' 'Wallpaper unavailable; the black background remains.' >&2
 start nostromo-status
 if [ -s "${XDG_CONFIG_HOME:-$HOME/.config}/kanshi/config.local" ]; then
     start kanshi -c "${XDG_CONFIG_HOME:-$HOME/.config}/kanshi/config.local"
 fi
 # These helpers are installed with the session only after their implementation gate.
 start nostromo-output-watch
-nostromo-splash
+nostromo-splash || printf '%s\n' 'Splash unavailable.' >&2
 wait

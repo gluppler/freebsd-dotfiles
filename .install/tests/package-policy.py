@@ -560,6 +560,48 @@ if true; then
             self.assertIn(version, ('*', packages[name]['version']), name)
             queue.extend((dependency, name) for dependency in packages[name].get('deps') or ())
 
+    def test_no_reviewed_stock_package_links_the_wlroots_variant(self):
+        # The variant leaves out wlroots' X11 and XWayland functions. The stock cage
+        # called them, exited, and SDDM showed a blank console; build such programs here.
+        catalog = ROOT/'.build/packagesite.yaml'
+        if not catalog.is_file():
+            self.skipTest('the quarterly catalog is not cached')
+        with catalog.open(encoding='utf-8') as stream:
+            packages = {package['name']: package for package in map(json.loads, filter(str.strip, stream))}
+        provided = set(packages['wlroots020']['shlibs_provided'])
+        self.assertIn('libwlroots-0.20.so', provided)
+        allowed, _ = self.native_requests()
+        for name, (_, _, _, kind) in allowed.items():
+            if kind != 'local':
+                self.assertFalse(provided & set(packages.get(name, {}).get('shlibs_required') or ()), name)
+        self.assertTrue(provided & set(packages['cage']['shlibs_required']))
+
+    def test_desktop_glyphs_have_a_requested_font(self):
+        # fcft (bar, foot, fuzzel), Pango (dunst, gtklock) and Qt fall back through every
+        # installed font. Read with fc-query from fonts/ and the FreeBSD 15 quarterly
+        # packages on 2026-11-12: the bar's ᛒ was in none until noto-sans-runic. foot
+        # draws U+2500-259F itself. The console has its own check in terminal-idle.py.
+        covered = {
+            'fonts/': '°·é–—“”…›↑●',
+            'noto-sans-math': '≋≡▀▄█♪',
+            'noto-sans-symbols2': '■▬▰◆◇◷☼♨',
+            'noto-sans-runic': 'ᛒ',
+            'noto-sans-jp': '文',
+        }
+        requested = set((ROOT/'.install/packages.txt').read_text().splitlines())
+        self.assertLessEqual(set(covered) - {'fonts/'}, requested)
+        files = subprocess.run(['git', 'ls-files', '-z'], cwd=ROOT, capture_output=True, check=True).stdout
+        for name in files.decode().split('\0'):
+            if not name or name.startswith(('.install/', 'docs/', 'art/licenses/')) or 'LICENSE' in name:
+                continue
+            try:
+                text = (ROOT/name).read_text(encoding='utf-8')
+            except (UnicodeDecodeError, IsADirectoryError):
+                continue
+            for glyph in {ch for ch in text if ord(ch) > 0x7e}:
+                self.assertTrue(any(glyph in chars for chars in covered.values()),
+                                f'{name}: U+{ord(glyph):04X} {glyph} has no verified font')
+
     def test_bootstrap_cleanup_preserves_user_roots_locks_and_consumers(self):
         source = (ROOT / '.install/scripts/packages.sh').read_text()
         branch = source.split('if [ "$action" = finish-bootstrap ]; then\n', 1)[1].split('\nif [ "$action" = import ]; then', 1)[0]
@@ -653,10 +695,15 @@ pkgtool() { printf '%s\n' 'FreeBSD-runtime|base' 'FreeBSD-utilities|base' 'foot|
                                     capture_output=True, text=True, check=True)
             self.assertEqual(result.stdout.splitlines(), ['foot','git-lite'])
 
-    def test_remove_rejects_consumers_locks_base_and_local_library_providers(self):
+    def removal_section(self):
+        # The shared removable check, then the remove and retire branches.
         source = (ROOT / '.install/scripts/packages.sh').read_text()
-        branch = source.split('if [ "$action" = remove ] || [ "$action" = remove-check ]; then\n', 1)[1]
-        branch = branch.split('\nif [ "$action" = update ]; then', 1)[0]
+        validate = 'validate() {' + source.split('validate() {', 1)[1].split('esac }\n', 1)[0] + 'esac }\n'
+        section = source.split('# Only a package nothing here needs', 1)[1].split('\nif [ "$action" = update ]; then', 1)[0]
+        return validate + '# Only a package nothing here needs' + section + '\n'
+
+    def test_remove_rejects_consumers_locks_base_and_local_library_providers(self):
+        branch = self.removal_section()
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             (path/'packages.txt').write_text('desktop\n')
@@ -673,7 +720,6 @@ pkgtool() {
     esac
 }
 set -- "$TEST_NAME"
-if true; then
 ''' + branch
             for name, origin, locked, vital, consumers, library, okay in [
                 ('leaf','misc/leaf',0,0,0,'',True),
@@ -692,6 +738,59 @@ if true; then
                              'TEST_LIBRARY':library})
                     self.assertEqual(result.returncode == 0, okay, result.stderr)
                     self.assertEqual('deleted' in result.stdout, okay)
+
+    def test_retire_removes_only_unused_packages_from_the_retired_origin(self):
+        # The stock cage stayed installed after SDDM stopped using it.
+        branch = self.removal_section()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path/'packages.local').write_text('variant|misc/variant|1\n')
+            (path/'local-libraries').write_text('liblocal.so.1\n')
+            script = '''set -eu
+policy=$TEST_ROOT; store=$TEST_ROOT; temp=$TEST_ROOT; action=retire
+pkgtool() {
+    case "$1:$2" in
+    info:-e) [ "$3" = "$TEST_INSTALLED" ] ;;
+    query:%o) printf '%s\\n' "$TEST_ORIGIN" ;;
+    query:-a) case $3 in P*) printf '%s\\n' "$TEST_PACKAGE" ;; D*) : ;; esac ;;
+    query:%b) printf '%s\\n' "$TEST_LIBRARY" ;;
+    delete:-y) printf 'deleted %s\\n' "$3" ;;
+    *) exit 90 ;;
+    esac
+}
+''' + branch
+            for retired, installed, origin, consumers, library, requested, status, report in [
+                ('# note\n\ncage|x11-wm/cage\n', '', 'x11-wm/cage', 0, '', '', 0, ''),
+                ('cage|x11-wm/cage\n', 'cage', 'x11-wm/cage', 0, '', '', 0, 'Removed the retired cage package.'),
+                ('cage|x11-wm/cage\n', 'cage', 'misc/cage', 0, '', '', 1, 'Review cage'),
+                ('cage|x11-wm/cage\n', 'cage', 'x11-wm/cage', 1, '', '', 1, 'Cannot remove'),
+                ('cage|x11-wm/cage\n', 'cage', 'x11-wm/cage', 0, 'liblocal.so.1', '', 1, 'locally built program'),
+                ('cage|x11-wm/cage\n', 'cage', 'x11-wm/cage', 0, '', 'cage\n', 1, 'Required by the configured'),
+                ('-cage|x11-wm/cage\n', '-cage', 'x11-wm/cage', 0, '', '', 2, 'Invalid package name.'),
+            ]:
+                with self.subTest(retired=retired, origin=origin, consumers=consumers, requested=requested):
+                    (path/'packages.retired').write_text(retired)
+                    (path/'packages.txt').write_text('desktop\n' + requested)
+                    result = subprocess.run(['sh','-c',script], capture_output=True, text=True,
+                        env={**os.environ, 'TEST_ROOT':directory, 'TEST_INSTALLED':installed, 'TEST_ORIGIN':origin,
+                             'TEST_PACKAGE':f'P|{installed}|{origin}|0|0|{consumers}', 'TEST_LIBRARY':library})
+                    self.assertEqual(result.returncode, status, result.stderr)
+                    self.assertIn(report, result.stdout + result.stderr)
+                    self.assertEqual('deleted' in result.stdout, status == 0 and bool(installed))
+
+    def test_retired_packages_are_no_longer_requested_or_reviewed(self):
+        # A retired name that is still requested would stop every installing run.
+        retired = [line.split('|') for line in (ROOT/'.install/packages.retired').read_text().splitlines()
+                   if line and not line.startswith('#')]
+        self.assertTrue(retired)
+        requested = {line for line in (ROOT/'.install/packages.txt').read_text().splitlines()
+                     if line and not line.startswith('#')}
+        listed = {line.split('|')[0] for name in ('packages.allowed', 'packages.local')
+                  for line in (ROOT/'.install'/name).read_text().splitlines() if line and not line.startswith('#')}
+        for row in retired:
+            self.assertEqual(len(row), 2, row)
+            self.assertRegex(row[1], r'^[a-z0-9-]+/[A-Za-z0-9_.+-]+$')
+            self.assertNotIn(row[0], requested | listed)
 
     def test_upgrade_dispatches_through_the_transaction_guard(self):
         source = (ROOT / '.install/scripts/packages.sh').read_text()

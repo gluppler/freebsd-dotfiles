@@ -25,6 +25,7 @@ transactions independently verify signatures, policy and native ABI.
 ## Desktop and editor
 
 - [dwl FreeBSD recipe](https://cgit.freebsd.org/ports/tree/x11-wm/dwl): checked 0.9 / wlroots 0.20, downstream Clang fix, default X11 option to disable.
+- [cage recipe](https://cgit.freebsd.org/ports/tree/x11-wm/cage) and [upstream 0.3.1](https://github.com/cage-kiosk/cage/tree/v0.3.1): same archive checksum as the port. XWayland support follows wlroots' `have_xwayland`, and every X11/XWayland call is behind `CAGE_HAS_XWAYLAND` or `WLR_HAS_X11_BACKEND`.
 - [dwlb recipe](https://cgit.freebsd.org/ports/tree/x11/dwlb): checked snapshot s20250520 / upstream 48dbe00; status stdin vs optional IPC explained in the saved upstream README.
 - [foot recipe](https://cgit.freebsd.org/ports/tree/x11/foot) and [foot 1.28 config manual](https://codeberg.org/dnkl/foot/src/tag/1.28.0/doc/foot.ini.5.scd): use colors-dark, not an obsolete colors section.
 - [fuzzel recipe](https://cgit.freebsd.org/ports/tree/x11/fuzzel) and [upstream](https://codeberg.org/dnkl/fuzzel).

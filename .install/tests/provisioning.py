@@ -20,11 +20,13 @@ class Provisioning(unittest.TestCase):
         assets = 'sf_put "$repo/system/nostromo-ac.conf"' + source.split(
             'sf_put "$repo/system/nostromo-ac.conf"',1)[1].split('# Keep the package',1)[0]
         block = (helpers+assets).replace('"$repo/.build/prefix/bin/wg"','"$stage/wg-fixture"')
+        block = block.replace('"$repo/.build/prefix/libexec/nostromo-cage"','"$stage/cage-fixture"')
         block = block.replace('/usr/local','$stage/usr/local').replace('/boot/','$stage/boot/')
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory).resolve()
             (path/'work').mkdir()
             (path/'wg-fixture').write_text('compiled binary placeholder\n')
+            (path/'cage-fixture').write_text('compiled kiosk placeholder\n')
             script = 'set -eu\nrepo='+shlex.quote(str(ROOT))+'\nstage='+shlex.quote(str(path))+'\n'
             script += '''work=$stage/work
 sf_safe() { case $1 in "$stage"/*) return 0 ;; *) return 1 ;; esac; }
@@ -45,7 +47,7 @@ sf_put() {
                 self.assertEqual(Path(target).stat().st_mode & 0o777,int(mode,8),target)
             expected = [
                 *('usr/local/libexec/nostromo-'+name for name in
-                  ('session','sddm-session','performance','wifi','wireguard','bluetooth','maintenance','device','suspend','lock-session','wg')),
+                  ('session','sddm-session','performance','wifi','wireguard','bluetooth','maintenance','device','suspend','lock-session','wg','cage')),
                 *('usr/local/etc/rc.d/'+name for name in ('nostromo_mdo','nostromo_performance','nostromo_wireguard')),
                 *('usr/local/share/nostromo/'+name+'.awk' for name in ('merge-mdo','merge-block','ssid-hex')),
                 'usr/local/etc/devd/nostromo-ac.conf','usr/local/etc/devd/nostromo-suspend.conf',
@@ -93,6 +95,81 @@ sf_put() {
         result = run([])
         self.assertNotEqual(result.returncode,0)
         self.assertIn('Staged validation recorded no libraries.',result.stderr)
+
+    def test_staged_kiosk_and_compositor_must_bind_every_symbol(self):
+        # ldd passed the stock cage, which then failed at login on a function the
+        # wlroots variant leaves out. rtld reports that only when it binds the symbol.
+        source = (ROOT/'.install/scripts/verify-stage.sh').read_text()
+        check = '# The login kiosk' + source.split('# The login kiosk',1)[1].split('for tool in vise',1)[0]
+        undefined = 'ld-elf.so.1: {}: Undefined symbol "wlr_xwayland_create"'
+        def run(cage, dwl):
+            with tempfile.TemporaryDirectory() as directory:
+                prefix = Path(directory)
+                for name, body in (('libexec/nostromo-cage', cage), ('bin/dwl', dwl)):
+                    program = prefix/name
+                    program.parent.mkdir(exist_ok=True)
+                    # Each one answers only when it was started with immediate binding.
+                    program.write_text('#!/bin/sh\n[ "${LD_BIND_NOW:-}" = 1 ] || exit 3\n'
+                                       + body.format(program) + '\n')
+                    program.chmod(0o755)
+                return subprocess.run(['sh','-c',f'set -eu\nprefix={shlex.quote(str(prefix))}\n'+check],
+                                      capture_output=True,text=True)
+        cage = "echo 'Cage version 0.3.1'"
+        # dwl -v prints its version through die(): stderr and status 1.
+        dwl = "echo 'dwl 0.8-nostromo' >&2; exit 1"
+        broken = f"echo '{undefined}' >&2; exit 1"
+        result = run(cage, dwl)
+        self.assertEqual((result.returncode,result.stderr),(0,''))
+        result = run(broken, dwl)
+        self.assertEqual(result.returncode,1)
+        self.assertIn('nostromo-cage: Undefined symbol "wlr_xwayland_create"\nThe SDDM kiosk does not link',result.stderr)
+        result = run(cage, broken)
+        self.assertEqual(result.returncode,1)
+        self.assertIn('dwl: Undefined symbol "wlr_xwayland_create"\ndwl does not link completely',result.stderr)
+        result = run('exit 0', dwl)
+        self.assertEqual(result.returncode,1)
+        self.assertIn('The SDDM kiosk does not link completely',result.stderr)
+
+    def test_installed_check_requires_sddm_to_start_the_installed_kiosk(self):
+        source = (ROOT/'.install/scripts/verify-stage.sh').read_text()
+        helper = 'root_file() {' + source.split('    root_file() {',1)[1].split('\n    }\n',1)[0] + '\n}\n'
+        check = helper + '# SDDM starts' + source.split('    # SDDM starts',1)[1].split('    # Every instance of the variable',1)[0]
+        def run(*, mode=0o755, link=False, staged='kiosk', command='/usr/local/libexec/nostromo-cage -s'):
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory).resolve()
+                (path/'prefix/libexec').mkdir(parents=True)
+                (path/'prefix/libexec/nostromo-cage').write_text(staged)
+                installed = path/'libexec/nostromo-cage'
+                installed.parent.mkdir()
+                if link:
+                    installed.symlink_to(path/'prefix/libexec/nostromo-cage')
+                else:
+                    installed.write_text('kiosk')
+                    installed.chmod(mode)
+                command = command.replace('/usr/local/libexec', str(path/'libexec'))
+                (path/'sddm.conf').write_text(f'[Wayland]\nCompositorCommand={command}\n')
+                # Root ownership is modeled; the mode stays real.
+                (path/'bin').mkdir()
+                (path/'bin/stat').write_text(f'#!{sys.executable}\nimport os, sys\n'
+                                             "print('0', oct(os.stat(sys.argv[-1]).st_mode & 0o777)[2:])\n")
+                (path/'bin/stat').chmod(0o755)
+                script = check.replace('/usr/local/libexec', str(path/'libexec'))
+                script = script.replace('/usr/local/etc/sddm.conf', str(path/'sddm.conf'))
+                return subprocess.run(['sh','-c',f'set -eu\nprefix={shlex.quote(str(path/"prefix"))}\n'+script],
+                                      capture_output=True,text=True,
+                                      env={**os.environ,'PATH':str(path/'bin')+':'+os.environ['PATH']})
+        result = run()
+        self.assertEqual((result.returncode,result.stderr),(0,''))
+        # A symlink to the staged copy passed while the check was a bare && list.
+        for case in ({'mode': 0o775}, {'link': True}):
+            result = run(**case)
+            self.assertEqual(result.returncode,1,case)
+            self.assertIn('/libexec/nostromo-cage is not a root-owned mode-755 file.',result.stderr)
+        self.assertNotEqual(run(staged='rebuilt kiosk').returncode,0)
+        for command in ('/usr/local/bin/cage -s', '/usr/local/libexec/nostromo-cage'):
+            result = run(command=command)
+            self.assertEqual(result.returncode,1,command)
+            self.assertIn('SDDM does not start the installed kiosk',result.stderr)
 
     def test_installed_font_check_accepts_variable_font_family_lists(self):
         # Fontconfig names every instance of the variable Azeret Mono
@@ -476,13 +553,14 @@ pw() {{
             self.assertNotIn("Removed this run's logs", result.stdout)
 
     def test_final_check_requires_login_shell_sddm_and_current_locked_variants(self):
-        def setup(shell='/usr/local/bin/oksh', sddm='YES', lock='1', recipe='current', verified='0'):
+        def setup(shell='/usr/local/bin/oksh', sddm='YES', lock='1', recipe='current', verified='0', retired='1'):
             return f'''repo=$REPO
 account=fixture
 as_user() {{ printf 'as_user: %s\\n' "$1"; return {verified}; }}
 pw() {{ printf 'fixture:*:1000:1000::/home/fixture:{shell}\\n'; }}
 sysrc() {{ printf '{sddm}\\n'; }}
 pkg() {{
+    case $1:$2 in info:-e) return {retired} ;; esac
     case $2 in
     '%v|%k') awk -F '|' -v name="$3" '$1==name {{print $3 "|" (name=="cups" ? "{lock}" : "1")}}' "$repo/.install/packages.local" ;;
     *) if [ "$3" = cups ]; then echo 'nostromo_recipe|{recipe}'; else echo 'nostromo_recipe|current'; fi ;;
@@ -492,7 +570,8 @@ pkg() {{
         for options, message in [({}, None), ({'verified': '1'}, ''), ({'shell': '/bin/sh'}, 'The login shell is not oksh.'),
                                  ({'sddm': 'NO'}, 'SDDM is not enabled at boot.'),
                                  ({'lock': '0'}, 'The cups variant is not installed'),
-                                 ({'recipe': 'earlier'}, 'The cups variant is not installed')]:
+                                 ({'recipe': 'earlier'}, 'The cups variant is not installed'),
+                                 ({'retired': '0'}, 'The retired cage package is still installed.')]:
             with self.subTest(options=options), tempfile.TemporaryDirectory() as directory:
                 path = Path(directory).resolve()
                 (path/'share/policy').mkdir(parents=True)

@@ -50,8 +50,10 @@ trap 'rm -rf "$work"' 0
 trap 'exit 130' INT
 trap 'exit 143' HUP TERM
 : >"$work/local-libraries"
-for binary in dwl dwlb foot dvtm dvtm-editor gtklock fuzzel dunst nnn wg nostromo-output-watch nostromo-splash nostromo-control nostromo-secret-copy nostromo-terminal-idle tpass tcli tclig rustup efm-langserver; do
+for binary in dwl dwlb foot dvtm dvtm-editor gtklock fuzzel dunst nnn wg nostromo-output-watch nostromo-splash nostromo-control nostromo-secret-copy nostromo-terminal-idle tpass tcli tclig rustup efm-langserver nostromo-cage; do
     file=$prefix/bin/$binary
+    # SDDM's kiosk stays out of bin, which the home links put on PATH.
+    [ "$binary" != nostromo-cage ] || file=$prefix/libexec/$binary
     [ -x "$file" ] || {
         echo "Missing compiled program: $binary" >&2
         exit 1
@@ -69,9 +71,24 @@ for binary in dwl dwlb foot dvtm dvtm-editor gtklock fuzzel dunst nnn wg nostrom
     awk '$2=="=>" && $3 ~ /^\/usr\/local\// {print $1}' "$work/ldd" >>"$work/local-libraries"
 done
 sort -u "$work/local-libraries" >"$repo/.build/local-libraries"
+# The login kiosk and the session compositor must bind every symbol at load. A
+# library variant built with fewer options can lack a function a program calls,
+# which lazy binding reports only at that call: the stock cage failed so at login.
+output=$(LD_BIND_NOW=1 "$prefix/libexec/nostromo-cage" -v 2>&1) || :
+case $output in 'Cage version '*) ;; *)
+    printf '%s\nThe SDDM kiosk does not link completely; rebuild it against the installed wlroots.\n' "$output" >&2
+    exit 1
+    ;;
+esac
+output=$(LD_BIND_NOW=1 "$prefix/bin/dwl" -v 2>&1) || :
+case $output in 'dwl '*) ;; *)
+    printf '%s\ndwl does not link completely; rebuild it against the installed wlroots.\n' "$output" >&2
+    exit 1
+    ;;
+esac
 for tool in vise vis-menu oksh foot qutebrowser fcitx5 uv rustc cargo rustfmt cargo-clippy \
     rust-analyzer go gofmt gopls python3 ruff asm-lsp shellcheck shfmt cmake ninja dbus-run-session \
-    seatd cage sddm swayidle swaybg wlr-randr wl-copy wl-paste grim slurp zathura mpv; do
+    seatd sddm swayidle swaybg wlr-randr wl-copy wl-paste grim slurp zathura mpv; do
     command -v "$tool" >/dev/null || {
         echo "Missing runtime tool: $tool" >&2
         exit 1
@@ -92,6 +109,13 @@ NOSTROMO_DOCS_ROOT="$repo/docs/reference" NOSTROMO_CPPREFERENCE_ROOT="$repo/.bui
     NOSTROMO_LIBRARY_ROOT="$repo/.build/docs/library" MANPATH="$prefix/share/man:" \
     XDG_CACHE_HOME="$work/cache" XDG_CONFIG_HOME="$work/config" nostromo-docs --check
 if [ "$mode" = --installed ]; then
+    # set -e ignores a failure before the last command of an && list: report each one.
+    root_file() {
+        [ -f "$1" ] && [ ! -L "$1" ] && [ "$(stat -f '%u %Lp' "$1")" = "0 $2" ] || {
+            printf '%s is not a root-owned mode-%s file.\n' "$1" "$2" >&2
+            exit 1
+        }
+    }
     if /usr/bin/mdo -i -u root -- /usr/bin/id -u >/dev/null 2>&1 ||
         /usr/bin/mdo -u root -- /usr/bin/id -u >/dev/null 2>&1; then
         echo 'An existing mdo rule still grants this account root; review that policy.' >&2
@@ -102,15 +126,23 @@ if [ "$mode" = --installed ]; then
     for group in wheel video dialer; do id -Gn | tr ' ' '\n' | grep -Fxq "$group"; done
     for helper in merge-mdo merge-block ssid-hex forget-network; do
         file=/usr/local/share/nostromo/$helper.awk
-        [ -f "$file" ] && [ ! -L "$file" ] && [ "$(stat -f '%u %Lp' "$file")" = '0 644' ]
+        root_file "$file" 644
         cmp -s "$repo/.install/scripts/$helper.awk" "$file"
     done
     for helper in suspend lock-session; do
         file=/usr/local/libexec/nostromo-$helper
-        [ -f "$file" ] && [ ! -L "$file" ] && [ "$(stat -f '%u %Lp' "$file")" = '0 755' ]
+        root_file "$file" 755
         cmp -s "$repo/system/nostromo-$helper" "$file"
     done
     cmp -s "$repo/system/nostromo-suspend.conf" /usr/local/etc/devd/nostromo-suspend.conf
+    # SDDM starts this root-owned copy of the staged kiosk as the sddm user.
+    file=/usr/local/libexec/nostromo-cage
+    root_file "$file" 755
+    cmp -s "$prefix/libexec/nostromo-cage" "$file"
+    grep -Fxq "CompositorCommand=$file -s" /usr/local/etc/sddm.conf || {
+        echo 'SDDM does not start the installed kiosk; review /usr/local/etc/sddm.conf.' >&2
+        exit 1
+    }
     # Every instance of the variable Azeret Mono reports "Azeret Mono,Azeret Mono Thin".
     for family in Michroma 'Azeret Mono'; do
         fc-match -f '%{family}\n' "$family" | tr ',' '\n' | grep -Fxq "$family" || {

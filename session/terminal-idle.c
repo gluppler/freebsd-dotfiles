@@ -74,23 +74,50 @@ static char *load(const char *path) {
     return data;
 }
 
-/* Discard terminal controls and clip by display columns, including wide glyphs. */
+/* Print a glyph at *column unless it is scrolled off the left; 0 once the row is full. */
+static int put(const char *bytes, size_t n, int width, int *column, int skip, int columns) {
+    int end = *column + width;
+    if (end - skip > columns) return 0;
+    if (*column >= skip) fwrite(bytes, 1, n, stdout);
+    else for (int at = skip; at < end; at++) putchar(' '); /* A wide glyph cut by the scroll. */
+    *column = end;
+    return 1;
+}
+
+/* Clip by display columns, including wide glyphs. Fastfetch aligns values with
+   ESC [ n G even in pipe mode: pad to that column. Drop every other control. */
 static void line(const char *text, int skip, int columns) {
     mbstate_t state = {0};
-    int used = 0;
+    int column = 0;
     size_t left = strlen(text);
     while (left) {
-        wchar_t wc;
-        size_t n = mbrtowc(&wc, text, left, &state);
-        int invalid = n == (size_t)-1 || n == (size_t)-2;
-        if (invalid) { n = 1; wc = L'?'; memset(&state, 0, sizeof state); }
-        int width = wcwidth(wc);
-        if (width < 0) { width = 1; wc = L' '; invalid = 1; }
-        if (skip > 0) skip -= width;
-        else {
-            if (used + width > columns) break;
-            if (invalid) putchar((char)wc); else fwrite(text, 1, n, stdout);
-            used += width;
+        size_t n = 1;
+        if (*text == '\033') {
+            int target = -1;
+            if (left > 1 && text[1] == '[') {
+                int value = 0;
+                for (n = 2; n < left && text[n] >= 0x30 && text[n] <= 0x3f; n++)
+                    if (text[n] >= '0' && text[n] <= '9' && value < 4096) value = value*10 + text[n]-'0';
+                while (n < left && text[n] >= 0x20 && text[n] <= 0x2f) n++;
+                if (n < left) { if (text[n] == 'G') target = (value ? value : 1) - 1; n++; }
+            } else if (left > 1 && text[1] == ']') {
+                /* OSC, such as a clipboard write, through BEL or ST. */
+                n = 2;
+                while (n < left && text[n] != '\a' && !(text[n] == '\033' && n+1 < left && text[n+1] == '\\')) n++;
+                if (n < left) n += text[n] == '\a' ? 1 : 2;
+            } else if (left > 1) n = 2;
+            while (column < target) if (!put(" ", 1, 1, &column, skip, columns)) return;
+        } else if (*text == '\t') {
+            do if (!put(" ", 1, 1, &column, skip, columns)) return; while (column % 8);
+        } else {
+            wchar_t wc;
+            const char *glyph = text;
+            size_t bytes = n = mbrtowc(&wc, text, left, &state);
+            int width = 1;
+            if (n == (size_t)-1 || n == (size_t)-2 || n == 0) {
+                n = bytes = 1; glyph = "?"; memset(&state, 0, sizeof state);
+            } else if ((width = wcwidth(wc)) < 0) { width = 1; bytes = 1; glyph = " "; }
+            if (!put(glyph, bytes, width, &column, skip, columns)) return;
         }
         text += n; left -= n;
     }

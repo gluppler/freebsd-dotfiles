@@ -1,0 +1,5 @@
+# name|origin. Stock packages that earlier versions installed and nothing here uses now.
+# Each installing run removes them when nothing installed requires them.
+# cage: the stock build calls X11 and XWayland functions that the wlroots020 variant
+# leaves out; SDDM now starts the kiosk built here, /usr/local/libexec/nostromo-cage.
+cage|x11-wm/cage

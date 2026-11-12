@@ -13,14 +13,29 @@ for _,name in ipairs({'START','UI_DRAW','WIN_CLOSE','FILE_SAVE_PRE','PROCESS_RES
 end
 function vis.events.subscribe(name, fn) handlers[name]=fn end
 function vis:windows() local once=false; return function() if not once then once=true; return win end end end
+-- Like vis 0.9, a file handle: closing it stops the process.
 function vis:communicate(name, command)
   assert(command=='nostromo-terminal-idle --ticks')
-  started=started+1; self.process=name; return {}
+  started=started+1; self.process=name
+  return {close=function(handle) assert(handle.close); closed=closed+1; return true end}
 end
-function vis:close() closed=closed+1 end
 function vis:feedkeys(value) assert(value=='zt'); keys=keys+1 end
 function vis:redraw() end
 function vis:info(message) self.message=message end
+-- An invented method passed here and failed in vis: dashboard.lua called vis:close.
+-- These are vis 0.9's vis_lua, window_funcs and file_funcs tables in vis-lua.c.
+local api={vis=' files windows mark_names register_names command info message map unmap mappings operator '..
+  'operator_register motion motion_register textobject textobject_register option_register option_unregister '..
+  'command_register feedkeys insert replace action_register exit pipe redraw communicate ',
+  win=' selections_iterator map unmap style_define style style_pos status draw close ',
+  file=' insert delete lines_iterator content mark_set mark_get '}
+for name,object in pairs({vis=vis, win=win, file=file}) do
+  for key,value in pairs(object) do
+    if type(value)=='function' and key~='subscribe' then
+      assert(api[name]:find(' '..key..' ',1,true), name..':'..key..' is not in vis 0.9')
+    end
+  end
+end
 
 local dashboard=dofile('vis/nostromo/dashboard.lua')
 dashboard.setup({{key='n',label='New file',action=function() end}})

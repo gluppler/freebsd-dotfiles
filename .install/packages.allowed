@@ -18,7 +18,6 @@ basu|devel/basu|*|stock
 boost-libs|devel/boost-libs|*|stock
 brotli|archivers/brotli|*|stock
 ca_root_nss|security/ca_root_nss|*|stock
-cage|x11-wm/cage|*|stock
 cairo|graphics/cairo|*|stock
 cantarell-fonts|x11-fonts/cantarell-fonts|*|stock
 cmake-core|devel/cmake-core|3.31.12_3|local
@@ -265,6 +264,7 @@ nlohmann-json|devel/nlohmann-json|*|stock
 noto-sans-jp|x11-fonts/noto-sans-jp|*|stock
 noto-sans-kr|x11-fonts/noto-sans-kr|*|stock
 noto-sans-math|x11-fonts/noto-sans-math|*|stock
+noto-sans-runic|x11-fonts/noto-sans-runic|*|stock
 noto-sans-symbols2|x11-fonts/noto-sans-symbols2|*|stock
 nspr|devel/nspr|*|stock
 nss|security/nss|*|stock

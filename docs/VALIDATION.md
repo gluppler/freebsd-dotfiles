@@ -29,7 +29,9 @@ resolve names on the T14's network; the [audit fixes](#audit-fixes) give the
 cause. The KiCad PCB workflow has since been removed because PCB design
 runs on a separate server: its packages, six native variants, ports patch, plugin,
 helper, guide and tests are gone. Host checks pass for the listed scopes. The
-first reboot into the desktop, login and hardware acceptance remain
+first reboot into the desktop (2026-11-12, after `750ab89`) booted, but SDDM showed
+a blank console with a cursor: the stock cage could not run against the wlroots
+variant ([audit fixes](#audit-fixes)). Login and hardware acceptance remain
 **incomplete**. The installer performs
 additional native stage/ABI/configuration checks before enabling SDDM; that is
 not a substitute for testing the actual session. No zero-error, all-board or
@@ -37,6 +39,72 @@ measured battery-performance claim is made.
 
 ## Audit fixes
 
+- At the first boot with SDDM enabled, VT 9 stayed a blank console with a cursor.
+  SDDM starts its greeter inside cage. The stock cage 0.3.1 package was built
+  against the stock wlroots020, which has X11 and XWayland, so it imports 12
+  `wlr_xwayland_*`/X11 functions. The local wlroots020 variant unsets the port's
+  X11 option (`.install/ports/ports.conf`), which leaves them out. cage calls
+  `wlr_xwayland_create` before it creates its socket or starts its backend
+  (`cage.c:565`, `598`, `605`). That call cannot resolve, so the greeter never
+  had a display. `ldd` lists only missing
+  libraries, so the staged checks passed. The greeter's QML was tested only with
+  a mock backend, and the login was never started natively before the reboot.
+  cage is now built here (`.install/scripts/build-cage.sh`) against the variant
+  and installed as `/usr/local/libexec/nostromo-cage`; the stock package is
+  retired (`.install/packages.retired`). The build and staged validation run
+  the kiosk and dwl with `LD_BIND_NOW=1`, which resolves every symbol before
+  `main`.
+  `--installed` checks the installed copy and SDDM's `CompositorCommand`. The
+  cross-compile check builds cage against the variant's header set and
+  `wlr/config.h` with upstream's `-Werror`. Its objects import none of the 51
+  functions declared in the left-out headers; the stock binary imports 12 of them.
+  The other variants were checked against the stock builds their consumers link
+  (quarterly catalog options, live packages and pinned sources):
+  - ffmpeg without VDPAU loses `av_vdpau_bind_context` and
+    `av_vdpau_get_surface_parameters`. mpv, swayimg, libheif and qt6-webengine
+    import neither.
+  - libxslt without CRYPTO loses `exsltCryptoRegister`, which neither lxml nor
+    qt6-webengine imports.
+  - No libcups 2.4.20 function is defined only with DNS-SD (753 definitions).
+  - fcitx5's core libraries use X11 only inside one function body.
+  - The remaining option changes affect documentation, command-line tools or
+    separate modules.
+  No reviewed stock package links the wlroots variant now.
+- `fetch` showed broken glyphs and a literal `[18G` on every line, on the
+  console and in foot. fastfetch 2.69.0 aligns each value with a cursor-column
+  escape (`ESC[18G`) even with `--pipe true`. The live viewer
+  (`session/terminal-idle.c`) dropped only the ESC byte. It now pads to that
+  column and drops other CSI, OSC and two-byte escapes. Its tests feed it real
+  fastfetch output; the stub they used before hid the escape. The keys `◈ ▣ ▤ ▰`
+  are in neither FreeBSD 15.1's built-in console font nor the 16x32 Terminus
+  that the T14's panel selects (`sys/dev/vt/font/vt_font_default.c`,
+  `contrib/terminus/ter-u32n.bdf`). Their replacements `◆ ■ ≡ ▬` are in both.
+- The bar's Bluetooth `ᛒ` had no font on the T14. fcft, Pango and Qt fall back
+  through every installed font. fc-query found U+16D2 in none of `fonts/` or the
+  font packages of the requested closure. The host previews draw through macOS
+  fonts, which have it. `noto-sans-runic` (9 KB, OFL) supplies it now. A policy
+  test ties every non-ASCII glyph in the desktop sources to a bundled font or a
+  requested package.
+- `nostromo-autostart` ran the D-Bus activation update, the wallpaper and the
+  splash as plain commands under `set -e`. A failure in any of them ended the
+  script, and its exit trap stopped the bar, Dunst, PipeWire and fcitx5. The
+  screen then looks like bare dwl. These steps now log to `session.log` and the
+  session continues. A test runs the script with every optional step failing.
+- Leaving the vis dashboard raised "attempt to call a nil value (method
+  'close')". It stopped its clock with `vis:close`, which vis 0.9 does not have.
+  It now closes the handle that `vis:communicate` returns, which stops the
+  process. The formatter's `file:snapshot` did not exist either, so formatting
+  stopped whenever the output differed. The dashboard test's mock had defined
+  `vis:close`; it now rejects every method missing from vis 0.9's tables
+  (`vis-lua.c`), and `check.py` checks each `vis:` and `file:` call.
+- Under `set -e`, a failure before the last command of an `&&` list does not
+  stop the script. `verify-stage.sh --installed` checked its root-owned helpers
+  with `[ -f ] && [ ! -L ] && [ mode ]`, so a symlink whose target matched would
+  have passed in place of `/usr/local/libexec/nostromo-suspend`. The same form
+  let a symlinked or incomplete C reference pass `development-tools.sh`, and an
+  empty knowledge library pass `nostromo-docs --check`. Each one now reports
+  the failure. `check.py` rejects any test-only `&&` list that has no `||`
+  branch.
 - `a46cb06` replaced the Wi-Fi question with an automatic check, a default route
   plus `getent hosts pkg.FreeBSD.org`, and went straight into the console setup
   when it failed. On the T14 it failed with both cable and Wi-Fi connected:

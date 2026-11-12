@@ -449,6 +449,46 @@ pw() {{
         self.assertFalse(shell.exists())
         self.assertEqual(list((self.path/'cache').iterdir()),[])
 
+    def test_retire_deletes_only_unused_retired_packages(self):
+        # The stock cage stayed installed after SDDM moved to the kiosk built here.
+        source = (ROOT/'.install/scripts/packages.sh').read_text()
+        section = 'validate() {' + source.split('validate() {',1)[1].split('esac }\n',1)[0] + 'esac }\n'
+        section += '# Only a package nothing here needs' + source.split('# Only a package nothing here needs',1)[1].split(
+            '\nif [ "$action" = update ]; then',1)[0] + '\n'
+        self.package('wlroots020')
+        self.package('cage',deps=['wlroots020'],origin='x11-wm/cage')
+        self.package('desktop',deps=['wlroots020'])
+        self.package('greeter',origin='x11-wm/greeter')
+        self.package('viewer',deps=['greeter'])
+        self.publish()
+        self.pkg('install','-U','-y','-r','NostromoTransaction','cage','desktop','viewer')
+        (self.path/'policy').mkdir()
+        (self.path/'policy/packages.txt').write_text('desktop\nviewer\n')
+        (self.path/'policy/packages.local').write_text('wlroots020|misc/wlroots020|1\n')
+
+        def retire(listed):
+            (self.path/'policy/packages.retired').write_text(listed)
+            script = '''set -eu
+policy=$PKG_WORK/policy; store=$PKG_WORK; temp=$PKG_WORK; action=retire
+pkgtool() { "$PKG_TEST" -C "$PKG_WORK/pkg.conf" "$@"; }
+''' + section
+            return subprocess.run(['sh','-c',script],env=self.env,text=True,capture_output=True,timeout=60)
+
+        everything = {'wlroots020','cage','desktop','greeter','viewer'}
+        # viewer still requires greeter: the run stops before deleting anything.
+        result = retire('greeter|x11-wm/greeter\ncage|x11-wm/cage\n')
+        self.assertEqual(result.returncode,1,result.stdout+result.stderr)
+        self.assertIn('Cannot remove a missing, locked, vital, base or required package: greeter',result.stderr)
+        self.assertEqual(set(self.pkg('query','-a','%n').stdout.split()),everything)
+        result = retire('# retired\nabsent|misc/absent\ncage|x11-wm/cage\n')
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn('Removed the retired cage package.',result.stdout)
+        # Its dependency stays: pkg's AUTOREMOVE default is off, and desktop needs it.
+        self.assertEqual(set(self.pkg('query','-a','%n').stdout.split()),everything-{'cage'})
+        self.pkg('check','-d','-n','-a')
+        result = retire('cage|x11-wm/cage\n')
+        self.assertEqual((result.returncode,result.stdout),(0,''),result.stderr)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

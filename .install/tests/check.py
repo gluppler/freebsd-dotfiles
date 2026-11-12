@@ -195,6 +195,48 @@ class Migration(unittest.TestCase):
             with self.subTest(script=script.name):
                 subprocess.run(["/bin/sh", "-n", str(script)], check=True, capture_output=True)
 
+    def test_test_lists_report_their_failure(self):
+        # set -e ignores a failure before the last command of an && list: the installed
+        # check "[ -f x ] && [ ! -L x ] && [ mode ]" passed a symlink without an || branch.
+        found = []
+        for directory, dirs, names in os.walk(ROOT):
+            dirs[:] = [name for name in dirs if Path(directory, name).relative_to(ROOT).as_posix()
+                       not in (".git", ".build", "docs/research", "tests")]
+            for name in names:
+                path = Path(directory, name)
+                if path.is_symlink() or not (path.suffix == ".sh" or path.read_bytes()[:9] == b"#!/bin/sh"):
+                    continue
+                logical = ""
+                for number, line in enumerate(path.read_text().splitlines(), 1):
+                    if line.lstrip().startswith("#"):
+                        logical = ""
+                        continue
+                    logical += line.strip() + " "
+                    if re.search(r"(&&|\|\|?)\s*$", line) or line.endswith("\\"):
+                        continue
+                    parts = [part.strip() for part in logical.split("&&")]
+                    if (len(parts) > 1 and "||" not in logical and not re.match(r"(if|elif|while|until)\b", logical)
+                            and all(re.fullmatch(r"\[ .* \]|test .*", part) for part in parts)):
+                        found.append(f"{path.relative_to(ROOT)}:{number}: {logical.strip()}")
+                    logical = ""
+        self.assertEqual(found, [])
+
+    def test_vis_lua_calls_only_existing_methods(self):
+        # vis 0.9's vis_lua and file_funcs tables (vis-lua.c), plus Lua io handles.
+        # The dashboard's vis:close and the formatter's file:snapshot exist in neither.
+        vis = set("""files windows mark_names register_names command info message map unmap mappings operator
+            operator_register motion motion_register textobject textobject_register option_register
+            option_unregister command_register feedkeys insert replace action_register exit pipe redraw
+            communicate""".split())
+        files = set("insert delete lines_iterator content mark_set mark_get".split())
+        handles = set("close flush lines read seek setvbuf write".split())
+        for path in sorted(ROOT.glob("vis/**/*.lua")):
+            text = path.read_text()
+            for name in re.findall(r"\bvis:(\w+)\(", text):
+                self.assertIn(name, vis, f"{path.relative_to(ROOT)}: vis:{name}")
+            for name in re.findall(r"\bfile:(\w+)\(", text):
+                self.assertIn(name, files | handles, f"{path.relative_to(ROOT)}: file:{name}")
+
     def test_awk_programs_parse(self):
         # sh -n cannot see inside quoted awk programs. FreeBSD's awk ended an Include
         # pattern at a slash inside brackets, which stopped every system configuration.
@@ -249,6 +291,9 @@ class Migration(unittest.TestCase):
             self.assertTrue(exports.get(name, "").startswith('"$repo/.build/'), name)
         # Go makes its module cache read-only, which would stop that removal.
         self.assertEqual(exports.get("GOFLAGS"), "-modcacherw")
+        # Every stage runs as the account through as_user; XDG tools cache in .build.
+        installer = (ROOT / "install.sh").read_text()
+        self.assertIn('XDG_CACHE_HOME="$repo/.build/cache"', installer.split("as_user() {", 1)[1].split("\n}\n", 1)[0])
         # Go's usage counters follow XDG_CONFIG_HOME; every go command runs in this subshell.
         block = re.search(r"\n\(\n(.*?)\n\)\n", tools, re.S).group(1)
         self.assertIn('XDG_CONFIG_HOME="$work/config"', block)

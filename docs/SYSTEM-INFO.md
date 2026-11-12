@@ -33,6 +33,13 @@ It runs as the ordinary user and does not prompt for root. Local IP/MAC and Wi-F
 details can appear in the report, so review an output before sharing it publicly.
 For raw fields supplied by each module, use `nostromo-fetch --format json`.
 
+The same report works on the text console. Its key symbols (`◆ ↑ › ■ ≡ ▬`) and
+the orb's block characters exist in FreeBSD 15.1's built-in console font and in
+the loader's 16x32 Terminus that the T14's panel selects. The earlier `◈ ▣ ▤ ▰`
+are in neither and showed as broken glyphs there. Fastfetch aligns values with a
+cursor-column escape (`ESC[18G`) even in pipe mode; the interactive view now
+turns it into padding. It printed `[18G` on every line before.
+
 Configuration: `fastfetch/config.jsonc`, checked against fastfetch
 2.69.0's schema and parser. The wrapper accepts normal fastfetch overrides.
 See the [upstream configuration reference](https://github.com/fastfetch-cli/fastfetch/wiki/Configuration).

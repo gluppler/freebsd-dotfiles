@@ -59,6 +59,7 @@ FreeBSD 15.1-RELEASE amd64 / Wayland setup for $who:
   5. Build patched Wayland clients, editor plugins and native language tools as $who.
   6. Check every staged binary/configuration, then transactionally install user links.
   7. Back up and merge the listed system settings; configure mdo and the native login session.
+     Then remove the stock packages this checkout retired (.install/packages.retired).
   8. Verify the final configuration before enabling SDDM at boot. Keep console login/recovery.
   9. Check the installed system again, remove every backup and log, then ask before rebooting into the desktop.
 No partitioning, OS installation or server provisioning.
@@ -129,9 +130,11 @@ for script in configure-system verify-stage editor-plugins development-tools bui
     }
 done
 sh "$repo/.install/scripts/verify-stage.sh" --sources
+# Tools that follow XDG, such as fontconfig, keep their caches in the build output.
 as_user() {
     env -i HOME="$account_home" USER="$account" LOGNAME="$account" SHELL=/bin/sh \
         PATH="$account_home/.local/bin:$PATH" LANG=en_US.UTF-8 TERM="${TERM:-vt100}" \
+        XDG_CACHE_HOME="$repo/.build/cache" \
         NOSTROMO_REPO="$repo" NOSTROMO_UID="$uid" NOSTROMO_COMPONENT="${component:-}" \
         NOSTROMO_COMMAND='set -eu; umask 022; cd "$NOSTROMO_REPO"; '"$1" \
         /usr/bin/su -f "$account" -c 'exec /bin/sh -c "$NOSTROMO_COMMAND"'
@@ -338,6 +341,13 @@ final_check() {
             return 1
         }
     done <"$repo/.install/packages.local"
+    while IFS='|' read -r name _origin; do
+        case $name in '' | '#'*) continue ;; esac
+        ! pkg info -e "$name" || {
+            printf 'The retired %s package is still installed.\n' "$name" >&2
+            return 1
+        }
+    done <"$repo/.install/packages.retired"
     printf 'Final checks passed for %s.\n' "$account"
 }
 finish() {
@@ -419,7 +429,7 @@ install -d -m 755 /usr/local/share/nostromo /usr/local/libexec
 policy=$(mktemp -d /usr/local/share/nostromo/.policy.XXXXXXXX)
 # The policy copies .install's layout, so its recipe-hash.sh digests the published inputs.
 mkdir "$policy/scripts" "$policy/ports"
-for file in packages.allowed packages.local packages.txt ports.lock sources.lock; do install -m 644 "$repo/.install/$file" "$policy/$file"; done
+for file in packages.allowed packages.local packages.retired packages.txt ports.lock sources.lock; do install -m 644 "$repo/.install/$file" "$policy/$file"; done
 for file in package-policy.awk ports-variants.sh recipe-hash.sh fetch-source.sh; do install -m 644 "$repo/.install/scripts/$file" "$policy/scripts/$file"; done
 for file in "$repo/.install/ports/ports.conf" "$repo"/.install/ports/*.patch; do install -m 644 "$file" "$policy/ports/"; done
 sh "$repo/.install/scripts/recipe-hash.sh" >"$policy/recipe.sha256"
@@ -510,6 +520,8 @@ run development-tools as_user 'sh .install/scripts/development-tools.sh'
 run staged-validation as_user 'sh .install/scripts/verify-stage.sh'
 run user-files as_user 'sh .install/scripts/link-home.sh --apply'
 run system-configuration sh "$repo/.install/scripts/configure-system.sh" "$account" "$log"
+# Their replacements are installed now, such as SDDM's kiosk.
+run retired-packages "$packages" retire
 run login-shell pw usermod "$account" -s /usr/local/bin/oksh
 # Activation is the last change; the current console/desktop keeps running until reboot.
 run enable-login sysrc sddm_enable=YES

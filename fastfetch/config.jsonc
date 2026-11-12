@@ -28,11 +28,11 @@
     "separator",
     {
       "type": "os",
-      "key": "◈ OS"
+      "key": "◆ OS"
     },
     {
       "type": "host",
-      "key": "◈ LAPTOP"
+      "key": "◆ LAPTOP"
     },
     {
       "type": "board",
@@ -88,7 +88,7 @@
     "break",
     {
       "type": "cpu",
-      "key": "▣ CPU",
+      "key": "■ CPU",
       "temp": true,
       "format": "{name} | {cores-physical} cores / {cores-logical} threads | base {freq-base} / max {freq-max}{?temperature} | {temperature}{?}"
     },
@@ -106,7 +106,7 @@
     },
     {
       "type": "memory",
-      "key": "▤ RAM"
+      "key": "≡ RAM"
     },
     {
       "type": "physicalmemory",
@@ -122,7 +122,7 @@
     },
     {
       "type": "gpu",
-      "key": "▣ GPU",
+      "key": "■ GPU",
       "temp": true,
       "driverSpecific": true,
       "format": "{name} [{type}] | {driver}{?temperature} | {temperature}{?}"
@@ -142,7 +142,7 @@
     "break",
     {
       "type": "physicaldisk",
-      "key": "▰ STORAGE",
+      "key": "▬ STORAGE",
       "temp": true,
       "format": "{name} | {size} | {interconnect} {physical-type} | {dev-path}{?revision} | firmware {revision}{?}{?temperature} | {temperature}{?}"
     },

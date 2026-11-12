@@ -2,7 +2,12 @@
 
 The executable manifests are `.install/packages.txt` (desktop/development roots),
 `.install/packages.local` (15 ordered native variants), and `.install/packages.allowed` (reviewed
-names, origins, version constraints and roles). The installer resolves the actual
+names, origins, version constraints and roles). `.install/packages.retired` lists
+stock packages that earlier versions installed and nothing uses now. Each installing run
+removes them after system configuration, if nothing installed requires them, and the
+final check fails while one remains. The stock cage is the first: it links the wlroots
+variant, which lacks the X11/XWayland functions it calls. No other reviewed stock
+package links the variant (`.install/tests/package-policy.py`). The installer resolves the actual
 FreeBSD quarterly dependency graph and checks every archive before installation.
 A complete native build and install ran on the T14 at commit `17fb366`;
 [VALIDATION](VALIDATION.md#native-evidence-from-the-t14) records it.

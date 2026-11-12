@@ -1,5 +1,6 @@
 """Run the actual terminal viewer in a disposable PTY; no laptop devices needed."""
 import fcntl
+import json
 import os
 from pathlib import Path
 import pty
@@ -57,6 +58,8 @@ class Idle(unittest.TestCase):
                 try:
                     until(b'1/81')
                     self.assertNotIn(b'\x1b]52',output)
+                    self.assertNotIn(b'52;c;fixture',output)
+                    self.assertIn(b'Unsafe  text',output)
                     if mode=='animated':
                         initial=output.count(b'\x1b[H')
                         time.sleep(.6)
@@ -80,6 +83,74 @@ class Idle(unittest.TestCase):
                 finally:
                     if process.poll() is None: process.kill(); process.wait()
                     os.close(master);os.close(slave)
+
+    def view(self, report, keys=b''):
+        # One static frame per key at 120x24, where the report starts in column 34.
+        master,slave=pty.openpty()
+        fcntl.ioctl(slave,termios.TIOCSWINSZ,struct.pack('HHHH',24,120,0,0))
+        process=subprocess.Popen([str(self.binary),'--report',str(report),'--art',str(ROOT/'art/nostromo-orb-idle.txt')],
+                                 stdin=slave,stdout=slave,stderr=slave,env={**self.env,'NOSTROMO_EFFECTS':'static'})
+        frames=[]
+        try:
+            for key in [None,*keys]:
+                if key is not None: os.write(master,bytes([key]))
+                output=b'';deadline=time.monotonic()+4
+                while b'q close' not in output:
+                    if time.monotonic()>deadline: self.fail('Missing terminal output')
+                    if select.select([master],[],[],.1)[0]: output+=os.read(master,65536)
+                frames.append(output)
+            os.write(master,b'q')
+            self.assertEqual(process.wait(timeout=2),0)
+        finally:
+            if process.poll() is None: process.kill(); process.wait()
+            os.close(master);os.close(slave)
+        return frames
+
+    def test_viewer_aligns_fastfetch_columns_and_drops_controls(self):
+        # fastfetch --pipe still aligns values with ESC[18G; the viewer printed "[18G".
+        report=self.work/'report'
+        report.write_text('◆ OS  \x1b[18GFreeBSD 15.1-RELEASE amd64\nBLUETOOTH DEVICES  \x1b[18Gnone\n'
+                          'tab\there\nbold \x1b[1mtext\x1b[0m end\n')
+        first,scrolled=self.view(report,b'l')
+        self.assertNotIn(b'[18G',first)
+        self.assertIn(('◆ OS'+' '*13+'FreeBSD 15.1-RELEASE').encode(),first)
+        self.assertIn(b'BLUETOOTH DEVICES  none',first)
+        self.assertIn(b'tab     here',first)
+        self.assertIn(b'bold text end',first)
+        # Eight columns scrolled: the key is gone and the value keeps its column.
+        self.assertNotIn('◆ OS'.encode(),scrolled)
+        self.assertIn(b'\x1b[34G'+b' '*9+b'FreeBSD',scrolled)
+
+    def test_viewer_shows_real_fastfetch_output_without_controls(self):
+        fastfetch=ROOT/'.build/fastfetch-check/fastfetch'
+        if not fastfetch.is_file():
+            self.skipTest('the host fastfetch 2.69.0 build is not cached')
+        report=self.work/'report'
+        with report.open('wb') as stream:
+            subprocess.run([str(fastfetch),'--config',str(ROOT/'fastfetch/config.jsonc'),'--logo','none','--pipe','true'],
+                           stdout=stream,stderr=subprocess.DEVNULL,check=True,timeout=60,
+                           env={'HOME':str(self.work),'PATH':'/usr/bin:/bin','LANG':'en_US.UTF-8'})
+        self.assertIn(b'\x1b[18G',report.read_bytes())
+        frame,=self.view(report)
+        self.assertNotIn(b'[18G',frame)
+        self.assertRegex(frame.decode(),r'◆ OS {13}\S')
+        # The native stage check only parses the JSON; fastfetch skips an unknown
+        # module silently and names it only in its JSON report.
+        result=subprocess.run([str(fastfetch),'--config',str(ROOT/'fastfetch/config.jsonc'),'--format','json'],
+                              capture_output=True,text=True,check=True,timeout=60,
+                              env={'HOME':str(self.work),'PATH':'/usr/bin:/bin','LANG':'en_US.UTF-8'})
+        modules=json.loads(result.stdout)
+        self.assertEqual([module['type'] for module in modules if module.get('error')=='Unknown module type'],[])
+        self.assertEqual(len(modules),68)
+
+    def test_console_output_uses_glyphs_the_console_fonts_have(self):
+        # FreeBSD 15.1's built-in vt font (sys/dev/vt/font/vt_font_default.c) and the
+        # loader's 16x32 Terminus on the T14 (contrib/terminus/ter-u32n.bdf) both have
+        # these. Neither has ◈ ▣ ▤ ▰, which fastfetch's keys showed broken on the console.
+        console=set('↑›◆■≡▬▀▄█')
+        for name in ('fastfetch/config.jsonc','art/nostromo-orb-small.txt','art/nostromo-orb-idle.txt'):
+            text=(ROOT/name).read_text()
+            self.assertEqual({ch for ch in text if ord(ch)>0x7e}-console,set(),name)
 
     def test_dashboard_animation_does_not_accumulate_edits(self):
         data=self.work/'share/nostromo';data.mkdir(parents=True)

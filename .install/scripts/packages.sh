@@ -28,6 +28,7 @@ install | preview)
     ;;
 update) [ "$#" = 0 ] || exit 2 ;;
 finish-bootstrap) [ "$#" = 0 ] || exit 2 ;;
+retire) [ "$#" = 0 ] || exit 2 ;;
 catalog) [ "$#" = 0 ] || exit 2 ;;
 details)
     [ "$#" = 1 ] || exit 2
@@ -46,7 +47,7 @@ import)
     validate "$1"
     ;;
 *)
-    echo 'Usage: packages.sh install|preview [--build] names... | update | remove[-check] name | import name archive | finish-bootstrap' >&2
+    echo 'Usage: packages.sh install|preview [--build] names... | update | remove[-check] name | retire | import name archive | finish-bootstrap' >&2
     exit 2
     ;;
 esac
@@ -197,7 +198,9 @@ if [ "$action" = import ]; then
     mv "$temp/import.pkg" "$store/local/$1.pkg"
     exit
 fi
-if [ "$action" = remove ] || [ "$action" = remove-check ]; then
+# Only a package nothing here needs: not pkg, base, locked, vital or required by
+# the configured desktop/build stack, and providing no library a local program links.
+removable() {
     pkgtool query -a 'P|%n|%o|%k|%V|%#r' >"$temp/installed"
     pkgtool query -a 'D|%n|%dn' >"$temp/dependencies"
     awk -F '|' '!(NF==3 && $1=="D" && $3=="")' "$temp/dependencies" >>"$temp/installed"
@@ -226,8 +229,27 @@ if [ "$action" = remove ] || [ "$action" = remove-check ]; then
             exit 1
         fi
     fi
+}
+if [ "$action" = remove ] || [ "$action" = remove-check ]; then
+    removable "$1"
     # Reject consumers above: pkg delete can otherwise add them to its work list.
     if [ "$action" = remove-check ]; then pkgtool delete -n "$1"; else pkgtool delete "$1"; fi
+    exit
+fi
+if [ "$action" = retire ]; then
+    # Stock packages that earlier versions installed and nothing here uses now.
+    while IFS='|' read -r name origin; do
+        case $name in '' | '#'*) continue ;; esac
+        validate "$name"
+        pkgtool info -e "$name" || continue
+        [ "$(pkgtool query '%o' "$name")" = "$origin" ] || {
+            printf 'Review %s: it was not installed from the retired %s.\n' "$name" "$origin" >&2
+            exit 1
+        }
+        removable "$name"
+        pkgtool delete -y "$name"
+        printf 'Removed the retired %s package.\n' "$name"
+    done <"$policy/packages.retired"
     exit
 fi
 if [ "$action" = update ]; then

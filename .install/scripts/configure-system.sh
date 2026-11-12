@@ -57,6 +57,8 @@ for name in session sddm-session performance wifi wireguard bluetooth maintenanc
     sf_put "$repo/system/nostromo-$name" "/usr/local/libexec/nostromo-$name" 755
 done
 sf_put "$repo/.build/prefix/bin/wg" /usr/local/libexec/nostromo-wg 755
+# SDDM's greeter kiosk, built against the wlroots variant; it runs as sddm.
+sf_put "$repo/.build/prefix/libexec/nostromo-cage" /usr/local/libexec/nostromo-cage 755
 for name in nostromo_mdo nostromo_performance nostromo_wireguard; do
     sf_put "$repo/system/rc.d/$name" "/usr/local/etc/rc.d/$name" 755
 done

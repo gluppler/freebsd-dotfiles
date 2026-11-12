@@ -108,3 +108,25 @@ for xml in re.findall(r"wayland_protocols_datadir / '([^']+)'", (p/'meson.build'
  if path.exists(): scan(p,'client-header',path,path.stem+'.h')
 run([f for f in flags if f != '-Wextra']+['-D_GNU_SOURCE','-DFOOT_DEFAULT_TERM="foot"','-DFOOT_GRAPHEME_CLUSTERING=1','-DHAVE_XDG_TOPLEVEL_TAG=1','-DHAVE_EXT_BACKGROUND_EFFECT=1','-I.','-I'+str(usr/'include/libepoll-shim'),'input.c','config.c','key-binding.c'],p)
 print('FreeBSD foot action/config compile check passed')
+
+# SDDM's kiosk against the wlroots variant. ports.conf unsets X11 and VULKAN, which
+# leaves out these headers (pkg-plist %%X11%%/%%VULKAN%%) and the functions they
+# declare. The stock cage package imported 12 of them and exited before drawing.
+p=copy('cage',root/'.build/upstream/cage-0.3.1')
+gone=['backend/x11.h','render/vulkan.h','xwayland.h','xwayland/server.h','xwayland/shell.h','xwayland/xwayland.h']
+removed={name for header in gone for name in re.findall(r'\b(wlr_\w+)\s*\(',(usr/'include/wlroots-0.20/wlr'/header).read_text())}
+variant=p/'wlroots-variant';shutil.copytree(usr/'include/wlroots-0.20',variant)
+for header in gone:(variant/'wlr'/header).unlink()
+(variant/'wlr/xwayland').rmdir()
+config=(variant/'wlr/config.h').read_text()
+for name in ['X11_BACKEND','XWAYLAND','VULKAN_RENDERER']:
+ assert '#define WLR_HAS_'+name+' 1\n' in config,name
+ config=config.replace('#define WLR_HAS_'+name+' 1\n','#define WLR_HAS_'+name+' 0\n')
+(variant/'wlr/config.h').write_text(config)
+(p/'config.h').write_text('#define CAGE_HAS_XWAYLAND 0\n#define CAGE_VERSION "0.3.1"\n')
+sources=['cage.c','idle_inhibit_v1.c','output.c','seat.c','view.c','xdg_shell.c']
+# Upstream Meson's warning_level=2 and werror, with its FreeBSD exceptions; objects, not just syntax.
+run([f for f in flags if f not in ('-fsyntax-only','-I'+str(usr/'include/wlroots-0.20'))]+['-I'+str(variant),'-I.','-DWLR_USE_UNSTABLE','-Wundef','-Wno-format-extra-args','-Wno-gnu-zero-variadic-macro-arguments','-c']+sources,p)
+imports=set(subprocess.run(['nm','-u']+[name[:-2]+'.o' for name in sources],cwd=p,check=True,capture_output=True,text=True).stdout.split())
+assert len(removed)>=12 and 'wlr_xwayland_create' in removed and not imports&removed, sorted(imports&removed)
+print('FreeBSD cage kiosk compile check passed')

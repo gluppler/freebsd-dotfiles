@@ -1,7 +1,6 @@
 # Required binary roots. Local variants and patched desktop sources are separate.
 abduco
 asm-lsp
-cage
 cmake-man
 dfu-util
 dtc
@@ -40,6 +39,7 @@ ninja
 noto-sans-jp
 noto-sans-kr
 noto-sans-math
+noto-sans-runic
 noto-sans-symbols2
 oksh
 openocd

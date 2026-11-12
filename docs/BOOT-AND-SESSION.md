@@ -23,8 +23,15 @@ through FreeBSD's loader extension mechanism.
 
 ## Login and session
 
-`sddm/nostromo.conf` explicitly selects `DisplayServer=wayland`, cage,
-Qt's Wayland backend, the Nostromo QML theme and the one managed Wayland session.
+`sddm/nostromo.conf` explicitly selects `DisplayServer=wayland`, the cage kiosk
+`/usr/local/libexec/nostromo-cage`, Qt's Wayland backend, the Nostromo QML theme
+and the one managed Wayland session. That cage 0.3.1 is built here against the
+wlroots variant. The stock package was built with wlroots' X11 and XWayland
+support, which the variant leaves out. It calls `wlr_xwayland_create` before it
+creates its socket, so at the first boot on 2026-11-12 SDDM's VT 9 stayed a
+blank console with a cursor. The build and staged validation now load every
+symbol the kiosk and dwl use (`LD_BIND_NOW=1`), and the retired stock package
+is removed.
 No X11 session or automatic login is configured. The login shows the retained orb,
 Michroma Login/Password fields, bottom-right cuts and animated outside brackets.
 The space_dots-derived logo arrival, phosphor motion and grain also run here;
@@ -46,7 +53,9 @@ backends. It neither runs startx nor starts the desktop from every SSH shell.
 The dwl startup helper owns the bar, status producer, native Dunst, wallpaper,
 PipeWire/WirePlumber, fcitx5, swayidle and hardware-event watcher. Local kanshi
 profiles are optional. The native space_dots-style splash runs for about 2.4 seconds after
-the authenticated session starts. Owned children are stopped on logout. Session
+the authenticated session starts. If the wallpaper, the splash or the D-Bus
+activation update fails, the session log names it and the bar and services keep
+running. Owned children are stopped on logout. Session
 logs rotate to `~/.local/state/nostromo/session.previous.log` at the next login;
 the current log is `session.log`. There is no automatic compositor restart loop.
 
@@ -69,10 +78,34 @@ resume debounce ignores the wake button's duplicate sleep event. With no verifie
 desktop session, suspension is refused. Test every output, hotplug, failed passwords, locker failure and resume
 on the laptop before treating authentication/suspend as accepted.
 
-Console recovery is kept. From a root console, `sysrc sddm_enable=NO` prevents the
-next graphical startup; inspect the session/install logs and correct the reported
-file. A completed install keeps no backup copies. See [INSTALL](INSTALL.md) for
-transaction boundaries.
+## Console recovery and manual tests
+
+Ctrl+Alt+F1 to F8 open the text consoles, each with a login prompt. They work
+from a blank screen, from the login screen (the kiosk runs with cage's `-s`,
+which allows the switch) and from the desktop. SDDM uses VT 9, so Ctrl+Alt+F9
+returns to it. As root, `service sddm stop` ends the login screen, and
+`sysrc sddm_enable=NO` keeps it off at the next boot; `sysrc sddm_enable=YES`
+restores it. A completed install keeps no backup copies. See
+[INSTALL](INSTALL.md) for transaction boundaries.
+
+Console logins get their `XDG_RUNTIME_DIR` from the base `pam_xdg.so` session,
+so each part can be started by hand from a console as the ordinary user:
+
+- `/usr/local/libexec/nostromo-session` starts the whole desktop, as SDDM does.
+  Its log is `~/.local/state/nostromo/session.log`. Super+Shift+Q, then LOGOUT,
+  ends it.
+- Plain `dwl` starts the compositor alone: a black screen with a pointer and no
+  bar, wallpaper or services. Super+Return opens foot there. It has no quit key;
+  switch to another console and run `pkill -x dwl`.
+- `/usr/local/libexec/nostromo-cage -s -- foot` tests the login kiosk with a
+  terminal; exiting foot ends it.
+- `QT_QPA_PLATFORM=wayland /usr/local/libexec/nostromo-cage -s -- sddm-greeter-qt6 --test-mode --theme /usr/local/share/sddm/themes/nostromo`
+  shows the login screen without logging in. Leave it from another console with
+  `pkill -x nostromo-cage`.
+
+SDDM's own log is `/var/log/sddm.log`, readable by root. A login that returns
+straight to the login screen leaves its messages from before dwl starts, such
+as a missing program, in `~/.local/share/sddm/wayland-session.log`.
 
 Sources: [FreeBSD Wayland](https://docs.freebsd.org/en/books/handbook/wayland/),
 [loader.conf](https://man.freebsd.org/cgi/man.cgi?query=loader.conf&sektion=5),

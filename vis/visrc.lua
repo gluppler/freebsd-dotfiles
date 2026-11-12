@@ -44,10 +44,9 @@ local function format()
   end
   if output == input then return end
   local line, col = vis.win.selection.line, vis.win.selection.col
-  file:snapshot()
+  -- vis records one undo step for the whole action.
   file:delete(0, file.size)
   file:insert(0, output)
-  file:snapshot()
   vis.win.selection:to(line, col)
 end
 

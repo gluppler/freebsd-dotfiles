@@ -173,7 +173,8 @@ current configuration.
   or run `--clean` to install only the lists.
 - Installer tools keep their state in `.build`, not in your home. That covers
   Go's module and build caches, uv's download cache, Go's usage counters for its
-  builds and the settings file from rustup's version check. Installers before
+  builds, the settings file from rustup's version check and every cache that
+  follows `XDG_CACHE_HOME`, such as fontconfig's. Installers before
   2026-11-11 left these in your home as `~/go`, `~/.cache/go-build`,
   `~/.cache/uv`, `~/.config/go/telemetry` and `~/.rustup`. The installer cannot
   tell them from your own, so it leaves them. If you do not use those tools

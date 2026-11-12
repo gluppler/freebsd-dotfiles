@@ -14,7 +14,8 @@ end
 
 local function stop_clock()
   clock_name, pending = nil, ''
-  if clock then vis:close(clock); clock = nil end
+  -- vis:communicate returns a file handle; closing it sends the process SIGTERM.
+  if clock then clock:close(); clock = nil end
 end
 
 local function columns(text)

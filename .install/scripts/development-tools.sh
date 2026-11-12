@@ -81,7 +81,10 @@ reference=$repo/.build/docs/cppreference-20250209
 if [ ! -e "$reference" ]; then
     sh "$repo/.install/scripts/fetch-source.sh" cppreference "$reference"
 fi
-[ ! -L "$reference" ] && [ -s "$reference/en/c.html" ] && [ -s "$reference/en/cpp.html" ]
+[ ! -L "$reference" ] && [ -s "$reference/en/c.html" ] && [ -s "$reference/en/cpp.html" ] || {
+    echo 'The cppreference archive did not provide the C and C++ references.' >&2
+    exit 1
+}
 # The extracted reference replaces its archive.
 rm -f "$repo/.build/downloads/cppreference.tar.gz"
 sh "$repo/.install/scripts/docs-library.sh"

@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -238,6 +239,74 @@ class Wallpaper(unittest.TestCase):
         self.assertIn("Unknown wallpaper selection.", result.stderr)
         self.assertEqual((self.state / "wallpaper").read_text(), "default\n")
         self.assertEqual(sorted(path.name for path in self.state.iterdir()), ["wallpaper", "wallpaper.pid"])
+
+
+class Autostart(unittest.TestCase):
+    """dwl's startup script. An optional step that failed used to end it, and its
+    trap then stopped the bar and services: the session looked like bare dwl."""
+
+    def test_failed_optional_steps_keep_the_services_until_logout(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        work = Path(temp.name)
+        tools = work / "bin"
+        tools.mkdir()
+        services = ("dwlb", "dunst", "pipewire", "wireplumber", "fcitx5", "swayidle",
+                    "nostromo-status", "nostromo-output-watch")
+        for name in services:
+            (tools / name).write_text(f'#!/bin/sh\necho {name} $$ >>"$TEST_ROOT/started"\nexec sleep 30\n')
+        optional = ("dbus-update-activation-environment", "nostromo-crt", "nostromo-wallpaper", "nostromo-splash")
+        for name in optional:
+            (tools / name).write_text(f'#!/bin/sh\necho {name} >>"$TEST_ROOT/failed"\nexit 1\n')
+        for tool in tools.iterdir():
+            tool.chmod(0o755)
+        env = {"PATH": f"{tools}:/usr/bin:/bin", "HOME": str(work), "TEST_ROOT": str(work),
+               "WAYLAND_DISPLAY": "wayland-1", "DBUS_SESSION_BUS_ADDRESS": "unix:path=/nonexistent"}
+        log = (work / "session.log").open("w")
+        self.addCleanup(log.close)
+        # dash is the closest shell to FreeBSD's sh; stdin stands in for dwl's status pipe.
+        process = subprocess.Popen(["dash", str(ROOT / "bin/nostromo-autostart")], stdin=subprocess.PIPE,
+                                   stdout=log, stderr=log, env=env)
+        pids = []
+
+        def alive(pid):
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return False
+            return True
+
+        def until(condition):
+            deadline = time.monotonic() + 5
+            while not condition():
+                self.assertLess(time.monotonic(), deadline, (work / "session.log").read_text())
+                time.sleep(.05)
+        try:
+            until(lambda: "nostromo-splash" in (work / "failed").read_text().split()
+                  if (work / "failed").exists() else False)
+            time.sleep(.3)
+            self.assertIsNone(process.poll(), (work / "session.log").read_text())
+            started = dict(line.split() for line in (work / "started").read_text().splitlines())
+            self.assertEqual(sorted(started), sorted(services))
+            pids = [int(pid) for pid in started.values()]
+            self.assertTrue(all(map(alive, pids)))
+            self.assertEqual((work / "failed").read_text().split(), list(optional))
+            text = (work / "session.log").read_text()
+            for message in ("D-Bus activation environment not updated.", "CRT unavailable",
+                            "Wallpaper unavailable", "Splash unavailable."):
+                self.assertIn(message, text)
+            # dwl's logout stops the script; its trap stops each owned service.
+            process.send_signal(15)
+            self.assertEqual(process.wait(timeout=5), 0)
+            until(lambda: not any(map(alive, pids)))
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            process.stdin.close()
+            for pid in pids:
+                if alive(pid):
+                    os.kill(pid, 9)
 
 
 class Clipboard(unittest.TestCase):

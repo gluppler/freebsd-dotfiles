@@ -142,7 +142,7 @@ See [MIGRATION.md](MIGRATION.md) for native support and dependencies.
 | Notifications | Dunst native Wayland backend, retaining its shared Cairo drawing customization |
 | Wallpaper | swaybg with existing exports, one coherent per-output selection policy |
 | Idle/lock | swayidle + gtklock using ext-session-lock and native FreeBSD PAM |
-| Graphical login | SDDM Wayland greeter under cage is the selected integration route; verify FreeBSD execution before enabling |
+| Graphical login | SDDM Wayland greeter under cage, built here against the wlroots variant; the stock cage failed at the first boot (2026-11-12) |
 | Clipboard/capture | wl-clipboard; grim + slurp; no X selection or XTEST helpers |
 | Displays | wlr-randr for manual modes; kanshi for hotplug profiles after output discovery |
 | Images/PDF/media | swayimg; Zathura/MuPDF with GTK Wayland; mpv with native Wayland output |

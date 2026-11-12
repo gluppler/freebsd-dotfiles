@@ -25,7 +25,7 @@ export CC=/usr/bin/clang CXX=/usr/bin/clang++
 export PKG_CONFIG_PATH=/usr/local/libdata/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig
 log=$repo/.build/logs/$(date +%Y%m%d-%H%M%S)-$$
 mkdir -p "$log"
-for component in dwl dwlb foot dvtm gtklock fuzzel dunst nnn wireguard session tpass rustup; do
+for component in dwl cage dwlb foot dvtm gtklock fuzzel dunst nnn wireguard session tpass rustup; do
     printf 'Building %s; log: %s/%s.log\n' "$component" "$log" "$component"
     if sh "$repo/.install/scripts/build-$component.sh" >"$log/$component.log" 2>&1; then
         printf 'Built %s\n' "$component"

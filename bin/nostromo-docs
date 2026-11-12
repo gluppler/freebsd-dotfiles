@@ -583,7 +583,10 @@ if [ "$action" = --check ]; then
             exit 1
         }
     done
-    [ -n "$(knowledge_topics)" ] && test -s "$knowledge/LICENSE.md"
+    [ -n "$(knowledge_topics)" ] && test -s "$knowledge/LICENSE.md" || {
+        printf 'Missing knowledge library: %s\n' "$knowledge" >&2
+        exit 1
+    }
     electronics_chapters | grep -q '^00-contents|' || {
         printf 'Missing electronics guide: %s\n' "$electronics" >&2
         exit 1
