@@ -5,6 +5,8 @@ PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
 LC_ALL=C
 export PATH LC_ALL
 umask 077
+# Installed awk programs; the console bootstrap passes the checkout's copies.
+share=${NOSTROMO_WIFI_SHARE:-/usr/local/share/nostromo}
 [ "$(uname -s)" = FreeBSD ] && [ "$(id -u)" = 0 ] || exit 1
 [ "$#" = 2 ] || exit 2
 action=$1
@@ -61,8 +63,21 @@ associated() {
     echo 'Association timed out; check the credentials and device support.' >&2
     return 1
 }
+# The security modes the running supplicant can use with this driver.
+modes() {
+    capabilities=$(wpa get_capability key_mgmt) || return 1
+    for pair in wpa2:WPA-PSK wpa3:SAE open:NONE owe:OWE; do
+        if printf '%s\n' "$capabilities" | tr ' ' '\n' | grep -Fxq -e "${pair#*:}"; then
+            printf '%s\n' "${pair%:*}"
+        fi
+    done
+}
 case $action in
 status) exec wpa_cli -p "$control_path" -i "$interface" status ;;
+modes)
+    modes
+    exit
+    ;;
 scan)
     wpa scan | grep -q '^OK$' || exit 1
     sleep 3
@@ -91,7 +106,7 @@ if [ "$action" = connect ]; then
     IFS= read -r secret
     case $ssid in '' | *[!0-9a-f]*) exit 2 ;; esac
     [ "${#ssid}" -le 64 ] && [ "$((${#ssid} % 2))" = 0 ] || exit 2
-    case $security in wpa2) key_mgmt=WPA-PSK ;; wpa3) key_mgmt=SAE ;; open) key_mgmt=NONE ;; owe) key_mgmt=OWE ;; *) exit 2 ;; esac
+    case $security in wpa2 | wpa3 | open | owe) ;; *) exit 2 ;; esac
     case $secret in *[[:cntrl:]]*) exit 2 ;; esac
     if [ "$security" = wpa2 ] || [ "$security" = wpa3 ]; then
         [ "${#secret}" -ge 8 ] && [ "${#secret}" -le 63 ] || {
@@ -99,9 +114,10 @@ if [ "$action" = connect ]; then
             exit 2
         }
     fi
-    capabilities=$(wpa get_capability key_mgmt) || exit 1
-    printf '%s\n' "$capabilities" | tr ' ' '\n' | grep -Fxq -e "$key_mgmt" || {
-        printf 'This supplicant does not support %s. Use a supported mode on the hotspot or another access point.\n' "$key_mgmt" >&2
+    available=$(modes) || exit 1
+    printf '%s\n' "$available" | grep -Fxq -e "$security" || {
+        printf '%s is not available with this Wi-Fi driver and supplicant. Available: %s.\n' \
+            "$security" "$(printf '%s\n' "$available" | paste -sd ' ' -)" >&2
         exit 1
     }
 fi
@@ -141,7 +157,7 @@ finish() {
         esac
         [ "$dhcp" = no ] || service dhclient onerestart "$interface" || :
     fi
-    rm -f "$lock/before" "$lock/block" "$lock/candidate"
+    rm -f "$lock/before" "$lock/kept" "$lock/block" "$lock/candidate"
     rmdir "$lock"
     unset secret escaped
     exit "$result"
@@ -159,6 +175,13 @@ if [ "$action" = select ]; then
     exit
 fi
 cp -p "$file" "$lock/before"
+# The new profile replaces every saved one for this network name, whoever wrote it.
+replaced=no
+if awk -v ssid="$ssid" -v mode=find -f "$share/forget-network.awk" "$lock/before"; then replaced=yes; fi
+awk -v ssid="$ssid" -f "$share/forget-network.awk" "$lock/before" >"$lock/kept" || {
+    echo 'The WPA configuration has a network name wpa_supplicant cannot read; review it first.' >&2
+    exit 1
+}
 escaped=$(printf '%s' "$secret" | sed 's/\\/\\\\/g; s/"/\\"/g')
 {
     printf 'network={\n ssid=%s\n id_str="nostromo-%s"\n scan_ssid=1\n' "$ssid" "$ssid"
@@ -171,21 +194,33 @@ escaped=$(printf '%s' "$secret" | sed 's/\\/\\\\/g; s/"/\\"/g')
     printf '}\n'
 } >"$lock/block"
 unset secret escaped
-awk -v name="WIFI $ssid" -v replacement="$lock/block" -f "${NOSTROMO_WIFI_MERGER:-/usr/local/share/nostromo/merge-block.awk}" \
-    "$lock/before" >"$lock/candidate"
+awk -v name="WIFI $ssid" -v replacement="$lock/block" -f "$share/merge-block.awk" "$lock/kept" >"$lock/candidate"
 changed=yes
 replace_file "$lock/candidate"
 service wpa_supplicant onerestart "$interface"
 ready
-id=
+# The supplicant's own reading must agree: only the new profile names this network.
+id='' others=0
 for candidate in $(wpa list_networks | awk -F '\t' '$1 ~ /^[0-9]+$/ {print $1}'); do
     if [ "$(wpa get_network "$candidate" id_str)" = "\"nostromo-$ssid\"" ]; then
         id=$candidate
-        break
+        continue
     fi
+    # get_network quotes a printable name and writes any other in hex.
+    name=$(wpa get_network "$candidate" ssid)
+    case $name in \"*\")
+        name=${name#\"}
+        name=$(printf '%s' "${name%\"}" | od -An -v -tx1 | tr -d ' \n')
+        ;;
+    esac
+    [ "$name" != "$ssid" ] || others=$((others + 1))
 done
 [ -n "$id" ] || {
     echo 'The supplicant rejected the new profile.' >&2
+    exit 1
+}
+[ "$others" = 0 ] || {
+    echo 'Another saved profile still names this network; review the WPA configuration.' >&2
     exit 1
 }
 wpa select_network "$id" | grep -q '^OK$'
@@ -193,5 +228,6 @@ associated "$id"
 if [ "$dhcp" = yes ]; then service dhclient onerestart "$interface"; fi
 changed=no
 printf 'Associated and saved. DHCP/DNS/reachability are separate from wireless authentication.\n'
+[ "$replaced" = no ] || printf 'The new profile replaced the one saved earlier for this network.\n'
 printf 'For a public network with web sign-in, choose PORTAL in the Wi-Fi menu.\n'
 wpa status

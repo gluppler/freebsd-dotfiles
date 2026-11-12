@@ -138,6 +138,47 @@ scbus4 on nvme0 bus 0:
             for bad in [original+"# BEGIN NOSTROMO WIFI 6162\n", result+"# END NOSTROMO WIFI 6162\n"]:
                 self.assertNotEqual(subprocess.run(args, input=bad, text=True, capture_output=True).returncode, 0)
 
+    def test_forgotten_network_is_the_one_wpa_supplicant_reads(self):
+        script = str(ROOT / ".install/scripts/forget-network.awk")
+        def run(source, name, *mode):
+            return subprocess.run(["awk", "-v", "ssid=" + name.hex(), *mode, "-f", script], input=source,
+                                  capture_output=True, env={**os.environ, "LC_ALL": "C"})
+        header = b'ctrl_interface=/var/run/wpa_supplicant\neapol_version=2\n# home network={\n'
+        other = b'network={\n\tssid="Homer"\n\tpsk="other-secret"\n}\n'
+        # Every spelling of "Home" that wpa_supplicant accepts, bsdinstall's first.
+        for block in [b'network={\n\tssid="Home"\n\tpsk="secret"\n\tpriority=5\n}\n',
+                      b'  network={ # bsdinstall\r\n ssid=486F6D65\r\n}\r\n', b'network={\nssid=P"H\\x6fm\\145"\n}\n',
+                      b'network={\nssid=P"\\110o\\me"\n}\n', b'network={\nssid="Other"\nssid="Home" # renamed\n}\n']:
+            with self.subTest(block=block):
+                self.assertEqual(run(header + block + other, b"Home").stdout, header + other)
+                self.assertEqual(run(header + block + other, b"Home", "-v", "mode=find").returncode, 0)
+        # Other names, a cleared name, comments and other block types stay byte for byte.
+        for block in [b'network={\n ssid="Home "\n}\n', b'network={\n ssid="home"\n}\n',
+                      b'network={\n ssid="Home"\n ssid=NULL\n}\n', b'#network={\n# ssid="Home"\n#}\n',
+                      b'cred={\n realm="Home"\n}\n', b'network={\n key_mgmt=NONE\n}\n']:
+            with self.subTest(block=block):
+                self.assertEqual(run(header + block, b"Home").stdout, header + block)
+                self.assertEqual(run(header + block, b"Home", "-v", "mode=find").returncode, 1)
+        # A quoted name ends at the last quote, # starts a comment only outside quotes and
+        # P"" decodes as printf_decode() does; bytes stay bytes.
+        for name, line in [(b'Lab #1', b'ssid="Lab #1" # comment'), (b'a', b'ssid="a"#b"'), (b'x"y', b'ssid="x"y"'),
+                           ("café".encode(), 'ssid="café"'.encode()), (b'\n\x1b', b'ssid=P"\\n\\e"'),
+                           (b'\xff', b'ssid=P"\\xff"'), (b'\x0f', b'ssid=P"\\xf"'), (b'z', b'ssid=P"\\xz"'),
+                           (b'q', b'ssid=P"\\q"'), (b'\xff', b'ssid=P"\\777"'), (b'ab', b'ssid=P"ab\\"')]:
+            with self.subTest(line=line):
+                self.assertEqual(run(b'network={\n ' + line + b'\n}\n' + other, name).stdout, other)
+        # Managed markers stay for merge-block.awk; every earlier profile goes.
+        managed = b'# BEGIN NOSTROMO WIFI 486f6d65\nnetwork={\n ssid=486f6d65\n}\n# END NOSTROMO WIFI 486f6d65\n'
+        self.assertEqual(run(header + managed + other + b'network={\n ssid="Home"\n}\n', b"Home").stdout,
+                         header + b'# BEGIN NOSTROMO WIFI 486f6d65\n# END NOSTROMO WIFI 486f6d65\n' + other)
+        # A name wpa_supplicant would reject, or an unterminated block, stops the change.
+        for source in [b'network={\n ssid="Home\n}\n', b'network={\n ssid=486\n}\n', b'network={\n ssid=zz\n ssid="Home"\n}\n',
+                       b'network={\n ssid="' + b'x' * 33 + b'"\n}\n', b'network={\n ssid=P"Home\n}\n', b'network={\n ssid="Home"\n']:
+            with self.subTest(source=source):
+                self.assertEqual(run(source, b"Home").returncode, 2)
+        for args in [["-v", "ssid=486F6D65"], ["-v", "ssid=486"], ["-v", "ssid=486f6d65", "-v", "mode=list"]]:
+            self.assertEqual(subprocess.run(["awk", *args, "-f", script], input=b"", capture_output=True).returncode, 2)
+
 
 class Wallpaper(unittest.TestCase):
     def setUp(self):

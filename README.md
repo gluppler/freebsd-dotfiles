@@ -44,8 +44,9 @@ preflight. `--clean` is a clean full install: it removes earlier packages and
 build output, installs packages, builds as the ordinary user and enables login
 after validation. `--upgrade` applies the checkout's changed configuration,
 documents and pins to the installed environment, and continues a run that
-stopped. Without a working connection, both set up Wi-Fi at the console before
-downloading. They keep backups of replaced files only until the final check
+stopped. Both report whether `pkg.FreeBSD.org` is reachable and ask
+`Configure a Wi-Fi connection now? [y/N]` before downloading; without a
+connection, declining stops the run. They keep backups of replaced files only until the final check
 passes, and logs only when a stage stops. Base `mdo` grants limited ACPI access; administrative changes use
 base `su`/PAM authentication. No existing privilege wrapper is needed.
 It does not partition disks; after a final check it asks before rebooting.

@@ -7,16 +7,34 @@ PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
 LC_ALL=C
 export PATH LC_ALL
 [ "$(uname -s)" = FreeBSD ] && [ "$(id -u)" = 0 ] || exit 1
-[ "$#" = 0 ] || { [ "$#" = 1 ] && [ "$1" = --needed ]; } || exit 2
-# The installer keeps a working connection, wired or wireless.
-if [ "${1:-}" = --needed ]; then
-    if route -n get default >/dev/null 2>&1 && getent hosts pkg.FreeBSD.org >/dev/null; then
-        echo 'The network is up; the current connection stays.'
-        exit 0
-    fi
-    echo 'No working connection. Set up Wi-Fi to continue.'
-fi
+[ "$#" = 0 ] || { [ "$#" = 1 ] && [ "$1" = --offer ]; } || exit 2
+# The first file pkg reads from its repository. fetch resolves names over UDP as pkg
+# does; getent hosts cannot stand in, because sethostent(1) sends its queries over
+# TCP, which many home routers refuse.
+reachable() { fetch -q -T 15 -o /dev/null https://pkg.FreeBSD.org/FreeBSD:15:amd64/quarterly/meta.conf 2>/dev/null; }
 exec 3<>/dev/tty
+if [ "${1:-}" = --offer ]; then
+    echo 'Checking the connection to pkg.FreeBSD.org...'
+    offline=no
+    if reachable; then
+        via=$(route -n get default 2>/dev/null | awk '$1=="interface:" {print $2}')
+        echo "pkg.FreeBSD.org is reachable${via:+ through $via}."
+    else
+        echo 'pkg.FreeBSD.org is not reachable.'
+        offline=yes
+    fi
+    printf 'Configure a Wi-Fi connection now? [y/N] ' >&3
+    IFS= read -r answer <&3 || exit 1
+    case $answer in y | Y | yes | YES) ;; *)
+        # Without the package server, a clean install would remove packages it cannot reinstall.
+        [ "$offline" = no ] || {
+            echo 'Connect a cable or set up Wi-Fi, then rerun.' >&2
+            exit 1
+        }
+        exit 0
+        ;;
+    esac
+fi
 [ -w /etc ] && [ -w /var/run ] || {
     echo 'Finish booting into multi-user mode with writable filesystems first. See BASE-SETUP.md.' >&2
     exit 1
@@ -31,7 +49,7 @@ mkdir "$work" || {
     exit 1
 }
 terminal='' backup='' interface='' previous_country='' previous_domain=''
-committed=no created=no regulatory_changed=no was_up=no was_running=no live_changed=no
+committed=no created=no regulatory_changed=no supplicant_changed=no was_up=no was_running=no live_changed=no
 finish() {
     result=$?
     trap - 0
@@ -47,9 +65,12 @@ finish() {
                 ifconfig "$interface" down || :
                 ifconfig "$interface" regdomain "$previous_domain" country "$previous_country" || :
             fi
-            if [ "$was_running" = yes ]; then
-                service wpa_supplicant onerestart "$interface" || :
-            else service wpa_supplicant onestop "$interface" >/dev/null 2>&1 || :; fi
+            # A connection this run never touched keeps running undisturbed.
+            if [ "$supplicant_changed" = yes ] || [ "$regulatory_changed" = yes ]; then
+                if [ "$was_running" = yes ]; then
+                    service wpa_supplicant onerestart "$interface" || :
+                else service wpa_supplicant onestop "$interface" >/dev/null 2>&1 || :; fi
+            fi
             if [ "$was_up" = yes ]; then ifconfig "$interface" up || :; else ifconfig "$interface" down || :; fi
         fi
         [ -z "$backup" ] || printf 'Wi-Fi setup stopped. Configuration backups: %s\n' "$backup" >&2
@@ -134,15 +155,38 @@ esac
 live_changed=yes
 ifconfig "$interface" up
 ifconfig "$interface" list scan >&3 || :
+helper=$repo/system/nostromo-wifi
+offered='wpa2 wpa3 open owe'
+if [ "$was_running" = yes ]; then
+    # A running supplicant shows the current network and what it can use, before any secret.
+    sh "$helper" status "$interface" 2>/dev/null | awk -F= '
+        $1 == "ssid" {name = substr($0, 6)} $1 == "key_mgmt" {security = $2} $1 == "wpa_state" {state = $2}
+        END {if (state == "COMPLETED") printf "Connected to %s with %s.\n", name, security}' >&3
+    available=$(sh "$helper" modes "$interface" 2>/dev/null | paste -sd ' ' -)
+    [ -z "$available" ] || offered=$available
+fi
 printf 'Network name (SSID): ' >&3
 IFS= read -r name <&3 || exit 1
 [ -n "$name" ] && [ "${#name}" -le 32 ] || exit 2
 case $name in *[[:cntrl:]]*) exit 2 ;; esac
 ssid=$(printf '%s' "$name" | od -An -v -tx1 | tr -d ' \n')
-printf 'Security [wpa2/wpa3/open/owe; default wpa2]: ' >&3
+if [ -f "$file" ] && awk -v ssid="$ssid" -v mode=find -f "$repo/.install/scripts/forget-network.awk" "$file"; then
+    echo 'This network has a saved profile; the new settings replace it once they connect.' >&3
+fi
+missing=
+for option in wpa2 wpa3 open owe; do
+    case " $offered " in *" $option "*) ;; *) missing="$missing $option" ;; esac
+done
+[ -z "$missing" ] || printf 'Not available with this Wi-Fi driver and supplicant:%s.\n' "$missing" >&3
+printf 'Security [%s; default wpa2]: ' "$(printf '%s' "$offered" | tr ' ' /)" >&3
 IFS= read -r security <&3 || exit 1
 security=${security:-wpa2}
 case $security in wpa2 | wpa3 | open | owe) ;; *) exit 2 ;; esac
+case " $offered " in *" $security "*) ;; *)
+    echo "$security is not available with this Wi-Fi driver and supplicant." >&2
+    exit 1
+    ;;
+esac
 secret=
 if [ "$security" = wpa2 ] || [ "$security" = wpa3 ]; then
     terminal=$(stty -g <&3)
@@ -188,15 +232,22 @@ if [ -n "$country" ] && [ "$(sysrc -n "create_args_$interface")" != "$args count
     echo 'Another rc configuration overrides the country setting. Review it before retrying.' >&2
     exit 1
 fi
-service wpa_supplicant onestart "$interface"
-# The root-only helper accepts a source-tree merger before anything is installed.
+# A supplicant usually already serves the interface, and rc.subr refuses to start a
+# second one; restarting also loads the control socket setting added above.
+supplicant_changed=yes
+if service wpa_supplicant onestatus "$interface" >/dev/null 2>&1; then
+    service wpa_supplicant onerestart "$interface"
+else
+    service wpa_supplicant onestart "$interface"
+fi
+# The root-only helper accepts the checkout's awk programs before anything is installed.
 printf '%s\n%s\n%s\n' "$ssid" "$security" "$secret" |
-    NOSTROMO_WIFI_MERGER="$repo/.install/scripts/merge-block.awk" sh "$repo/system/nostromo-wifi" connect "$interface"
+    NOSTROMO_WIFI_SHARE="$repo/.install/scripts" sh "$helper" connect "$interface"
 unset secret
 committed=yes
-printf 'Wi-Fi profile saved. Check routing and DNS before installing packages.\n'
+printf 'Wi-Fi profile saved. Checking pkg.FreeBSD.org before installing packages.\n'
 netstat -rn
-getent hosts pkg.FreeBSD.org || {
-    echo 'The Wi-Fi profile is saved, but package-host DNS failed. Check DHCP/DNS before continuing.' >&2
+reachable || {
+    echo 'The Wi-Fi profile is saved, but pkg.FreeBSD.org is not reachable. Check DHCP/DNS before continuing.' >&2
     exit 1
 }

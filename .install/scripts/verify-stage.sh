@@ -12,7 +12,7 @@ for script in configure-system configure-security configure-devices setup-wifi e
     }
     sh -n "$repo/.install/scripts/$script.sh"
 done
-for file in .install/scripts/merge-mdo.awk .install/scripts/merge-block.awk .install/scripts/ssid-hex.awk \
+for file in .install/scripts/merge-mdo.awk .install/scripts/merge-block.awk .install/scripts/ssid-hex.awk .install/scripts/forget-network.awk \
     system/nostromo-suspend system/nostromo-lock-session system/nostromo-suspend.conf; do
     [ -s "$repo/$file" ] || {
         echo "Missing system install source: $file" >&2
@@ -100,7 +100,7 @@ if [ "$mode" = --installed ]; then
     [ "$(/usr/bin/mdo -k -g nostromo_power -- /usr/bin/id -u)" = "$(id -u)" ]
     [ "$(/usr/bin/mdo -k -g nostromo_power -- /usr/bin/id -gn)" = nostromo_power ]
     for group in wheel video dialer; do id -Gn | tr ' ' '\n' | grep -Fxq "$group"; done
-    for helper in merge-mdo merge-block ssid-hex; do
+    for helper in merge-mdo merge-block ssid-hex forget-network; do
         file=/usr/local/share/nostromo/$helper.awk
         [ -f "$file" ] && [ ! -L "$file" ] && [ "$(stat -f '%u %Lp' "$file")" = '0 644' ]
         cmp -s "$repo/.install/scripts/$helper.awk" "$file"

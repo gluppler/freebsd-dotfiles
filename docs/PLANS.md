@@ -54,8 +54,8 @@ receipt before the reboot prompt, and installer tools keep their caches in
 `.build` instead of the home. The reboot into the desktop, first login and
 hardware acceptance still need confirming. The installer now has four modes:
 `--preview`, `--check`, `--clean` for a clean full install and `--upgrade` to
-apply a pulled checkout; both installing modes set up Wi-Fi first when there is
-no working connection. The [native evidence](VALIDATION.md#native-evidence-from-the-t14)
+apply a pulled checkout; both installing modes report whether
+`pkg.FreeBSD.org` is reachable and offer console Wi-Fi setup [y/N] first. The [native evidence](VALIDATION.md#native-evidence-from-the-t14)
 records each earlier stop's cause and fix.
 
 **Latest scope clarification:** migrate every implemented workflow **and every
@@ -245,7 +245,8 @@ The exact visual source and wedge reference are recorded in
   firmware maintenance. No resident content indexer; Escape must cancel safely.
 - Scan/connect Wi-Fi including phone hotspots, open/Enhanced Open public networks,
   hidden/saved networks and explicit browser-based captive-portal sign-in; protect credentials,
-  preserve a working connection and roll back failed profile changes.
+  preserve a working connection, change a saved network's security or password
+  and roll back failed profile changes.
 - US English → Japanese → Korean cycle plus direct chooser and extensible engines.
   XKB keymaps alone are not Japanese/Korean conversion; validate terminal,
   GTK and Qt text-input paths. No silent English-only fallback called complete.
@@ -328,9 +329,10 @@ add no email client, Tuta integration or account placeholders.
 
 - Separate manual Base-Setup explains DVD1 verification, US keymap, installation
   type/sets, disk/encryption/swap, services/hardening and initial network/Git.
-- Normal multi-user boot and writable system filesystems are required. Without a
-  working connection, set up Wi-Fi with hidden console input before downloads,
-  with backups and failed-connection rollback; keep a working connection. Bluetooth offers explicit HCI/firmware setup.
+- Normal multi-user boot and writable system filesystems are required. Offer
+  console Wi-Fi setup [y/N] with hidden input before downloads, with backups and
+  failed-connection rollback; keep a working connection, and stop when the
+  package server is unreachable and the setup is declined. Bluetooth offers explicit HCI/firmware setup.
   Remaining account/device/credential requirements are in [FIRST-RUN](FIRST-RUN.md).
 - One root entry point previews account/packages/files/builds/services,
   discovers hardware, boot/update method, home and group membership, then applies

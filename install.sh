@@ -47,8 +47,9 @@ if [ "$mode" = preview ]; then
 FreeBSD 15.1-RELEASE amd64 / Wayland setup for $who:
   1. Check release, running kernel, account, permanent checkout and source files.
      Remove what earlier runs left: stale locks, workspaces, logs and backups.
-     Without a working connection, set up Wi-Fi at the console before downloads;
-     the password prompt is hidden. A working connection is kept.
+     Show whether pkg.FreeBSD.org is reachable, then offer console Wi-Fi setup
+     [y/N] for a new or saved network; the password prompt is hidden. Without a
+     connection the run stops here.
      --clean then removes every earlier package (stock Git too), the package
      state and build output, so everything is built and installed again.
      --upgrade keeps them and applies what changed in this checkout.
@@ -404,8 +405,8 @@ freebsd-version -kru >"$log/release-before"
 id "$account" >"$log/account-before"
 run cleanup sweep
 # Prompts bypass tee/logging; the password is read only from the console.
-stage=network
-sh "$repo/.install/scripts/setup-wifi.sh" --needed
+stage=wifi-setup
+sh "$repo/.install/scripts/setup-wifi.sh" --offer
 if [ "$mode" = clean ]; then
     run clean-install clean_install
     next=upgrade

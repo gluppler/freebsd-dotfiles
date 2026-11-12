@@ -67,10 +67,13 @@ network policy cannot strand its operator.
 ## What happens
 
 1. Remove what earlier runs left: stale locks, workspaces, logs and backups (see
-   below). Without a working connection, a default route and DNS for
-   `pkg.FreeBSD.org`, set up [Wi-Fi](WIFI.md) at the console before package
-   downloads. Password entry bypasses the install log. A working connection,
-   wired or wireless, is kept and nothing is asked. `--clean` then performs the
+   below). Report whether `pkg.FreeBSD.org` is reachable, then ask
+   `Configure a Wi-Fi connection now? [y/N]`. Answer `y` to set up
+   [Wi-Fi](WIFI.md) at the console, for example to change networks or a saved
+   network's security or password; password
+   entry bypasses the install log. Enter keeps the current connection, wired or
+   wireless. Without a reachable package server, declining stops the run before
+   anything is installed or removed. `--clean` then performs the
    [clean install](#clean-install); `--upgrade` keeps what is there.
    Bootstrap pkg with FreeBSD's signature verification and publish the root-owned
    package policy. Resolve and audit the complete requested dependency closure.

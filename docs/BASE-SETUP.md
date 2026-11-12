@@ -197,17 +197,21 @@ blindly run `pkg install fwget` as a fallback. If firmware/networking fails,
 capture the driver/PCI ID and error and use wired/offline bootstrap rather than
 repeat the earlier failing command without diagnosis.
 
-When there is no working connection, `install.sh --clean` and `--upgrade` start
-with console Wi-Fi setup, before downloading anything. Enter the detected radio,
-country if needed, exact SSID and security mode. The password prompt disables
-terminal echo. The setup creates the missing WPA file, preserves unrelated
-profiles and rc.conf settings, uses the native per-interface service, and saves
-the new network only after successful authentication. It then checks DNS
-separately. The checkout can be copied from USB if networking is needed before
+`install.sh --clean` and `--upgrade` report whether `pkg.FreeBSD.org` is
+reachable and ask `Configure a Wi-Fi connection now? [y/N]` before downloading
+anything. Answer `y`, then enter the detected radio,
+country if needed, exact SSID and security mode. To change a saved network, for
+example its security or password, enter its name again; with Wi-Fi already
+running, the setup shows the current network and offers only the security modes
+the supplicant can use. The password prompt disables terminal echo. The setup
+creates the missing WPA file, replaces any saved profile for the same network
+name, preserves unrelated profiles and rc.conf settings, uses the native per-interface service, and saves
+the new network only after successful authentication. It then checks that
+`pkg.FreeBSD.org` is reachable. The checkout can be copied from USB if networking is needed before
 Git is available.
 
-If the base installer already configured a working connection, the installer
-keeps it and asks nothing. Loading `if_iwlwifi` alone does not authenticate to an access point.
+If the base installer already configured a working connection, press Enter at
+that question to keep it. Loading `if_iwlwifi` alone does not authenticate to an access point.
 If configuring manually, and
 `net.wlan.devices` lists `iwlwifi0`, the intended persistent values are
 `wlans_iwlwifi0="wlan0"` and `ifconfig_wlan0="WPA DHCP"`. Create the cloned

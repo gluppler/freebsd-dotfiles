@@ -23,7 +23,10 @@ stopped on two lock files that uv had created mode 0666 in the development
 environments. The installer now removes group/world write from the checkout
 instead of stopping, and no longer builds in an account name. The
 [native evidence](#native-evidence-from-the-t14) records each cause and fix.
-Commit `17fb366` then completed every stage on the T14 in one run. The KiCad PCB workflow has since been removed because PCB design
+Commit `17fb366` then completed every stage on the T14 in one run. On
+`a46cb06` every installing run stopped at a new network check that cannot
+resolve names on the T14's network; the [audit fixes](#audit-fixes) give the
+cause. The KiCad PCB workflow has since been removed because PCB design
 runs on a separate server: its packages, six native variants, ports patch, plugin,
 helper, guide and tests are gone. Host checks pass for the listed scopes. The
 first reboot into the desktop, login and hardware acceptance remain
@@ -34,12 +37,41 @@ measured battery-performance claim is made.
 
 ## Audit fixes
 
+- `a46cb06` replaced the Wi-Fi question with an automatic check, a default route
+  plus `getent hosts pkg.FreeBSD.org`, and went straight into the console setup
+  when it failed. On the T14 it failed with both cable and Wi-Fi connected:
+  `getent hosts` calls `sethostent(1)`, which sends DNS queries over TCP
+  ([gethostbyname(3)](https://man.freebsd.org/cgi/man.cgi?query=gethostbyname&sektion=3)),
+  and the home router answers DNS only over UDP. `git`, `fetch` and pkg resolve
+  over UDP and worked. The forced setup stopped as well: it ran
+  `service wpa_supplicant onestart` while the supplicant already served `wlan0`,
+  which rc.subr refuses, so it rolled back and restarted Wi-Fi. The question is
+  back, `Configure a Wi-Fi connection now? [y/N]`, after a line saying whether
+  the repository's `meta.conf` can be fetched as pkg does. Declining stops the
+  run only when it cannot, before a clean install could remove packages. A running
+  supplicant is restarted with the merged profile, and the check after setup uses
+  the same fetch. The bootstrap test's `service` stub now refuses `onestart` on a
+  running daemon, as rc.subr does, and its `getent` always fails.
+- Changing a saved network's security from the console or the desktop menu
+  could leave the old settings in force. CONNECT replaced only the profile it
+  had written itself; a profile from bsdinstall or an editor for the same name
+  stayed ahead of the new one, so after a restart wpa_supplicant could pick the
+  old settings. A mode the supplicant lacks was refused only after the password
+  and a supplicant restart, and the console's rollback then restarted a
+  supplicant it had never changed. CONNECT now removes every saved profile for
+  the name: `.install/scripts/forget-network.awk` reads lines and names as
+  wpa_supplicant's `src/utils/config.c` and `common.c` do, and after the restart
+  the supplicant itself must report no other profile for the name, or the change
+  is undone. With a supplicant running, the console shows the current network
+  and its security, says when the name has a saved profile and offers only the
+  modes the supplicant reports. Its rollback restarts the supplicant only if the
+  run restarted it or changed the regulatory domain. WPA3 cannot be used on the
+  T14 at all; the [native evidence](#native-evidence-from-the-t14) has why.
 - The installer has exactly four modes: `--preview`, `--check`, `--clean` and
   `--upgrade`. `--clean` is the clean full install that `--apply` used to offer
   at a prompt; `--upgrade` is the ordinary run that applies a pulled checkout.
-  The separate `--wifi` mode and the Wi-Fi prompt are gone: both installing
-  modes keep a working connection, a default route and DNS for
-  `pkg.FreeBSD.org`, and otherwise go straight into the console Wi-Fi setup. A
+  The separate `--wifi` mode is gone; both installing modes offer the console
+  Wi-Fi setup with a `[y/N]` question, as described above. A
   stopped run names the command that continues it: `--upgrade`, or `--clean`
   when a clean install stopped before its clean stage finished.
 - The checkout is laid out as dotfiles: a folder for each program (`dwl/`,
@@ -237,13 +269,13 @@ flaw has been eliminated. See [security policy and suspend boundaries](SECURITY.
 | Check | Result and scope |
 | --- | --- |
 | `python3 .install/tests/check.py` | 33 passed: link sources and fonts, a reader for every file in a program folder, every declared home destination, every user guide, the Secret Knowledge chapters, the electronics guide and the offline library linked where the docs reader finds them, browser arguments/schema, CWD encoding, shell syntax, all 140 awk programs parsed by the host's one-true-awk, fixed LLVM paths naming an installed package, every installer Go, uv and rustup command keeping its state out of the home, user-link preflight/rollback/idempotency, former-link removal/restoration/directory conversion/mid-run change, receipt-checked plugin pins and dkjson checksum stops, and keyboard reach: unique dwl chords with tag/console macros expanded, a key for every menu, bar, notification-click and mouse action, foot bindings that collide with neither each other nor foot 1.28's defaults, and a reference row for every menu action |
-| `python3 .install/tests/helpers.py` | 14 passed: display-mode/scale rollback and last-output protection, SSID bytes/managed blocks, USB CAM filtering, unsafe argument rejection, default fallback for a saved wallpaper whose exports were removed, image bytes/types and PDF page text reaching the clipboard without MuPDF's form feeds, refused non-images, bad pages and empty text layers, the scrollback copy mode leaving no file, and running multiplexer sessions listed first so Enter reattaches |
+| `python3 .install/tests/helpers.py` | 15 passed: display-mode/scale rollback and last-output protection, SSID bytes/managed blocks, saved network names matched as wpa_supplicant reads them, USB CAM filtering, unsafe argument rejection, default fallback for a saved wallpaper whose exports were removed, image bytes/types and PDF page text reaching the clipboard without MuPDF's form feeds, refused non-images, bad pages and empty text layers, the scrollback copy mode leaving no file, and running multiplexer sessions listed first so Enter reattaches |
 | `python3 .install/tests/package-policy.py` | 30 passed: reported empty-list failure and actual resolver/query handling, kmods selection/catalogue, failure/signal cleanup, a lock reclaimed only after its boot with stale workspaces removed, only the latest transaction receipt kept, each archive downloaded once per run and checked against the catalogue with libpkg's checksum encoding, kept downloads used only during an install run, graph/identity/ABI/receipt validation including only the FreeBSD 15 `*` ABI, exact GNU roles/versions, stock conversion/cleanup, only an unreviewed, unused flavor of an audited origin replaceable, pkgbase separation, protected removal, transaction-guard dispatch, separate pkg self-upgrade, named origin/ABI mismatches, pending versions, preserved automatic/build-protection flags, stale ports-tree replacement that stops on changed, added or missing files, all seven ports patches on the cached pinned archive with search paths kept where Readline is dropped, listed advisories reported without stopping a variant build, the 15 dependency lists recorded on the T14 naming only reviewed packages and earlier variants, and the cached catalogue's dependencies of every installer request reviewed with matching origins and pinned versions |
 | `PKG=… python3 .install/tests/pkg-integration.py` | 12 passed against pkg 2.8.4 built from source on this host, with disposable signed repositories: stock Git's flavor replaced by git-lite within one reviewed plan with its unused dependencies removed, the clean install keeping pkg, base, vital and firmware packages with their dependencies, the native locked-variant stop reproduced, then install/preview/update requests that keep a locked variant while stock packages and an unlocked variant still change and reinstall unlocks its own, `--no-remove` rejected as unrecognized, the five reported leaf dependencies installed twice, preview/reinstall/upgrade, existing automatic dependencies, a file conflict denied a second approval, real removal plans rejected, a `FreeBSD:15:*` archive audited and installed, an older dependency pkg keeps, and pkg's restart failing under one approval but passing as its own transaction |
 | `python3 .install/tests/provisioning.py` | 20 passed: the library receipt check on the T14's names, including unversioned ones, and on malformed or empty receipts, the installed font check on fontconfig's family list for the variable Azeret Mono, final cleanup removing loose checkout modes and stopping when it cannot, selective settings/SDDM/SSH/PF merges, the SSH `Include` walk over relative, quoted and self includes with unsafe paths refused, `--clean` removing earlier packages, package state and build output while `--upgrade` keeps them, a stopped run naming the mode that continues it, a Python requirements check that sees system packages, helper/font/login/loader destinations, ambiguous input rejection, idempotency, rollback preserving later edits, legacy/current/interrupted log pruning that keeps no backup, signal cleanup, lock release, a lock reclaimed only after its boot, stale workspaces/locks, recovery archives, policy copies and Wi-Fi backups removed unless a setup holds its lock, this run's backups removed only after the final check, a completed run removing its own logs, every desktop build log and the package receipt before the reboot prompt while a stopped run keeps its logs, build leftovers cleaned only from an earlier boot with user-file backups removed and symlinked log directories left alone, the final login/SDDM/variant check, the reboot prompt after the lock is released, and policy reuse/recovery |
 | `python3 .install/tests/network-menus.py` | 9 passed: actual fuzzel managers, byte-safe SSIDs, masked secrets, cancellation, scan recovery, phone/open/OWE hotspots, unprivileged portal dispatch, Bluetooth initialization/pairing, persistent WireGuard selection and status without authentication |
-| `python3 .install/tests/bootstrap.py` | 8 passed: actual console/helper transactions with simulated native commands; missing WPA profile, hidden input, failed-auth rollback, DNS-failure retention, later rc overrides, open/OWE profiles, unsupported security rejection, a working connection kept without a question and the setup started when the route or package-host DNS is missing, unsafe paths and supported Intel Bluetooth initialization |
-| `python3 .install/tests/security.py` | 8 passed: mdo migration, terminal/GUI authenticated command transport, failure/cancellation, all-socket lock checks, suspend cancellation/deadline, installed mergers/SSID decoder and native event dispatch/resume debounce |
+| `python3 .install/tests/bootstrap.py` | 12 passed: actual console/helper transactions with simulated native commands and a `wpa_cli` that reads the profile as wpa_supplicant does; missing WPA profile, hidden input, failed-auth rollback, a saved profile kept when the package server stays unreachable, later rc overrides, open/OWE profiles, unsupported security rejection, the `[y/N]` question with the package server reachable or not (declining offline stops), a running supplicant restarted rather than started twice, a bsdinstall profile replaced by a changed security while its neighbours stay byte for byte (a failed change restores every byte), unavailable modes named before any password without restarting the connection, a profile only the supplicant reads undoing the change, unsafe paths and supported Intel Bluetooth initialization |
+| `python3 .install/tests/security.py` | 8 passed: mdo migration, terminal/GUI authenticated command transport, failure/cancellation, all-socket lock checks, suspend cancellation/deadline, installed mergers, SSID decoder and profile remover, and native event dispatch/resume debounce |
 | `python3 .install/tests/embedded.py` | 3 passed: scoped Rust dispatch, Zephyr architecture/word-size/float-ABI guards, real ARM compiler-rt bare-metal ELF link |
 | `python3 .install/tests/offline-docs.py` | 30 passed: literal/invalid topics, Go offline environment, pager cleanup, Python text lookup, encoded local language-book URLs, the LLVM ports' versioned manual name, `--check` requiring every local reference, library document, example and the electronics guide, examples shown without running them, Markdown shown without its markup and MkDocs notes and content tabs as text rather than code, cancellation and separate-window dispatch, library documents in the reader that suits them, chapters titled in their books' reading order, the Go language documents, command help and Go by Example programs, Secret Knowledge chapters, electronics chapters offered by title and opened in their own window, saved manuals, CMake pages through man, every pinned reference in the version list, an action for every menu entry, the library downloader keeping each checked document once, following its pins and leaving the library as it was after an unsafe tree or bad download, extracting only the named directory of a larger archive and refusing one that leaves its archive, links outside itself, holds special files or is missing, and the electronics guide matching its source, running no scripts and loading nothing, every link and anchor landing, every figure titled and drawn inside its frame at every animation keyframe, and the formula sheet linking every named equation |
 | `python3 .install/tests/release.py` | 9 passed: complete home dotfiles in exports, private/generated file exclusions even when tracked, credential-pattern rejection without disclosure, file modes, symlink parents, only the four installer modes, installer host guards that require a named, exactly validated account, the read-only preflight stop point, the ownership preflight, and checkout modes listed by check and removed by apply outside staged port trees, without following links and stopping on a mode that cannot change |
@@ -585,6 +617,18 @@ script finished in 21 seconds: both Caltech books, the two records it had not
 reached and an archive through `fetch-source.sh` matched their pins. Every one
 of the 58 library URLs answered under those settings; with the intermediate
 alone, and no base roots, verification failed.
+
+On 2026-11-12 read-only queries over SSH showed why WPA3 cannot be used on the
+T14. Its supplicant reports key management `NONE IEEE8021X WPA-EAP WPA-PSK` and
+no management-frame (BIP) cipher; the driver reports
+`drivercaps=581c001<STA,SHSLOT,SHPREAMBLE,MONITOR,WPA1,WPA2,WME>` and
+`cryptocaps=100b<WEP,TKIP,AES_CCM,AES_GCM_128>`. FreeBSD 15.1's sources agree:
+`usr.sbin/wpa/Makefile.inc` builds the base wpa_supplicant without `CONFIG_SAE`
+or `CONFIG_OWE`, and `driver_bsd.c` offers only WPA/WPA2 key management. The
+access point advertises `[WPA2-PSK+SAE-CCMP]`, mixed mode, so WPA2 remains
+available. The saved profile is the installer's own managed block.
+`forget-network.awk` gave identical output bytes and exit codes under the T14's
+awk (version 20250804) and the host's on all 42 test inputs.
 
 ## Laptop acceptance after reinstall
 

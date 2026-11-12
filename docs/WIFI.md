@@ -1,15 +1,26 @@
 # Wi-Fi menu and recovery
 
-Without a working connection, a default route and DNS for `pkg.FreeBSD.org`,
-`install.sh --clean` and `--upgrade` start with this console setup before
-downloading packages; a working connection is kept and nothing is asked.
+`install.sh --clean` and `--upgrade` report whether `pkg.FreeBSD.org` is
+reachable, then offer this console setup with `Configure a Wi-Fi connection now?
+[y/N]` before downloading packages. Enter keeps the current connection; without a
+reachable package server, declining stops the run. The check fetches the
+repository's `meta.conf` as pkg does. `getent hosts` would not do: it sends DNS
+queries over TCP, which many home routers refuse.
 It discovers the radio and an existing matching wlan interface, creates one if
 needed, asks for the SSID/security/password, and configures the native rc services.
-The password is hidden and the prompt bypasses installer logs. Failed
+The password is hidden and the prompt bypasses installer logs. When a supplicant
+already serves the interface, the setup first shows the current network and its
+security, for example `Connected to Home with WPA2-PSK.`, and offers only the
+security modes that supplicant can use. To change a saved network, such as its
+security or password, enter its name again: the setup says it has a saved
+profile, and the new settings replace it once they connect. Failed
 authentication restores the previous persistent configuration from a backup
-under `/var/backups/nostromo`; the installer's cleanup removes these backups. A DNS failure after association keeps the
-saved network and stops the download stage for diagnosis. See
-[Base-Setup](BASE-SETUP.md) for read-only filesystems and single-user recovery.
+under `/var/backups/nostromo`; the installer's cleanup removes these backups. A
+running supplicant is restarted with the merged profile; a setup that stops
+before that step leaves it running undisturbed. If `pkg.FreeBSD.org` is still
+unreachable after association, the saved network stays and the run stops for
+diagnosis. See [Base-Setup](BASE-SETUP.md) for read-only filesystems and
+single-user recovery.
 
 Super+Ctrl+W and the Wi-Fi status action open the same native fuzzel panel. It uses the launcher's content-sized shape,
 left divot rail, Michroma font and bottom-right body cut. Enter selects,
@@ -29,9 +40,16 @@ beneath `/var/run`). Console Wi-Fi setup configures this control socket without 
 ordinary account direct supplicant configuration access. No already-working
 network or unrelated directive is erased.
 
-CONNECT replaces only a `NOSTROMO WIFI <SSID hex>` block, restarts the native
-per-interface supplicant, selects that exact profile and waits up to 30 seconds
-for authentication. A failure restores the previous file and selected network.
+CONNECT writes the chosen network as a `NOSTROMO WIFI <SSID hex>` block and
+removes every other saved profile with that name, including one that bsdinstall
+or an editor wrote, so an old profile cannot win after a restart. Other networks
+and comments stay byte for byte. Names are read as wpa_supplicant reads them,
+as `"text"`, `P"escaped"` or hex; a name it would reject stops the change.
+CONNECT then restarts the native per-interface supplicant, checks with it that no
+other profile names the network, selects the new profile and waits up to 30
+seconds for authentication. A failure restores the previous file and selected
+network. To change a saved network's security or password from the desktop,
+choose it again through **SCAN** or **HIDDEN**.
 DHCP is restarted only when the interface's existing rc configuration uses it;
 static addressing is retained. Association success is separate from DHCP, DNS
 and Internet reachability. Verify those after changing networks.
@@ -44,10 +62,15 @@ Choose `wpa2` for a password-protected WPA2 hotspot or `wpa3` for SAE. Select
 Open/OWE connections do not request a Wi-Fi password. A name hidden by the phone
 can be entered with HIDDEN. The helper checks the running supplicant's advertised
 key-management capabilities before changing a profile; the driver must also
-support the selected band and mode. Base builds may omit SAE/OWE support; those
-choices then stop with a capability error. For a phone that offers a compatibility
-setting, WPA2 and 2.4 GHz are useful alternatives when its newer mode is unsupported.
-No automatic security downgrade is made.
+support the selected band and mode. A mode the supplicant lacks stops with
+`… is not available with this Wi-Fi driver and supplicant` and the modes it offers,
+before anything changes. FreeBSD 15.1's base wpa_supplicant is built without SAE
+and OWE (`usr.sbin/wpa/Makefile.inc`), and its FreeBSD driver interface offers
+only WPA/WPA2 key management (`driver_bsd.c`), so on 15.1 the base supplicant
+cannot use `wpa3` or `owe` with any adapter. A router in WPA2/WPA3 mixed mode
+still accepts `wpa2`. For a phone that offers a compatibility setting, WPA2 and
+2.4 GHz are useful alternatives when its newer mode is unsupported. No automatic
+security downgrade is made.
 
 For a hotel, café, airport or other public network:
 

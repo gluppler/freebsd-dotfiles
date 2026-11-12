@@ -255,7 +255,7 @@ if (work/'reject').exists(): sys.exit(1)
 
     def test_runtime_mergers_are_provisioned_and_work_from_installed_paths(self):
         source=(ROOT/'.install/scripts/configure-system.sh').read_text()
-        start=source.index('for helper in merge-mdo merge-block ssid-hex; do')
+        start=source.index('for helper in merge-mdo merge-block ssid-hex forget-network; do')
         loop=source[start:source.index('\ndone',start)+len('\ndone')]
         script='set -eu\nrepo='+shlex.quote(str(ROOT))+'\nstage='+shlex.quote(str(self.work))+'\n'
         script+='sf_put() { mkdir -p "$stage${2%/*}"; cp "$1" "$stage$2"; chmod "$3" "$stage$2"; }\n'+loop
@@ -270,6 +270,11 @@ if (work/'reject').exists(): sys.exit(1)
         self.assertEqual(merger.stat().st_mode & 0o777,0o644)
         decoder=self.work/'usr/local/share/nostromo/ssid-hex.awk'
         self.assertEqual(subprocess.check_output(['awk','-f',str(decoder)],input='Lab\\x20WiFi\n',text=True),'4c61622057694669\n')
+        forget=self.work/'usr/local/share/nostromo/forget-network.awk'
+        self.assertEqual(forget.stat().st_mode & 0o777,0o644)
+        self.assertEqual(subprocess.check_output(['awk','-v','ssid='+b'Lab'.hex(),'-f',str(forget)],text=True,
+                                                 input='network={\n ssid="Lab"\n}\nnetwork={\n ssid="Other"\n}\n',
+                                                 env={**os.environ,'LC_ALL':'C'}),'network={\n ssid="Other"\n}\n')
 
     def test_sleep_button_dispatch_and_resume_debounce(self):
         source=(ROOT/'session/events.c').read_text()
